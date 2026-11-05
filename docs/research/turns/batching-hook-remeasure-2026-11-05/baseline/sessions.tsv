@@ -1,0 +1,493 @@
+slug	session	kind	role	turns	calls	single	zero	weight	m_runs	m_turns	m_saved_turns	m_weight	m_saved_weight	u_runs	u_turns	u_saved_turns	u_weight	u_saved_weight	edit_calls	edit_turns	first_edit_turn	reads_after_edit	switches	reedits	gate	testlint	validate	weight_after_first_edit	check_pairs	edit_pairs	edit_pair_weight
+drift-whole-review	0f34dcd7-a44a-414c-aa07-54644d114c86	main	darn	14	39	6	2	474022	0	0	0	0	0	1	2	1	26823.4	9234.9	2	2	11	0	3	0	0	0	1	141410	0	0	0
+pr-reviewer-github-access	50456f8c-f2e9-4f44-87e5-a8768ad6840e	main	code-bouncer-seed	7	8	3	2	75787	0	0	0	0	0	0	0	0	0	0	1	1	6	0	1	0	0	0	0	28965.5	0	0	0
+pr-reviewer-github-access	5b64ce56-4209-42b3-ab1d-cf53e090898f	main	code-burler-review	14	31	5	2	414231	0	0	0	0	0	1	2	1	13403.4	6078.35	4	2	12	0	3	0	0	0	0	140366	0	0	0
+pr-reviewer-github-access	agent-a3a5273dbdf06ee98	fork	code-burler-review+fork	3	2	2	1	137746	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+pr-reviewer-github-access	agent-a3ac47c351a3153ce	fork	code-burler-review+fork	4	4	2	1	123183	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+pr-reviewer-github-access	agent-adb14f0f1d5406c4b	fork	code-burler-review+fork	3	3	1	1	179736	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+pr-reviewer-github-access	5fb618b5-c188-4e7a-9cdf-f90c176df76b	main	darn	34	62	18	2	887594	1	2	1	116986	32068.8	1	2	1	116986	32068.8	28	12	15	2	5	16	0	1	2	501095	0	0	0
+pr-reviewer-github-access	c8490d6a-c9b6-4756-9e39-43286ed2c478	main	code-burler-fix	26	61	12	2	740529	2	5	3	234808	138574	2	5	3	234808	138574	29	7	12	0	1	18	4	1	0	432822	3	0	0
+pr-reviewer-github-access	agent-a26ad180d1af340f4	fork	code-burler-fix+fork	2	1	1	1	49957	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+pr-reviewer-github-access	agent-a69acdfb9ffd1d157	fork	code-burler-fix+fork	5	4	4	1	110494	1	2	1	39973.6	19359.5	1	3	2	59207.1	38593.1	0	0		0	0	0	0	0	0	0	0	0	0
+pr-reviewer-github-access	agent-a8b4193f787234451	fork	code-burler-fix+fork	2	1	1	1	42579.5	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+pr-reviewer-github-access	agent-ad7daf61ed2a38229	fork	code-burler-fix+fork	2	1	1	1	54318.2	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+pr-reviewer-github-access	dd0f3797-0743-4363-b9cc-3fdbaaf73345	main	describe	8	8	5	2	72958.5	0	0	0	0	0	0	0	0	0	0	1	1	6	0	1	0	0	0	1	32775.9	0	0	0
+pr-reviewer-github-access	e9d1c46c-6bce-495a-bdd8-64c7c2d053da	main	code-bouncer-judge	6	7	2	2	82957.1	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	30742.5	0	0	0
+pr-reviewer-github-access	f44d4393-3d9d-43cc-994b-25857a1bd40a	main	gate-fixer	12	15	7	1	132313	1	2	1	21120.2	10458	1	2	1	21120.2	10458	2	2	9	0	1	0	2	0	0	40727.5	1	0	0
+gate-runner-crash-fixer	2141cd44-515a-4fe0-a137-71a163b476a9	main	code-burler-fix	40	119	17	2	1.58002e+06	2	5	3	164218	85706.2	2	5	3	164218	85706.2	51	7	22	7	7	26	4	1	0	855703	2	0	0
+gate-runner-crash-fixer	agent-a64b4c83121430cfb	fork	code-burler-fix+fork	4	3	3	1	137050	0	0	0	0	0	1	2	1	62314.9	30857.1	0	0		0	0	0	0	0	0	0	0	0	0
+gate-runner-crash-fixer	agent-a7dd030e06bb41eb6	fork	code-burler-fix+fork	4	3	3	1	129544	1	2	1	64975.2	33487.4	1	2	1	64975.2	33487.4	0	0		0	0	0	0	0	0	0	0	0	0
+gate-runner-crash-fixer	agent-ad8ad174f661729d2	fork	code-burler-fix+fork	3	2	2	1	105662	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+gate-runner-crash-fixer	agent-add4ac834beb9b8b9	fork	code-burler-fix+fork	3	2	2	1	108690	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+gate-runner-crash-fixer	3f00c82e-905e-48bf-b7a1-b21bdd0dce1b	main	code-burler-review	19	38	8	2	486052	2	4	2	96350.9	49328.2	3	6	3	109767	55418.8	4	2	17	0	1	0	0	0	0	131290	0	0	0
+gate-runner-crash-fixer	agent-a5e491c3a8aea6d21	fork	code-burler-review+fork	5	6	3	1	127877	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+gate-runner-crash-fixer	agent-a6f5ae511156c8dad	fork	code-burler-review+fork	5	5	3	1	98847.8	0	0	0	0	0	1	2	1	35577.2	17601.1	0	0		0	0	0	0	0	0	0	0	0	0
+gate-runner-crash-fixer	agent-ad7cff770b179b5f1	fork	code-burler-review+fork	2	1	1	1	60558.2	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+gate-runner-crash-fixer	791a4ba0-8254-400f-82e0-0aaed2b0bd09	main	darn	38	125	15	2	1.38297e+06	1	2	1	57937.6	27309.2	2	4	2	82091.2	34380.9	75	13	19	5	11	49	0	3	2	818674	2	1	31689.7
+gate-runner-crash-fixer	86ac5d46-911f-4c64-8c58-d0b79833454d	main	code-bouncer-judge	6	7	2	2	81885.6	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	29703.7	0	0	0
+gate-runner-crash-fixer	8d062b56-f3be-49b0-a94d-5946496f7d25	main	code-bouncer-seed	6	6	3	2	57674.4	0	0	0	0	0	0	0	0	0	0	1	1	5	0	1	0	0	0	0	16720.3	0	0	0
+gate-runner-crash-fixer	a6798df8-ac69-4aac-9785-8f45d2005429	main	describe	8	9	4	2	81953.7	1	2	1	13366.3	5377.6	1	2	1	13366.3	5377.6	1	1	7	0	1	0	0	0	1	34698.2	0	0	0
+shuttle-launch-delivery	1b62774d-de03-4ea4-aae3-5083924f86b1	main	gate-fixer	35	46	26	1	413598	3	13	10	150568	116492	3	13	10	150568	116492	11	4	12	12	5	9	7	2	0	290261	6	0	0
+shuttle-launch-delivery	1bd0dd7b-aa92-42df-a23d-cd1061a76b76	main	code-bouncer-seed	6	5	3	2	55742.4	0	0	0	0	0	0	0	0	0	0	1	1	5	0	1	0	0	0	0	17818.5	0	0	0
+shuttle-launch-delivery	3bcbefdf-bc8e-4060-abde-c2afcdbb5288	main	code-burler-fix	25	85	9	2	761174	0	0	0	0	0	0	0	0	0	0	34	5	11	5	3	18	4	1	0	470949	1	0	0
+shuttle-launch-delivery	agent-a1a5a82a3404a56cd	fork	code-burler-fix+fork	2	1	1	1	54533.4	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+shuttle-launch-delivery	agent-a617c1a3ecd2ace7e	fork	code-burler-fix+fork	6	5	5	1	120948	1	4	3	78615.9	56967.4	1	4	3	78615.9	56967.4	0	0		0	0	0	0	0	0	0	0	0	0
+shuttle-launch-delivery	agent-a7551ab3bc41a5f6c	fork	code-burler-fix+fork	2	1	1	1	44457.2	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+shuttle-launch-delivery	agent-a87a83d5d08e1e958	fork	code-burler-fix+fork	3	2	2	1	70819.8	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+shuttle-launch-delivery	3e286d5e-0ae1-4655-9454-7649690844f6	main	darn	69	105	47	6	2.237e+06	7	24	17	665010	439652	7	25	18	691289	453121	36	8	34	12	13	20	0	4	3	1.43744e+06	1	0	0
+shuttle-launch-delivery	agent-a5be9e17fc72e440d	fork	darn+fork	8	18	3	1	134390	0	0	0	0	0	0	0	0	0	0	9	3	4	0	1	5	0	1	0	74714.9	0	0	0
+shuttle-launch-delivery	agent-aa797996b1965befe	fork	darn+fork	19	30	13	1	259591	3	10	7	129001	76292.8	2	10	8	129001	88954.7	16	5	12	1	3	10	0	1	0	116518	0	0	0
+shuttle-launch-delivery	5dccfcdc-7d8c-42f0-ace1-0410aa6bfbee	main	code-bouncer-judge	6	7	2	2	78986.3	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	27084.4	0	0	0
+shuttle-launch-delivery	6bf5e6e0-2c0b-4aa4-a1d4-a10c913535f6	main	describe	9	10	5	2	92608.7	1	2	1	14202.6	5977.9	1	3	2	19953.2	11728.5	1	1	8	0	1	0	0	0	1	41120	0	0	0
+shuttle-launch-delivery	c3ef006e-947c-4367-ba21-eb38ad690c3b	main	code-burler-review	23	54	6	2	632067	1	2	1	43717.9	18998	2	4	2	57124.3	25075.4	4	1	22	0	1	0	0	0	0	123347	0	0	0
+shuttle-launch-delivery	agent-a1f5532480b3c90f4	fork	code-burler-review+fork	7	6	6	1	159742	1	5	4	109227	72942.5	1	5	4	109227	72942.5	0	0		0	0	0	0	0	0	0	0	0	0
+shuttle-launch-delivery	agent-a370e081cd3831161	fork	code-burler-review+fork	5	5	3	1	112686	0	0	0	0	0	1	2	1	45674.4	17252.3	0	0		0	0	0	0	0	0	0	0	0	0
+shuttle-launch-delivery	agent-affb7d35deaa258b5	fork	code-burler-review+fork	2	1	1	1	57362.8	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+beam-pr-lifecycle	036b7de4-d0f1-4ee6-872a-332a81a8b064	main	darn	69	191	27	2	2.81884e+06	4	9	5	319812	180489	5	11	6	347794	189176	92	18	36	16	17	51	0	7	1	1.73941e+06	0	0	0
+beam-pr-lifecycle	34d2898b-e04f-4c13-b219-02f408b55de2	main	code-bouncer-judge	6	8	2	2	70034.3	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	20122.8	0	0	0
+beam-pr-lifecycle	3bcc72b8-b1b7-4712-b1cd-b2eacf23dba5	main	code-burler-review	21	48	10	2	650405	3	6	3	171749	104812	4	8	4	182222	111016	4	1	20	0	1	0	0	0	0	124489	0	0	0
+beam-pr-lifecycle	agent-a6563d25a61fb6ba3	fork	code-burler-review+fork	3	2	2	1	104625	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+beam-pr-lifecycle	agent-abadddc90b8b6b064	fork	code-burler-review+fork	4	3	3	1	102860	0	0	0	0	0	1	2	1	52019	25340.2	0	0		0	0	0	0	0	0	0	0	0	0
+beam-pr-lifecycle	agent-ac27c392002c8a6f1	fork	code-burler-review+fork	3	4	1	1	109067	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+beam-pr-lifecycle	5bba65a9-2db3-4f0f-b652-203677e32845	main	gate-fixer	20	25	14	1	168847	2	4	2	34039.6	17257.9	2	5	3	40577.7	23796	4	3	11	4	3	2	3	2	0	73486.3	3	0	0
+beam-pr-lifecycle	5fc34f73-3ab9-4374-b36b-42858f4784bf	main	code-bouncer-judge	6	7	2	2	80169.6	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	28313.7	0	0	0
+beam-pr-lifecycle	650de8ae-59d4-41a3-a11d-f00e0fdf8a09	main	code-burler-fix	34	114	17	2	971701	1	4	3	101986	66432.4	1	4	3	101986	66432.4	52	5	18	5	5	33	3	2	0	606023	2	0	0
+beam-pr-lifecycle	agent-a652e15837084b8fa	fork	code-burler-fix+fork	3	2	2	1	73895.2	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+beam-pr-lifecycle	agent-a797406b1001dd84b	fork	code-burler-fix+fork	2	1	1	1	48905.4	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+beam-pr-lifecycle	agent-ab1a04717db0cf77e	fork	code-burler-fix+fork	3	2	2	1	67043.1	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+beam-pr-lifecycle	agent-aff03a05e8ed9f261	fork	code-burler-fix+fork	4	3	3	1	86583.3	0	0	0	0	0	1	2	1	41724.9	20422.9	0	0		0	0	0	0	0	0	0	0	0	0
+beam-pr-lifecycle	9e2d6bd8-c345-4a01-b167-3109f0398cf6	main	code-bouncer-seed	6	5	3	2	57982.3	0	0	0	0	0	0	0	0	0	0	1	1	5	0	1	0	0	0	0	17495.2	0	0	0
+beam-pr-lifecycle	dd06e4dd-777f-40c7-82cc-9f489261652d	main	code-burler-review	14	23	8	2	302633	1	5	4	171474	100254	2	7	5	184866	106333	1	1	13	0	1	0	0	0	0	42127.1	0	0	0
+beam-pr-lifecycle	e50b2cdd-d667-47e9-88ae-def651f5f891	main	describe	13	13	10	2	130656	0	0	0	0	0	1	2	1	15074.8	5533.3	3	3	7	1	3	2	0	0	2	81722.3	0	0	0
+drift-capture-and-migration	0dc9abdb-c2c8-4636-82b5-37511dea68bd	main	code-bouncer-seed	6	5	3	2	56531.1	0	0	0	0	0	0	0	0	0	0	1	1	5	0	1	0	0	0	0	15919.7	0	0	0
+drift-capture-and-migration	1d9679d0-75e5-40c1-8b33-ca9fa6c976b3	main	fixer	16	21	11	2	135957	1	2	1	15060.6	7851.45	1	3	2	23295.4	15060.6	3	3	9	1	2	1	2	0	0	48630.9	0	0	0
+drift-capture-and-migration	3a11e7a6-a00c-4926-a117-813a81bf6b74	main	gate-fixer	22	30	13	1	234015	1	6	5	69820.8	55942.6	1	6	5	69820.8	55942.6	7	4	6	13	5	3	4	0	0	179927	2	0	0
+drift-capture-and-migration	4cab4aaf-53cb-42e4-981a-467a4d06543a	main	code-burler-fix	29	93	13	2	875846	2	5	3	160386	78304.9	2	5	3	160386	78304.9	40	5	12	8	7	23	3	2	0	581569	0	0	0
+drift-capture-and-migration	agent-a54835861bafb30b7	fork	code-burler-fix+fork	3	2	2	1	72603.2	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+drift-capture-and-migration	agent-a6de548d40633d18b	fork	code-burler-fix+fork	4	3	3	1	86761.1	1	2	1	43350.2	22495.9	1	2	1	43350.2	22495.9	0	0		0	0	0	0	0	0	0	0	0	0
+drift-capture-and-migration	agent-a9362e7f98ad916e2	fork	code-burler-fix+fork	2	1	1	1	61098.3	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+drift-capture-and-migration	agent-afa79dbffbde4730d	fork	code-burler-fix+fork	3	2	2	1	62790.8	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+drift-capture-and-migration	97766af7-6c1b-4615-8388-953623829221	main	code-burler-review	20	45	9	2	568216	0	0	0	0	0	1	2	1	13409.4	6068.35	5	3	17	0	1	1	0	0	0	174318	0	1	25877
+drift-capture-and-migration	agent-a27ce3560077d5dd1	fork	code-burler-review+fork	5	7	2	1	118404	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+drift-capture-and-migration	agent-ab05194776c3432f6	fork	code-burler-review+fork	6	5	5	1	116250	1	3	2	47365.7	30907.5	1	4	3	66545.3	47365.7	0	0		0	0	0	0	0	0	0	0	0	0
+drift-capture-and-migration	agent-ac8d18c14a1687c5b	fork	code-burler-review+fork	2	1	1	1	70357.4	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+drift-capture-and-migration	b0ff52cd-5cd3-42f8-bd14-9a642b08e105	main	describe	12	13	8	2	109181	0	0	0	0	0	1	2	1	13820.3	5354.05	3	3	7	0	1	2	0	0	3	61523.8	0	0	0
+drift-capture-and-migration	bafc8e5a-186b-428e-852d-92c9d54131c6	main	darn	52	114	33	4	1.53331e+06	7	15	8	356178	184468	5	18	13	464260	286694	45	6	36	3	5	24	0	3	3	655779	0	0	0
+drift-capture-and-migration	agent-a7f4f87786bb6abfc	fork	darn+fork	4	8	1	1	84818.5	0	0	0	0	0	0	0	0	0	0	2	2	2	0	1	1	0	1	0	65238.8	0	0	0
+drift-capture-and-migration	agent-a8d24f549230d76e0	fork	darn+fork	6	20	3	1	142385	0	0	0	0	0	0	0	0	0	0	10	2	3	0	1	8	0	1	0	74998.9	0	0	0
+drift-capture-and-migration	agent-ab0afc2069f30ab17	fork	darn+fork	9	20	4	1	224335	0	0	0	0	0	1	2	1	45517.8	21576.8	7	2	5	1	3	5	0	1	0	103581	0	0	0
+drift-capture-and-migration	d84563d2-0786-4171-8a9e-eabbf2465326	main	code-bouncer-judge	6	7	2	2	82045.8	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	30031.9	0	0	0
+dobby-zombie-children	4df9c6da-3737-490c-a327-10d534a71b3a	main	code-bouncer-judge	6	7	2	2	76850.1	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	24929.9	0	0	0
+dobby-zombie-children	5100a86f-c46a-468d-88f5-8ecb5fb065b6	main	code-burler-review	22	39	12	3	466546	1	4	3	74849.6	43415.7	2	6	4	88162.5	49457.2	7	4	8	8	5	2	0	0	0	360787	0	0	0
+dobby-zombie-children	agent-a4b8692d714ff6133	fork	code-burler-review+fork	2	1	1	1	46247.5	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-zombie-children	agent-a58ecc8557afd86e2	fork	code-burler-review+fork	2	1	1	1	58496.2	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-zombie-children	agent-afd315869f8bf5d67	fork	code-burler-review+fork	3	2	2	1	57739.7	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-zombie-children	857fdafb-e154-4035-be1c-5c2992d8800e	main	code-bouncer-seed	6	5	3	2	56930.9	0	0	0	0	0	0	0	0	0	0	1	1	5	0	1	0	0	0	0	16392.9	0	0	0
+dobby-zombie-children	9a7f5a76-7a34-43e3-a3cf-faeb70b4644c	main	describe	9	10	5	2	78600.6	1	2	1	19718.1	13388.1	1	3	2	26538.6	19718.1	1	1	8	0	1	0	0	0	1	18240.1	0	0	0
+dobby-zombie-children	bcce1489-05fa-4f21-8a2f-6b25440f9c76	main	darn	44	99	30	2	912466	4	10	6	192664	113428	3	10	7	192664	129670	35	4	37	1	3	8	0	2	2	249851	1	0	0
+dobby-zombie-children	cb6d9d87-3799-44e8-80ff-c4600b5cf8f7	main	gate-fixer	21	38	11	1	244193	1	2	1	22434.5	11941	2	4	2	42925.8	24662.2	10	2	15	0	1	5	4	1	0	79152.8	4	0	0
+dobby-zombie-children	fc93f2fb-1021-4757-97a4-837996ece614	main	code-burler-fix	33	91	17	3	711240	1	4	3	56745.6	43253.1	1	5	4	192194	56745.6	40	8	9	9	9	19	3	3	0	559776	2	0	0
+dobby-zombie-children	agent-a10a5de8538630e07	fork	code-burler-fix+fork	2	1	1	1	33246.1	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-zombie-children	agent-a9663c0e095199625	fork	code-burler-fix+fork	3	3	1	1	59582.2	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-zombie-children	agent-a987f9360709c9d7c	fork	code-burler-fix+fork	4	3	3	1	54982.5	1	2	1	27623.1	14550.1	1	2	1	27623.1	14550.1	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-zombie-children	agent-a99ee97b7a4126c77	fork	code-burler-fix+fork	2	1	1	1	34488.6	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+drive-reports-untracked	226d76c1-8574-40c0-9698-2d7b49c279a0	main	darn	31	76	15	3	993792	0	0	0	0	0	1	2	1	31296.5	11521.6	30	4	20	4	3	18	0	1	3	538854	0	0	0
+drive-reports-untracked	3e51cf60-9f8a-4321-a2f2-1440f4cbed9f	main	gate-fixer	9	11	5	1	78179.1	0	0	0	0	0	0	0	0	0	0	2	2	6	1	2	0	1	1	0	24325.9	1	0	0
+drive-reports-untracked	627d772f-e822-449e-b7b4-5089a5b5d6bc	main	code-burler-fix	21	55	10	2	463428	1	2	1	31067.3	14603.4	1	2	1	31067.3	14603.4	18	2	12	3	3	6	1	2	0	232451	1	0	0
+drive-reports-untracked	agent-a8dd30b588b639cb6	fork	code-burler-fix+fork	2	1	1	1	35776.8	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+drive-reports-untracked	agent-ad48fbeb8536076fc	fork	code-burler-fix+fork	4	3	3	1	69426.8	0	0	0	0	0	1	2	1	34302.3	17380.9	0	0		0	0	0	0	0	0	0	0	0	0
+drive-reports-untracked	agent-af1de1ebeffa0ef20	fork	code-burler-fix+fork	2	1	1	1	38324.2	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+drive-reports-untracked	agent-af561b5b2cf9aba00	fork	code-burler-fix+fork	3	2	2	1	51836.6	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+drive-reports-untracked	76c7122a-adf0-4c63-adcd-51e3b2e39079	main	code-burler-review	19	32	10	3	344399	2	5	3	69967.1	39968.8	3	7	4	83282.6	46011.5	5	2	15	2	3	1	0	0	0	124413	0	0	0
+drive-reports-untracked	agent-a6240d7ebe67eb45f	fork	code-burler-review+fork	3	2	2	1	58067.3	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+drive-reports-untracked	agent-a6450076639ea0bef	fork	code-burler-review+fork	5	6	3	1	76634.9	1	2	1	24697.4	11648.2	1	2	1	24697.4	11648.2	0	0		0	0	0	0	0	0	0	0	0	0
+drive-reports-untracked	agent-adec5bef49cdf86f8	fork	code-burler-review+fork	4	3	3	1	58162.4	0	0	0	0	0	1	2	1	23913.5	12536.8	0	0		0	0	0	0	0	0	0	0	0	0
+drive-reports-untracked	80c60a7e-411a-4853-91cb-45cac2a1e9ee	main	code-bouncer-judge	6	7	2	2	74831.6	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	23084.1	0	0	0
+drive-reports-untracked	986c03a4-68fd-488d-802c-78bd880b1064	main	code-bouncer-seed	7	6	4	2	68283.9	0	0	0	0	0	0	0	0	0	0	1	1	6	0	1	0	0	0	0	21590.5	0	0	0
+drive-reports-untracked	e99d9604-b629-4a63-b074-d28c4cb69060	main	describe	7	8	3	2	68096.6	0	0	0	0	0	0	0	0	0	0	1	1	6	0	1	0	0	0	1	27595.4	0	0	0
+drive-reports-untracked	eb90e5e9-c67d-4b41-8d1a-309e72cd8413	main	gate-fixer	15	23	8	1	200133	0	0	0	0	0	0	0	0	0	0	6	3	6	8	3	1	2	0	0	135576	0	0	0
+codex-trial-home-sandbox	693db3ff-bf68-480d-b8d9-7d1ed5a10baf	main	trial	1	0	0	1	0	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+codex-trial-home-sandbox	86fd97cc-c757-427d-9655-5ae25a11391c	main	darn	64	83	44	4	935122	1	2	1	23695	12289.3	1	2	1	23695	12289.3	15	11	11	8	13	0	0	0	1	786290	0	0	0
+push-lock-busy-blocks	1947e3d7-48c2-4d0d-b2bb-cfc3b7bd7b0d	main	code-burler-review	14	39	5	2	362067	0	0	0	0	0	1	2	1	13402.5	6071.7	4	1	13	0	1	0	0	0	0	92726.5	0	0	0
+push-lock-busy-blocks	agent-a25e9d4903a190efb	fork	code-burler-review+fork	2	1	1	1	62192.4	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+push-lock-busy-blocks	agent-a27cd6f6f74b80aef	fork	code-burler-review+fork	2	1	1	1	49428.7	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+push-lock-busy-blocks	agent-ab8a4eb0cf8b26c44	fork	code-burler-review+fork	3	2	2	1	70602	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+push-lock-busy-blocks	23050502-458c-4e12-b24c-48adcea18385	main	darn	36	62	20	2	686109	4	10	6	199531	119112	4	10	6	199531	119112	22	10	20	5	9	12	0	1	3	343524	0	0	0
+push-lock-busy-blocks	312c7f58-9197-442b-ba54-100ab7814f7f	main	code-bouncer-judge	6	7	2	2	74638.6	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	22737	0	0	0
+push-lock-busy-blocks	8385c5d7-67c0-499f-b15e-16bfe691a723	main	gate-fixer	12	15	8	1	115917	0	0	0	0	0	0	0	0	0	0	3	3	6	3	3	0	2	0	0	62231	0	0	0
+push-lock-busy-blocks	b0973f23-3431-4529-8fbe-247233983e11	main	describe	6	7	2	2	66712.3	0	0	0	0	0	0	0	0	0	0	1	1	5	0	1	0	0	0	1	32810.6	0	0	0
+push-lock-busy-blocks	cfc1d509-d686-426a-8f6b-f63bb92c2d3b	main	code-burler-fix	25	51	11	2	435285	2	5	3	65421.2	35619.6	1	5	4	65421.2	47519.5	12	4	14	3	3	3	2	2	0	241809	2	0	0
+push-lock-busy-blocks	agent-a31f336b13469f749	fork	code-burler-fix+fork	4	3	3	1	53817.7	0	0	0	0	0	1	2	1	26366.9	12899.6	0	0		0	0	0	0	0	0	0	0	0	0
+push-lock-busy-blocks	agent-a68d545b4f6227471	fork	code-burler-fix+fork	3	2	2	1	50188.9	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+push-lock-busy-blocks	agent-abee68d5bbb716872	fork	code-burler-fix+fork	4	3	3	1	59401.4	0	0	0	0	0	1	2	1	29816.8	13467	0	0		0	0	0	0	0	0	0	0	0	0
+push-lock-busy-blocks	agent-ad1133447b5bcf7c5	fork	code-burler-fix+fork	3	2	2	1	49703.8	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+push-lock-busy-blocks	e0173473-6fca-4c24-8d64-d1aaa58b47a3	main	code-bouncer-seed	7	6	4	2	59186.7	0	0	0	0	0	0	0	0	0	0	2	2	5	0	1	1	0	0	0	18587.1	0	1	5087.35
+project-body-in-render	c30827d0-9aa4-4647-adaa-7f6b630675b2	main	gate-fixer	12	15	8	1	105473	0	0	0	0	0	0	0	0	0	0	3	3	6	3	3	1	2	0	0	52235.3	0	0	0
+project-body-in-render	f517a465-2d26-4a34-9be0-117409c9e0ac	main	darn	16	25	7	2	265302	1	3	2	50595.2	36279.9	1	3	2	50595.2	36279.9	6	3	10	2	3	2	0	1	1	130014	0	0	0
+beam-code-opens-workspace	27b67e08-d404-41bb-b220-5a437519cd28	main	code-burler-fix	36	57	22	4	445354	3	7	4	91647.1	42869.8	3	7	4	91647.1	42869.8	18	6	8	9	7	11	6	2	0	352462	3	0	0
+beam-code-opens-workspace	agent-a1602dd83c151d5f5	fork	code-burler-fix+fork	3	2	2	1	31553.9	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+beam-code-opens-workspace	agent-aac3207ce622c932b	fork	code-burler-fix+fork	3	2	2	1	42672.4	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+beam-code-opens-workspace	agent-ab506a5dbc0f80f28	fork	code-burler-fix+fork	3	2	2	1	32453.8	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+beam-code-opens-workspace	agent-ad28d845b5c025f22	fork	code-burler-fix+fork	2	1	1	1	24670.2	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+beam-code-opens-workspace	344b6bb4-dc5f-4a47-a2b3-f6fc307da0e5	main	describe	6	7	2	2	56930	0	0	0	0	0	0	0	0	0	0	1	1	5	0	1	0	0	0	1	23065.5	0	0	0
+beam-code-opens-workspace	5035bfb3-6393-4b23-b7b8-922525b63e9c	main	code-bouncer-judge	6	7	2	2	68240.1	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	16374.3	0	0	0
+beam-code-opens-workspace	91b82c87-a3a3-4721-8eda-91c95b71c4f0	main	darn	16	32	9	2	297234	1	2	1	36747.9	14942.9	1	3	2	51150.1	36747.9	12	3	11	0	1	5	0	1	1	115771	0	1	16173.9
+beam-code-opens-workspace	ba1383dd-018a-4f1f-adcb-9a95cbec188b	main	code-burler-review	14	31	6	2	255148	0	0	0	0	0	2	4	2	42542.2	19778.2	4	1	13	0	1	0	0	0	0	60941.7	0	0	0
+beam-code-opens-workspace	agent-a2471445a58d2936b	fork	code-burler-review+fork	3	2	2	1	52896.6	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+beam-code-opens-workspace	agent-a35bdc8614517b272	fork	code-burler-review+fork	3	2	2	1	52121.7	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+beam-code-opens-workspace	agent-aa4bf1cacc72d6d4e	fork	code-burler-review+fork	4	4	2	1	67309.5	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+beam-code-opens-workspace	d5fae825-842e-462f-b2fb-0b96f4e3498e	main	code-bouncer-seed	7	6	4	2	67583.6	0	0	0	0	0	0	0	0	0	0	1	1	6	0	1	0	0	0	0	21736.2	0	0	0
+drift-baseline-preaccepts	397ec5bd-25aa-4a50-ae9b-2c33439ca168	main	code-bouncer-seed	7	6	4	2	60713.9	0	0	0	0	0	0	0	0	0	0	1	1	6	0	1	0	0	0	0	14855.5	0	0	0
+drift-baseline-preaccepts	3e6eace1-7c20-4559-8d1c-1e70582f93b9	main	code-bouncer-judge	6	7	2	2	63572.3	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	14459	0	0	0
+drift-baseline-preaccepts	3f8b52d1-8aaf-43d5-a52d-0cd7f76235b4	main	darn	14	22	8	2	177413	1	2	1	29004.1	14884.8	1	2	1	29004.1	14884.8	6	3	9	0	1	3	0	0	1	65275	0	0	0
+drift-baseline-preaccepts	8524f34f-bf77-4657-b271-165c64ca4663	main	describe	6	7	2	2	51589.1	0	0	0	0	0	0	0	0	0	0	1	1	5	0	1	0	0	0	1	17705.6	0	0	0
+drift-baseline-preaccepts	f54d1d6c-8ed3-4f7b-b919-f4b6f60aef3c	main	code-burler-review	15	34	6	2	232242	0	0	0	0	0	1	2	1	10569.4	6231.8	4	1	14	0	1	0	0	0	0	50178.5	0	0	0
+drift-baseline-preaccepts	agent-a1e8ae65c4cdace52	fork	code-burler-review+fork	2	1	1	1	28035.7	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+drift-baseline-preaccepts	agent-aa0b1d2ac5851be60	fork	code-burler-review+fork	2	1	1	1	21452	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+drift-baseline-preaccepts	agent-ad5110e008c93fc5e	fork	code-burler-review+fork	3	4	1	1	44477.2	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+button-ask-name	2efced32-63c0-44ee-a26e-3d9158703d77	main	code-burler-fix	25	73	11	2	581953	1	3	2	72401.2	60033.8	1	3	2	72401.2	60033.8	34	5	10	4	3	18	4	2	0	369748	3	0	0
+button-ask-name	agent-a1e864cc236eaed41	fork	code-burler-fix+fork	4	3	3	1	65823.8	0	0	0	0	0	1	2	1	33669.9	15630.4	0	0		0	0	0	0	0	0	0	0	0	0
+button-ask-name	agent-a2ea5a121973d87d4	fork	code-burler-fix+fork	2	1	1	1	33471.8	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+button-ask-name	agent-a9bb24b8ba1a50fc9	fork	code-burler-fix+fork	3	4	1	1	48277	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+button-ask-name	agent-aef31c8a13a9533a6	fork	code-burler-fix+fork	3	2	2	1	61106.7	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+button-ask-name	54defa12-579b-4ced-84f5-56b2aba1b33b	main	describe	9	10	5	2	86564.7	0	0	0	0	0	1	2	1	11822.1	5183.75	2	2	7	0	1	1	0	0	1	41057.7	0	0	0
+button-ask-name	641a1724-75e3-4054-85ab-cf9c834a0a80	main	code-bouncer-seed	7	6	4	2	76309.2	0	0	0	0	0	0	0	0	0	0	1	1	6	0	1	0	0	0	0	29960.5	0	0	0
+button-ask-name	ac124a83-b7a4-48c8-8b99-85572dd55efa	main	darn	38	98	22	2	885547	2	5	3	99135.6	49981.5	3	7	4	124097	57603.4	56	13	18	4	7	39	0	3	2	587672	0	1	28194.8
+button-ask-name	d531113e-8677-4fab-90cf-01188b05a4b6	main	code-bouncer-judge	6	7	2	2	76396.2	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	24749.5	0	0	0
+button-ask-name	d968e168-f9f0-467d-af23-3e18dbb48779	main	code-burler-review	20	43	10	2	520273	0	0	0	0	0	1	2	1	10492	6028.75	5	3	9	6	5	0	0	0	0	343506	0	0	0
+button-ask-name	agent-a80b4b50f1ae638a5	fork	code-burler-review+fork	2	1	1	1	48261.7	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+button-ask-name	agent-a97ec42f71f651d95	fork	code-burler-review+fork	4	4	2	1	76241.4	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+button-ask-name	agent-aa81eada2e8f21947	fork	code-burler-review+fork	2	1	1	1	62315.4	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+cancel-remove-leftover-dir	085fb24f-ae89-4032-9e73-22942416deca	main	code-bouncer-judge	6	7	2	2	72248.2	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	20248.8	0	0	0
+cancel-remove-leftover-dir	724b4534-55f3-401c-9b4f-c2187d841600	main	gate-fixer	9	13	4	1	86746.1	0	0	0	0	0	0	0	0	0	0	4	2	6	0	1	1	1	0	0	31777.7	0	0	0
+cancel-remove-leftover-dir	7a8f8064-c6aa-407b-bd15-b679c06a5185	main	describe	7	8	3	2	67741.8	0	0	0	0	0	0	0	0	0	0	1	1	6	0	1	0	0	0	1	26970.9	0	0	0
+cancel-remove-leftover-dir	899c78f1-6245-4a98-bf99-443d269051f3	main	gate-fixer	16	26	7	1	150179	1	3	2	22578	13140.3	1	4	3	31388.8	21951.2	7	4	6	9	7	2	2	1	0	95189.9	0	0	0
+cancel-remove-leftover-dir	92373027-5fb4-41ef-b61f-eadd1fcdfed2	main	code-burler-fix	20	60	8	2	678337	0	0	0	0	0	0	0	0	0	0	24	3	9	3	3	13	3	1	0	405802	2	0	0
+cancel-remove-leftover-dir	agent-a3573afd62bdcd3ff	fork	code-burler-fix+fork	4	3	3	1	88419.2	1	2	1	44048.6	21463.4	1	2	1	44048.6	21463.4	0	0		0	0	0	0	0	0	0	0	0	0
+cancel-remove-leftover-dir	agent-a96d719743ade7ce2	fork	code-burler-fix+fork	4	3	3	1	101438	0	0	0	0	0	1	2	1	44047.1	22105.7	0	0		0	0	0	0	0	0	0	0	0	0
+cancel-remove-leftover-dir	agent-ac1c228e80bd91d66	fork	code-burler-fix+fork	2	1	1	1	52379.4	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+cancel-remove-leftover-dir	agent-afabae772d6aaf71b	fork	code-burler-fix+fork	2	1	1	1	58396.8	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+cancel-remove-leftover-dir	a02d4777-534b-4df4-aec2-48b5bdaa998d	main	code-burler-review	19	47	5	2	385866	0	0	0	0	0	1	2	1	13442.5	6104.25	4	1	18	0	1	0	0	0	0	77162.1	0	0	0
+cancel-remove-leftover-dir	agent-a0294b8d5356d4925	fork	code-burler-review+fork	5	4	4	1	82675.1	1	3	2	48062.3	25719	1	3	2	48062.3	25719	0	0		0	0	0	0	0	0	0	0	0	0
+cancel-remove-leftover-dir	agent-a24e7e930eeec056a	fork	code-burler-review+fork	3	2	2	1	64049.6	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+cancel-remove-leftover-dir	agent-a6c8b688495b1d00c	fork	code-burler-review+fork	8	7	7	1	116227	1	2	1	28044.2	14526	1	6	5	83805.4	70115.8	0	0		0	0	0	0	0	0	0	0	0	0
+cancel-remove-leftover-dir	af88f987-a8cd-4e9a-a754-2c6d11387929	main	darn	43	81	28	3	1.2268e+06	5	11	6	227023	136354	5	19	14	373612	271015	24	4	32	4	5	11	0	1	2	580157	0	0	0
+cancel-remove-leftover-dir	fdaae624-0a1b-40dc-aba8-a4b313636614	main	code-bouncer-seed	6	5	3	2	55798.9	0	0	0	0	0	0	0	0	0	0	1	1	5	0	1	0	0	0	0	15101.6	0	0	0
+fixers-on-sonnet	067e55ec-a2f1-485c-b857-c9c40209e06b	main	darn	43	60	12	19	782557	0	0	0	0	0	0	0	0	0	0	11	6	13	2	3	6	0	0	1	603524	0	1	14248.1
+fixers-on-sonnet	agent-a0554c5d0f0863214	fork	darn+fork	13	15	10	1	248174	1	2	1	23012.2	11255.2	1	2	1	23012.2	11255.2	1	1	12	0	1	0	0	0	0	42372.6	0	0	0
+fixers-on-sonnet	agent-a1465a98820150ab3	fork	darn+fork	16	20	14	1	283759	2	4	2	45909.1	17583.9	3	6	3	117674	29437.3	1	1	15	0	1	0	0	0	0	39562.2	0	0	0
+fixers-on-sonnet	agent-a3cd53407ca8ea800	fork	darn+fork	15	18	10	1	300052	1	3	2	39179.5	21219.5	1	3	2	39179.5	21219.5	4	3	11	2	3	0	0	0	0	157158	0	0	0
+fixers-on-sonnet	agent-a3ec1277346b2d0fb	fork	darn+fork	8	33	4	1	194092	0	0	0	0	0	1	2	1	41147.1	16166.3	20	1	7	0	1	12	1	0	0	79383.1	0	0	0
+fixers-on-sonnet	agent-a638847dfb9bbdb92	fork	darn+fork	6	6	4	1	128845	0	0	0	0	0	0	0	0	0	0	1	1	5	0	1	0	0	0	0	39266.8	0	0	0
+fixers-on-sonnet	agent-a787487a6169d88e8	fork	darn+fork	7	10	4	1	179389	0	0	0	0	0	0	0	0	0	0	1	1	6	0	1	0	0	0	0	39525.2	0	0	0
+fixers-on-sonnet	agent-a8f348cbe2c213366	fork	darn+fork	18	21	14	1	435553	1	2	1	24372	12350.6	1	3	2	44500.4	24372	4	2	16	0	1	0	0	0	0	162936	0	0	0
+fixers-on-sonnet	agent-a925dd62f0f687aab	fork	darn+fork	8	25	5	1	164411	0	0	0	0	0	0	0	0	0	0	19	2	5	1	3	11	0	0	0	81237.1	0	0	0
+fixers-on-sonnet	agent-a9b4ff0eec5cdeafc	fork	darn+fork	17	19	15	1	324678	2	8	6	125304	98255.6	1	8	7	125304	109431	1	1	16	0	1	0	0	0	0	42092.9	0	0	0
+fixers-on-sonnet	agent-aa72f7650d13d1aa0	fork	darn+fork	9	14	7	1	171812	0	0	0	0	0	1	2	1	38273.8	20585.1	1	1	8	0	1	0	0	0	0	25847.2	0	0	0
+fixers-on-sonnet	agent-ac40bfbcf5fbc88de	fork	darn+fork	34	38	30	1	774327	3	6	3	98201.1	40399.2	3	6	3	98201.1	40399.2	8	4	30	0	1	3	0	0	0	174906	0	0	0
+fixers-on-sonnet	agent-acced92b8b7fe5340	fork	darn+fork	12	37	9	1	282586	1	3	2	38845.7	21140.7	1	3	2	38845.7	21140.7	27	4	6	0	1	22	0	0	0	213057	0	0	0
+fixers-on-sonnet	agent-ae8e0b9885f62a0b6	fork	darn+fork	7	35	3	1	173944	0	0	0	0	0	0	0	0	0	0	20	2	5	0	1	12	0	0	0	71539.2	0	0	0
+fixers-on-sonnet	agent-aec5df76bc1329bea	fork	darn+fork	7	9	5	1	138463	0	0	0	0	0	1	2	1	24347.2	6688.4	1	1	6	0	1	0	0	0	0	27182.4	0	0	0
+fixers-on-sonnet	agent-af325c2e95189f481	fork	darn+fork	7	7	5	1	120735	0	0	0	0	0	0	0	0	0	0	1	1	6	0	1	0	0	0	0	23749.9	0	0	0
+fixers-on-sonnet	agent-afb72caedf9c3002e	fork	darn+fork	6	26	3	1	130424	0	0	0	0	0	0	0	0	0	0	21	1	5	0	1	13	0	0	0	73607.6	0	0	0
+machine-env-vars	1ab3f988-ba84-48f9-9f14-28ce656112f6	main	describe	9	10	5	2	84111.9	0	0	0	0	0	0	0	0	0	0	2	2	6	0	1	1	0	0	2	42640.4	0	0	0
+machine-env-vars	21cf5ada-17c6-41f1-a2a0-afdaff40bdf6	main	code-burler-fix	26	83	12	2	885360	1	3	2	127404	68406.2	2	5	3	195916	80207.1	31	4	15	4	5	11	3	1	0	482118	2	0	0
+machine-env-vars	agent-a1e616d3822a2bf67	fork	code-burler-fix+fork	3	2	2	1	97077.1	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+machine-env-vars	agent-a60f45d8b2fd600a9	fork	code-burler-fix+fork	3	2	2	1	88275.7	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+machine-env-vars	agent-adb1865326c697b67	fork	code-burler-fix+fork	4	3	3	1	104471	0	0	0	0	0	1	2	1	51802.9	26971.8	0	0		0	0	0	0	0	0	0	0	0	0
+machine-env-vars	agent-ae24f56a5396262ed	fork	code-burler-fix+fork	2	1	1	1	58699.3	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+machine-env-vars	291cb340-02b3-48b9-9af7-eb0455bcb084	main	code-burler-review	17	46	4	2	421624	0	0	0	0	0	1	2	1	13300.4	6019.05	4	1	16	0	1	0	1	0	0	107290	0	0	0
+machine-env-vars	agent-a57fd84b3f2a72681	fork	code-burler-review+fork	2	1	1	1	46185.5	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+machine-env-vars	agent-a8a3b644c9af51ffb	fork	code-burler-review+fork	3	3	1	1	84699.2	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+machine-env-vars	agent-af448817f170a6056	fork	code-burler-review+fork	4	3	3	1	64972.1	0	0	0	0	0	1	2	1	29862.6	14013.8	0	0		0	0	0	0	0	0	0	0	0	0
+machine-env-vars	3c7e13ea-e711-4fed-978b-9eaf092c2faa	main	code-bouncer-seed	6	5	3	2	54562.1	0	0	0	0	0	0	0	0	0	0	1	1	5	0	1	0	0	0	0	14001.2	0	0	0
+machine-env-vars	7d2d874e-fda3-46e9-98df-412d8877bd1d	main	code-bouncer-judge	6	7	2	2	79953.8	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	28259.2	0	0	0
+machine-env-vars	96910095-e4ca-4056-91da-171f0c8079af	main	gate-fixer	11	14	6	1	99084	0	0	0	0	0	0	0	0	0	0	4	3	6	0	1	1	2	0	0	44860.8	1	0	0
+machine-env-vars	f43df03d-5e4b-4b0f-a778-302c36976fc0	main	darn	104	166	77	3	2.7681e+06	13	48	35	1.064e+06	788771	8	53	45	1.16702e+06	969834	59	17	41	50	29	29	0	5	3	2.01739e+06	0	0	0
+drift-after-review	10710f79-6de4-49f3-b8fa-05ff7b460188	main	code-burler-fix	27	56	14	2	433484	0	0	0	0	0	1	2	1	26833.2	10406.5	16	5	11	5	5	4	4	1	0	287045	1	0	0
+drift-after-review	agent-a0380b01fe211f9c0	fork	code-burler-fix+fork	4	3	3	1	69614.4	0	0	0	0	0	1	2	1	30214.2	14719.8	0	0		0	0	0	0	0	0	0	0	0	0
+drift-after-review	agent-a377f7740baa2fbcf	fork	code-burler-fix+fork	4	3	3	1	57414.7	1	2	1	31514.7	13219.1	1	2	1	31514.7	13219.1	0	0		0	0	0	0	0	0	0	0	0	0
+drift-after-review	agent-a4facc091fea254f6	fork	code-burler-fix+fork	3	2	2	1	44720.1	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+drift-after-review	agent-ab1cae7c1b7cbf183	fork	code-burler-fix+fork	3	3	1	1	41378.1	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+drift-after-review	11ec4849-a0da-46d3-8d5a-81310763d42f	main	describe	10	11	7	2	115083	1	2	1	36709.2	31202.9	1	3	2	45676.3	36709.2	1	1	8	0	1	0	0	0	1	35719.8	0	0	0
+drift-after-review	2b69b485-fb75-4053-8287-04a412f8e0a3	main	code-burler-review	15	34	3	2	382880	0	0	0	0	0	1	2	1	13329	6017.9	4	1	14	0	1	0	0	0	0	107848	0	0	0
+drift-after-review	agent-a5766b341cfd409fc	fork	code-burler-review+fork	5	4	4	1	112544	1	2	1	32773.1	18369.5	1	3	2	47726.8	32773.1	0	0		0	0	0	0	0	0	0	0	0	0
+drift-after-review	agent-a9f30cce46a9f97fd	fork	code-burler-review+fork	3	2	2	1	89586.3	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+drift-after-review	agent-afb466fc4c8aba03d	fork	code-burler-review+fork	3	2	2	1	83131.2	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+drift-after-review	a6c39463-64b4-4166-b3cf-c62c9b362c8c	main	darn	41	102	24	2	1.18601e+06	2	6	4	185282	130692	2	8	6	209853	145302	55	10	19	4	8	31	0	2	2	741377	0	0	0
+drift-after-review	agent-ac489ce352fa6483f	fork	darn+fork	12	44	6	1	310595	2	4	2	71242.8	27691.2	2	5	3	90856.2	41331	20	1	10	0	1	9	0	1	0	90397.8	0	0	0
+drift-after-review	agent-af0bb60ad7fa5b893	fork	darn+fork	8	26	5	1	291374	1	3	2	120991	36869.6	1	3	2	120991	36869.6	11	1	6	0	1	6	0	1	0	134036	0	0	0
+drift-after-review	c8190e56-35d0-4b51-80c4-263b80bd06c4	main	code-bouncer-judge	6	7	2	2	77697.5	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	26038	0	0	0
+drift-after-review	d31b9ad6-5887-46ab-b704-62eb4c6f1001	main	gate-fixer	15	21	7	1	142872	2	4	2	34262.2	16898.2	2	4	2	34262.2	16898.2	4	3	9	2	3	1	2	0	0	62754.9	1	0	0
+drift-after-review	d3352985-fffe-4e33-9096-59235862c3cf	main	code-bouncer-seed	7	6	4	2	78194.7	0	0	0	0	0	0	0	0	0	0	1	1	6	0	1	0	0	0	0	30340.5	0	0	0
+concrete-review-findings	3559e6b6-700f-4102-96af-408317cc1599	main	darn	40	53	28	3	574811	4	8	4	107870	56547.9	4	8	4	107870	56547.9	9	6	28	2	3	3	0	0	1	212984	0	2	26904.1
+fabric-remote-async	0ec2f373-3362-411b-a6ac-60b24619c459	main	code-bouncer-seed	6	5	3	2	57816.5	0	0	0	0	0	0	0	0	0	0	1	1	5	0	1	0	0	0	0	17362.5	0	0	0
+fabric-remote-async	16b8e771-2ea9-4dd2-ac08-8e0cfe0e7b7a	main	code-burler-fix	48	141	27	4	2.12169e+06	2	4	2	214070	98997.9	2	5	3	543656	130056	65	10	13	16	13	39	9	4	0	1.62338e+06	7	0	0
+fabric-remote-async	agent-aa2b7b868efe62573	fork	code-burler-fix+fork	2	1	1	1	69534.1	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+fabric-remote-async	agent-ac8e7a7bbf4841419	fork	code-burler-fix+fork	4	4	2	1	111552	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+fabric-remote-async	agent-ace747b5d5828af1f	fork	code-burler-fix+fork	3	4	1	1	87167.1	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+fabric-remote-async	agent-aeb4a0839b5fc1620	fork	code-burler-fix+fork	2	1	1	1	63597.8	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+fabric-remote-async	546eefa0-0a8f-4472-ae36-30eaf1b7d26a	main	code-bouncer-judge	6	7	2	2	84173.8	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	32557.8	0	0	0
+fabric-remote-async	951985bc-ca8f-4c6a-a4cd-3370f9127ef7	main	darn	104	275	67	4	4.88112e+06	12	28	16	1.54737e+06	611229	13	31	18	1.69873e+06	694756	164	29	22	46	35	123	0	10	4	4.41675e+06	1	0	0
+fabric-remote-async	agent-a68f95b825b5dfa08	fork	darn+fork	12	24	8	1	151015	0	0	0	0	0	0	0	0	0	0	11	4	3	3	7	6	0	3	0	122411	0	0	0
+fabric-remote-async	agent-a8d59e262cff8e707	fork	darn+fork	16	41	12	1	256375	0	0	0	0	0	0	0	0	0	0	22	4	4	3	5	13	0	4	0	172087	0	0	0
+fabric-remote-async	agent-accfe5481b6c1235f	fork	darn+fork	8	18	0	1	335091	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+fabric-remote-async	abf4523e-0d54-4505-a464-c994259b6cdc	main	code-burler-fix	28	76	12	3	690902	1	3	2	84748.2	33191.6	1	3	2	84748.2	33191.6	35	6	12	3	5	25	2	2	0	459503	2	0	0
+fabric-remote-async	agent-a2855cc9e17feef16	fork	code-burler-fix+fork	4	3	3	1	72418.9	0	0	0	0	0	1	2	1	34382.4	15808.5	0	0		0	0	0	0	0	0	0	0	0	0
+fabric-remote-async	agent-a645d5d34f695c672	fork	code-burler-fix+fork	5	6	2	1	88416.7	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+fabric-remote-async	agent-a839b1061a227a3e9	fork	code-burler-fix+fork	3	2	2	1	68347.2	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+fabric-remote-async	agent-aa8cb93fbcf00d3db	fork	code-burler-fix+fork	3	3	1	1	69342.5	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+fabric-remote-async	af598c44-5428-4f9a-98e6-c6557770acde	main	fixer	21	28	15	2	191604	1	6	5	50784.1	44293.6	2	9	7	79781.8	57786.8	2	2	15	2	3	0	1	0	0	52028.8	0	0	0
+fabric-remote-async	be48b825-aba7-4c9e-ad13-096d1e6b211e	main	gate-fixer	18	23	12	1	176751	0	0	0	0	0	0	0	0	0	0	5	4	6	8	7	1	4	0	0	122052	1	0	0
+fabric-remote-async	ce8c6077-5ac2-4972-8cae-7767f966b64b	main	code-bouncer-judge	6	8	2	2	85827.6	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	33390.2	0	0	0
+fabric-remote-async	d2d3d3cf-5af2-4390-b529-d89cbfc0538d	main	code-burler-review	22	46	13	2	695474	2	8	6	212249	152955	3	11	8	268875	189379	4	2	20	0	1	0	0	0	0	151553	0	0	0
+fabric-remote-async	agent-abc1106303fb2a665	fork	code-burler-review+fork	3	2	2	1	101508	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+fabric-remote-async	agent-afd076bd318b51b90	fork	code-burler-review+fork	5	4	4	1	156290	1	3	2	73319.1	52182.6	1	3	2	73319.1	52182.6	0	0		0	0	0	0	0	0	0	0	0	0
+fabric-remote-async	agent-affbf21778954bcca	fork	code-burler-review+fork	4	3	3	1	155031	0	0	0	0	0	1	2	1	75857.9	25097.6	0	0		0	0	0	0	0	0	0	0	0	0
+fabric-remote-async	e73cfa4f-adc5-4885-82ad-bf3d092fb7d6	main	code-burler-review	16	30	5	3	426388	0	0	0	0	0	1	2	1	13332.7	6038.35	2	2	12	1	3	1	0	0	0	115135	0	0	0
+fabric-remote-async	f43d1f0b-be76-4699-8606-662a8426262f	main	describe	9	13	3	2	102842	0	0	0	0	0	0	0	0	0	0	1	1	8	0	1	0	0	0	1	32548	0	0	0
+batten-remote-order	082abd62-7480-4940-9807-a813c8a0ed44	main	code-burler-review	21	46	8	2	752445	1	2	1	70872.5	42014.9	2	4	2	84132.4	48002.6	5	2	19	0	1	1	0	0	0	151388	0	0	0
+batten-remote-order	agent-a544cc23256f3444d	fork	code-burler-review+fork	4	7	1	1	135711	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-a6dadf4adcbf2a3ec	fork	code-burler-review+fork	7	6	6	1	200421	1	2	1	56491.6	32982.9	2	4	2	98568.8	53909.6	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-acfba8ef1a763a87b	fork	code-burler-review+fork	4	4	2	1	175649	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	1068ce5d-ef18-4029-a360-12e71f00cce5	main	discussion-burler-fix	30	74	17	3	776617	2	10	8	204051	162310	2	10	8	204051	162310	37	4	21	3	5	30	0	0	0	403974	0	0	0
+batten-remote-order	agent-a076f9b641b474e47	fork	discussion-burler-fix+fork	5	5	3	1	109036	1	2	1	45572.6	18476	1	2	1	45572.6	18476	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-a12ccb56ecafb3418	fork	discussion-burler-fix+fork	3	2	2	1	98802.2	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-a4ab48177b403b0f0	fork	discussion-burler-fix+fork	2	1	1	1	51503.3	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-af7f3390641e6f4e3	fork	discussion-burler-fix+fork	3	3	1	1	88804.6	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	1a066f04-300f-4e2a-bb42-5598e039fd50	main	describe	6	8	2	2	78566.3	0	0	0	0	0	0	0	0	0	0	1	1	5	0	1	0	0	0	1	44566.9	0	0	0
+batten-remote-order	1fbd04db-9457-4351-b08b-59ae3196a37c	main	gate-fixer	14	19	7	1	128960	1	2	1	18747.4	8084.85	1	2	1	18747.4	8084.85	4	3	7	4	3	1	2	1	0	67251.4	0	0	0
+batten-remote-order	22f138e8-3d14-43ac-b9ca-19c1a7b58be0	main	discussion-burler-review	26	56	13	2	850802	2	4	2	106702	47952.6	4	8	4	180595	82961.9	5	2	22	2	2	0	0	0	0	266837	0	0	0
+batten-remote-order	agent-a38b8736720599fc7	fork	discussion-burler-review+fork	8	7	7	1	199874	1	6	5	140273	106414	1	6	5	140273	106414	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-abc5bfece638df316	fork	discussion-burler-review+fork	5	4	4	1	214304	1	2	1	105581	40816	1	3	2	136095	71330.4	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-ad737229cf475527f	fork	discussion-burler-review+fork	3	2	2	1	122089	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-adec9fec7491138af	fork	discussion-burler-review+fork	4	3	3	1	147336	1	2	1	86679.1	40535.8	1	2	1	86679.1	40535.8	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	280eeae1-292a-492e-9afe-25a7d99aada3	main	plan-burler-fix	37	89	24	2	761019	4	15	11	256507	170441	2	17	15	293519	237824	43	6	25	3	5	31	0	0	4	377686	0	0	0
+batten-remote-order	agent-a2c597c4aad24ed1b	fork	plan-burler-fix+fork	4	3	3	1	94764	1	2	1	57860.2	23098.9	1	2	1	57860.2	23098.9	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-a79a565ed09a7bc65	fork	plan-burler-fix+fork	3	3	1	1	75316.9	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-abff1061ece12ceb1	fork	plan-burler-fix+fork	6	5	5	1	124316	0	0	0	0	0	1	3	2	65791	40243.4	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-af68d5a7994671f7e	fork	plan-burler-fix+fork	8	7	7	1	147835	1	2	1	33299.2	16161	2	4	2	64520.7	31924.8	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	2a21cc59-db9b-4250-8a2d-60cc010620dc	main	discussion	32	51	19	5	851478	2	13	11	266850	223028	2	13	11	266850	223028	11	3	24	3	5	2	0	0	0	421451	0	0	0
+batten-remote-order	agent-a1b31420b8b65f85e	fork	discussion+fork	7	8	4	1	101504	0	0	0	0	0	1	2	1	33145.9	11257.4	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-a20d2f348b4dc28f6	fork	discussion+fork	5	5	3	1	108787	0	0	0	0	0	1	2	1	43496.4	18009.3	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-a23f65d82efa6364a	fork	discussion+fork	5	6	3	1	163368	1	2	1	67073.4	24390.8	1	2	1	67073.4	24390.8	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-a86c480a2fdcb28ba	fork	discussion+fork	3	3	1	1	81943.5	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-a87ea8d9ccc08ba6a	fork	discussion+fork	5	4	4	1	123243	1	3	2	72823.1	52207.4	1	3	2	72823.1	52207.4	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-a9398f4c5b98b9c98	fork	discussion+fork	3	2	2	1	52395.2	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-ac95ab1b36dfeb087	fork	discussion+fork	8	15	4	1	157172	1	2	1	34116.9	13544.4	1	2	1	34116.9	13544.4	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-acfb59b9befc54de2	fork	discussion+fork	2	1	1	1	36716.4	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-ad40e923e24b57734	fork	discussion+fork	9	9	7	1	119896	3	7	4	92379	43409.8	2	7	5	92379	55313.5	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	32c658fc-f791-41b9-8011-0f6702981c0c	main	plan-bouncer-judge	6	8	2	2	99668.9	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	44980.6	0	0	0
+batten-remote-order	40c06bb6-d18f-4abf-8f4b-bd1d660e600c	main	plan-burler-fix	33	105	13	3	884122	1	2	1	61401.9	21194.7	2	4	2	101774	41279.7	48	9	14	8	5	33	0	0	0	604983	0	0	0
+batten-remote-order	agent-a3b5f62b09af4df7c	fork	plan-burler-fix+fork	5	4	4	1	134732	1	2	1	72928.1	26744	1	3	2	92028.1	45843.9	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-a72a6de0ca5cc2e11	fork	plan-burler-fix+fork	3	2	2	1	74615.7	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-a8cbd600ce329d86f	fork	plan-burler-fix+fork	4	7	2	1	93384.9	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-adfd18959a7f7784c	fork	plan-burler-fix+fork	4	4	2	1	89359.9	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	41797a9b-1408-4406-81d0-e1f2322be9d1	main	code-burler-fix	21	78	5	2	574357	0	0	0	0	0	0	0	0	0	0	32	4	11	3	5	14	3	0	0	329952	1	0	0
+batten-remote-order	agent-a07d6b770a4a56f4f	fork	code-burler-fix+fork	3	2	2	1	55704.9	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-a4c1069ae55dcd32b	fork	code-burler-fix+fork	3	3	1	1	54900.9	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-a8ebb4be1cec35b00	fork	code-burler-fix+fork	4	3	3	1	68765.6	1	2	1	33719.8	16717.1	1	2	1	33719.8	16717.1	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-ae92f0b202416732f	fork	code-burler-fix+fork	3	2	2	1	60089.4	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	4716ba2e-70b1-4db3-ab62-b86c40f3fc63	main	gate-fixer	8	13	3	1	88393.8	0	0	0	0	0	0	0	0	0	0	4	2	6	0	1	1	1	0	0	34972.5	0	0	0
+batten-remote-order	7fba1b73-8a5a-4e15-8c00-08f14736016a	main	fixer	23	28	18	2	320713	3	8	5	118601	76989.2	3	10	7	139515	106976	1	1	21	1	2	0	3	0	0	39845.2	1	0	0
+batten-remote-order	84742d43-d663-4fdf-92eb-50c30f3dbe15	main	gate-fixer	12	17	6	1	123833	0	0	0	0	0	0	0	0	0	0	3	2	6	3	3	0	1	1	0	67999.2	1	0	0
+batten-remote-order	8598db80-08b4-4cc6-ade1-fe148500fd4d	main	plan-burler-review	37	87	21	2	2.2255e+06	5	11	6	915294	349939	3	13	10	924921	472970	6	2	33	2	3	5	0	0	5	308449	2	0	0
+batten-remote-order	87115963-d0b5-4d72-bf90-38335a1927d4	main	webster	35	34	16	16	411295	0	0	0	0	0	0	0	0	0	0	2	1	34	0	1	0	0	0	0	31488.7	0	0	0
+batten-remote-order	agent-a2b5bec2de69f2f56	fork	webster+fork	36	109	23	1	1.7126e+06	2	5	3	233332	149441	2	6	4	277533	182843	55	8	16	15	5	30	3	2	0	1.14456e+06	1	0	0
+batten-remote-order	agent-a563283c1d0574679	fork	webster+fork	29	131	18	2	1.83586e+06	0	0	0	0	0	0	0	0	0	0	74	4	13	3	5	46	5	1	0	1.15631e+06	2	0	0
+batten-remote-order	agent-a56eda91227d880e7	fork	webster+fork	56	110	34	2	2.57124e+06	4	11	7	495284	304938	4	13	9	582049	401748	35	9	14	29	9	20	5	3	0	2.088e+06	3	0	0
+batten-remote-order	agent-a620465628d6a503c	fork	webster+fork	47	139	28	6	2.20706e+06	0	0	0	0	0	0	0	0	0	0	66	6	15	6	7	47	9	3	0	1.56596e+06	3	0	0
+batten-remote-order	agent-ad0bcb92cf8ad6c29	fork	webster+fork	60	137	34	3	2.04452e+06	0	0	0	0	0	0	0	0	0	0	74	19	8	30	21	59	10	1	0	1.90229e+06	3	1	25714.3
+batten-remote-order	8812a47a-9a79-4afd-b18d-10ce6e3d7da1	main	gate-fixer	7	9	3	1	80524.2	0	0	0	0	0	0	0	0	0	0	3	2	5	0	1	1	1	0	0	34439.3	0	0	0
+batten-remote-order	a398e4f3-ba57-4b24-b1d6-596f17b4bd1f	main	plan	46	107	28	3	1.94493e+06	3	17	14	593696	486754	5	21	16	734263	560147	28	9	35	2	3	8	0	1	0	733777	0	0	0
+batten-remote-order	agent-a0d7930330e5d3356	fork	plan+fork	7	6	6	1	353381	1	5	4	231544	149330	1	5	4	231544	149330	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-a1e8555085b1ad07e	fork	plan+fork	11	12	8	1	197793	2	5	3	72100.9	44004.1	1	6	5	91361.6	72100.9	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-a675c66a5a98072b4	fork	plan+fork	8	7	7	1	357713	1	5	4	192031	138536	1	6	5	223739	170244	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-a68bc95f30e760a8d	fork	plan+fork	4	6	1	1	118683	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-a9411bd978e74a2a1	fork	plan+fork	4	3	3	1	210696	1	2	1	88177.4	36829.8	1	2	1	88177.4	36829.8	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-aa9fabf1c90d9fced	fork	plan+fork	10	10	8	1	189427	2	5	3	69094.7	45230.8	1	6	5	87628.4	80726.9	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-ab9d0fa8ec53f25e5	fork	plan+fork	4	3	3	1	211833	1	2	1	100519	38709.8	1	2	1	100519	38709.8	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-adc94feec96b08806	fork	plan+fork	8	7	7	1	370854	2	4	2	174544	93186.7	1	6	5	258640	215089	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-ae6bcef138f891f9e	fork	plan+fork	16	24	9	1	883860	2	4	2	246768	92340.9	2	4	2	246768	92340.9	18	9	7	0	1	3	0	0	0	537530	0	1	56353.6
+batten-remote-order	agent-aedde0f840b0c3383	fork	plan+fork	8	11	3	1	133732	1	2	1	27240.2	14115.1	1	3	2	36370.9	23245.8	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	b31ccfa1-a3f5-424f-be7c-e7f5921cc9b0	main	plan-bouncer-seed	6	6	3	2	81654	0	0	0	0	0	0	0	0	0	0	1	1	5	0	1	0	0	0	0	38015.2	0	0	0
+batten-remote-order	b56ae1ae-82d4-43b0-ad59-ff4c454ef0d3	main	discussion-bouncer-seed	6	7	3	2	79904.8	0	0	0	0	0	0	0	0	0	0	1	1	5	0	1	0	0	0	0	41434.6	0	0	0
+batten-remote-order	c1d540f1-e2fe-495f-91f9-f23beb706b63	main	discussion-bouncer-judge	6	8	2	2	111336	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	61596.5	0	0	0
+batten-remote-order	c79493cc-8ff7-413c-8516-61fa21b0c280	main	gate-fixer	11	32	5	1	159645	1	2	1	20286.4	5682.85	1	3	2	26957.7	20286.4	14	2	9	0	1	7	0	0	1	48040.6	0	0	0
+batten-remote-order	cab03d8e-87b6-4981-8aa1-d3b82796148b	main	discussion-burler-review	25	55	14	2	897777	2	6	4	177636	127674	3	9	6	232308	158183	6	2	22	1	3	1	0	0	0	273976	0	0	0
+batten-remote-order	agent-a46231595a51196e7	fork	discussion-burler-review+fork	5	5	3	1	159486	1	2	1	54354.2	25452.5	1	2	1	54354.2	25452.5	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-a8a9e1b5a114a2b92	fork	discussion-burler-review+fork	6	5	5	1	164664	1	3	2	82612.5	59518.4	1	4	3	106815	82612.5	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-ad0b0e5eed1f9f6e4	fork	discussion-burler-review+fork	4	3	3	1	131434	0	0	0	0	0	1	2	1	73084.6	26152.2	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-af336669ed07c69c4	fork	discussion-burler-review+fork	4	3	3	1	157002	1	2	1	94349.9	32136.2	1	2	1	94349.9	32136.2	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	cc62b753-4ca0-4c58-8fd8-7abb2bf482ae	main	discussion-bouncer-judge	6	7	2	2	87750.9	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	38553.2	0	0	0
+batten-remote-order	ccfaaa9c-8d44-44a5-a322-15258b91d659	main	plan-bouncer-judge	6	7	2	2	95665.7	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	41742.6	0	0	0
+batten-remote-order	d3280886-dbfe-44cf-8a29-bc9edaccb82e	main	gate-fixer	11	12	8	1	86244.8	1	2	1	11681	5433.15	1	2	1	11681	5433.15	2	2	7	0	1	0	3	0	0	28203.5	2	0	0
+batten-remote-order	d473b94d-f0a5-42a5-a076-9d5a274cebf6	main	discussion-burler-fix	56	99	41	3	1.64488e+06	8	19	11	457283	259664	8	22	14	523775	320306	28	6	38	10	7	21	0	0	0	783276	0	0	0
+batten-remote-order	agent-a2ce7ddebf2d79c46	fork	discussion-burler-fix+fork	2	1	1	1	65367.9	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-a8d67ce5e467c00d9	fork	discussion-burler-fix+fork	4	3	3	1	131460	0	0	0	0	0	1	2	1	78330.2	29591.4	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-aa6b893d552ff3872	fork	discussion-burler-fix+fork	4	3	3	1	122234	1	2	1	59212.6	26088.7	1	2	1	59212.6	26088.7	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-af3e4784d478365e3	fork	discussion-burler-fix+fork	2	1	1	1	64662.9	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	d686719f-4167-4133-9e94-5199aabf4deb	main	gate-fixer	8	13	3	1	82217.5	0	0	0	0	0	0	0	0	0	0	5	2	6	0	1	2	1	0	0	29042.9	0	0	0
+batten-remote-order	d85841cc-5e10-4d7a-bbe4-634743f352e7	main	code-bouncer-seed	7	6	4	2	84230.1	0	0	0	0	0	0	0	0	0	0	2	2	5	0	1	1	0	0	0	43914.5	0	1	7599.4
+batten-remote-order	db4d65f1-9b54-4337-a79f-ef95762b0f90	main	code-bouncer-judge	6	7	2	2	75314.9	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	23431.3	0	0	0
+batten-remote-order	dbd96486-887b-4d03-9d93-ef638934cdeb	main	gate-fixer	9	18	3	1	100821	0	0	0	0	0	0	0	0	0	0	7	2	7	0	1	4	1	0	0	36521.6	0	0	0
+batten-remote-order	ebb92139-311a-4cba-8baf-e3ca8c4266ed	main	gate-fixer	8	9	5	1	71828	0	0	0	0	0	0	0	0	0	0	2	2	6	0	1	0	1	0	0	18999.8	0	0	0
+batten-remote-order	f2c783c9-457d-4b9c-9cc5-b936281afd89	main	arbiter	8	18	4	1	157168	1	2	1	73195.9	15101.2	1	2	1	73195.9	15101.2	1	1	7	0	1	0	0	0	0	25401	0	0	0
+batten-remote-order	f440dd31-2353-466f-873f-5e3620a47e3a	main	gate-fixer	9	10	6	1	79261.3	0	0	0	0	0	0	0	0	0	0	2	2	6	0	1	0	2	0	0	26794.7	1	0	0
+batten-remote-order	fcda3f8c-d56f-4b55-879b-e90bcef66bf5	main	plan-burler-review	44	93	32	2	1.71408e+06	4	12	8	433308	272148	5	15	10	465898	301017	4	2	31	4	4	0	0	0	6	691200	4	0	0
+batten-remote-order	agent-a5ccd0c3e84696012	fork	plan-burler-review+fork	8	7	7	1	299928	1	5	4	185634	150286	1	6	5	219816	185634	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-a87f9b55e63486f71	fork	plan-burler-review+fork	8	7	7	1	331379	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+batten-remote-order	agent-ae84d2f628a0426c0	fork	plan-burler-review+fork	6	5	5	1	246627	1	2	1	99473.6	38895.7	1	4	3	161077	100499	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	26140702-924b-4b48-abe6-696835e2d194	main	plan-burler-fix	20	66	6	3	441875	0	0	0	0	0	0	0	0	0	0	30	5	9	4	5	19	0	0	0	280092	0	0	0
+decision-record-on-board	agent-a4343f352797a9ee1	fork	plan-burler-fix+fork	4	3	3	1	59978.1	1	2	1	29587.8	12908.6	1	2	1	29587.8	12908.6	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-ab9f2a6586f67cf6b	fork	plan-burler-fix+fork	3	5	1	1	65699.6	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-ad2ad7893db68ec14	fork	plan-burler-fix+fork	2	1	1	1	37287	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-ae39833ec2338f4a0	fork	plan-burler-fix+fork	3	3	1	1	60809.8	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	27d31da5-70e1-41a4-bb9d-3dadb704708a	main	gate-fixer	8	9	5	1	72938.3	0	0	0	0	0	0	0	0	0	0	2	2	6	0	1	0	1	0	0	20369	0	0	0
+decision-record-on-board	28d93419-263a-4ffe-8d12-419ea0b81ad9	main	plan	32	89	15	3	1.3722e+06	2	6	4	229253	145715	2	7	5	269928	186391	22	3	28	1	3	6	0	0	0	369148	0	0	0
+decision-record-on-board	agent-a26d2ba65f86660d6	fork	plan+fork	6	5	5	1	254442	1	4	3	152142	110255	1	4	3	152142	110255	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-a60aac2f80b3bc0af	fork	plan+fork	2	1	1	1	107968	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-a82c71874042dfb2c	fork	plan+fork	5	6	3	1	89639.3	1	2	1	40157.1	13786.8	1	3	2	47755	21384.7	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-a9284c5281b0b5683	fork	plan+fork	20	26	15	1	794926	1	3	2	128166	92873.1	2	5	3	190930	125368	17	11	8	2	5	7	0	0	0	542794	0	3	115057
+decision-record-on-board	agent-aba373b8064f94fcb	fork	plan+fork	3	2	2	1	170123	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-abcdce26629553423	fork	plan+fork	5	4	4	1	86607.4	1	3	2	41191.4	30567.7	1	3	2	41191.4	30567.7	0	0		0	0	0	0	1	0	0	0	0	0
+decision-record-on-board	agent-ac5cacef63d8e440f	fork	plan+fork	7	6	6	1	274412	1	4	3	146491	113731	1	4	3	146491	113731	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-acf3d96ae02eecfe7	fork	plan+fork	5	4	4	1	238392	1	2	1	91537.8	38972.6	1	3	2	123091	70525.8	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-ae59ab829a8d70dbe	fork	plan+fork	9	10	6	1	105366	2	5	3	41708.9	23205.5	1	6	5	47500.1	35281	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	36602133-4927-4580-9929-a4f9bc571cd5	main	discussion	33	54	22	2	1.07211e+06	4	16	12	498214	334824	3	16	13	498214	360099	14	6	23	3	5	5	0	0	0	496822	0	0	0
+decision-record-on-board	agent-a1d1a4e8467713ee6	fork	discussion+fork	2	1	1	1	56484.6	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-a9af25d26743a77a3	fork	discussion+fork	3	2	2	1	75525.1	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-aa0c075162fd43a50	fork	discussion+fork	3	2	2	1	107390	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-aac63d3aa0a64dfd5	fork	discussion+fork	4	3	3	1	144208	1	2	1	78138	31953	1	2	1	78138	31953	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-ab5700ce9c5fbaa0f	fork	discussion+fork	4	3	3	1	116679	1	2	1	58832.5	26086.2	1	2	1	58832.5	26086.2	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-ad863cb4a7db326d4	fork	discussion+fork	6	6	4	1	170949	1	3	2	80059	55811.3	1	3	2	80059	55811.3	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	464dd7df-80c3-4960-92c3-2e7c9dd2eb22	main	code-bouncer-seed	6	6	3	2	73224.6	0	0	0	0	0	0	0	0	0	0	1	1	5	0	1	0	0	0	0	32615	0	0	0
+decision-record-on-board	491b3ff2-f80b-4c07-a2f7-c61d9b56a6c9	main	plan-bouncer-seed	7	15	4	2	113948	0	0	0	0	0	1	2	1	19954.2	13521.8	1	1	6	0	1	0	0	0	0	61941.1	0	0	0
+decision-record-on-board	5410b8e4-85eb-4e40-a1a0-04e4bb0a009c	main	gate-fixer	11	28	6	1	150195	1	2	1	18949.2	11189.8	1	3	2	52551.1	18949.2	9	2	9	0	1	0	0	0	1	39881.9	0	0	0
+decision-record-on-board	5a436ec9-bfef-44fd-96aa-0a79c8120c1d	main	conflict	9	11	6	2	82708.8	1	3	2	19514.7	15287.1	1	3	2	19514.7	15287.1	2	2	6	0	1	0	0	1	0	26398.2	0	0	0
+decision-record-on-board	5a713b09-164d-4930-945a-72666fed847b	main	fixer	14	19	9	2	132775	1	2	1	20684.6	11809.7	1	3	2	37724	20684.6	2	2	9	1	2	0	1	0	0	42055.4	0	0	0
+decision-record-on-board	79603db2-997d-4397-9b3e-bee5b5cafcc9	main	gate-fixer	8	10	4	1	81878.4	0	0	0	0	0	1	2	1	20905.5	14248.7	2	2	7	0	1	0	0	0	1	12403.5	0	0	0
+decision-record-on-board	8fa4da40-dbb5-4f22-898c-de5d4eb343f7	main	plan-burler-fix	16	48	8	2	296615	0	0	0	0	0	0	0	0	0	0	21	2	8	2	3	10	0	0	2	176782	1	0	0
+decision-record-on-board	agent-a18f5d8f7433c0f79	fork	plan-burler-fix+fork	4	3	3	1	49620.8	1	2	1	25237.8	13354.4	1	2	1	25237.8	13354.4	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-a7a01ea3a0f008ddd	fork	plan-burler-fix+fork	4	4	2	1	60356.1	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-a8ee7e89d946d3890	fork	plan-burler-fix+fork	4	3	3	1	49403.1	1	2	1	24515.5	11897	1	2	1	24515.5	11897	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-abc490b63b577c4e0	fork	plan-burler-fix+fork	6	5	5	1	78218.2	1	4	3	53842.7	41394.2	1	4	3	53842.7	41394.2	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	917df823-c617-48f9-8dd2-187bd7bf6595	main	fixer	14	20	9	2	156759	0	0	0	0	0	0	0	0	0	0	1	1	12	1	2	0	3	1	0	27089.4	2	0	0
+decision-record-on-board	9516a8bd-875f-4347-8dbb-666131b3d975	main	discussion-bouncer-judge	6	7	2	2	82159.7	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	33713.1	0	0	0
+decision-record-on-board	99d4ba51-434e-4c06-959b-9ad89cb8a5d1	main	gate-fixer	7	8	4	1	75233.3	0	0	0	0	0	0	0	0	0	0	2	2	5	0	1	0	1	0	0	29288.9	0	0	0
+decision-record-on-board	9fd710f8-9e41-4d34-adc1-5206b27ffa1f	main	gate-fixer	9	12	5	1	99707.3	0	0	0	0	0	0	0	0	0	0	2	2	6	0	1	0	1	1	0	46491.5	1	0	0
+decision-record-on-board	af3d1cf2-bc09-4a67-a84a-e54b27f11697	main	plan-burler-review	22	46	9	2	784003	1	2	1	87765.6	34438.7	2	4	2	97324.2	40061.9	4	2	19	2	3	3	0	0	4	158959	0	0	0
+decision-record-on-board	b32be85c-353e-493c-9fa9-ce0255fa5866	main	code-burler-review	20	41	8	2	491551	1	2	1	45584.2	19653.8	2	4	2	58876.2	25662.1	4	2	18	0	1	0	0	0	0	103617	0	0	0
+decision-record-on-board	agent-a2a3dcd8347c3ca36	fork	code-burler-review+fork	4	4	2	1	71961.9	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-a47aaa09400d4960d	fork	code-burler-review+fork	3	3	1	1	77569.4	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-afb15e947453847a4	fork	code-burler-review+fork	4	3	3	1	92097.7	0	0	0	0	0	1	2	1	37958.9	22433.1	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	b6756453-ec14-4e68-9423-67de6eeeb9e0	main	discussion	6	7	3	1	99311.2	1	2	1	34384.4	12019	1	2	1	34384.4	12019	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	d098edb7-249b-46af-86b9-8a522019315a	main	discussion-burler-review	19	47	5	2	507267	0	0	0	0	0	1	2	1	9395.2	5646.7	5	2	16	1	3	0	0	0	0	176700	0	0	0
+decision-record-on-board	agent-a8c7e4c6467150ff9	fork	discussion-burler-review+fork	4	3	3	1	90456.9	1	2	1	42830.4	15888.7	1	2	1	42830.4	15888.7	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-aa8ad97181e5e0932	fork	discussion-burler-review+fork	4	3	3	1	103356	1	2	1	39344.1	24957.4	1	2	1	39344.1	24957.4	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-ade7b065dea41852c	fork	discussion-burler-review+fork	4	5	2	1	98205	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-af5bca3303d5ab724	fork	discussion-burler-review+fork	5	4	4	1	114014	1	3	2	60247.6	45752.2	1	3	2	60247.6	45752.2	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	d284765f-c43f-49e2-801e-b8ff6de2f844	main	code-burler-fix	30	76	12	2	638774	1	2	1	44143.4	29189.6	1	2	1	44143.4	29189.6	33	8	7	15	13	19	3	1	0	510497	1	0	0
+decision-record-on-board	agent-a33da4e9f99fb277a	fork	code-burler-fix+fork	3	2	2	1	54763.4	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-a3cd27514f8ef8f86	fork	code-burler-fix+fork	3	2	2	1	58021.8	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-aaea8456ee91895b6	fork	code-burler-fix+fork	3	4	1	1	55611.9	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-ad608abf777d5eb71	fork	code-burler-fix+fork	3	2	2	1	53543.5	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	d8d63cd6-a48a-4a04-97db-34e64b577a31	main	describe	7	10	2	2	72729.8	0	0	0	0	0	0	0	0	0	0	2	2	5	0	1	1	0	0	2	40709.5	0	0	0
+decision-record-on-board	d9c5e990-f0b2-4663-9855-d13b7de4ec3b	main	discussion-burler-fix	14	50	5	2	293835	0	0	0	0	0	0	0	0	0	0	32	3	8	1	3	25	0	0	0	206693	0	0	0
+decision-record-on-board	agent-a2b72bae47fa1bd10	fork	discussion-burler-fix+fork	4	3	3	1	59138.4	1	2	1	25399.5	11570.8	1	2	1	25399.5	11570.8	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-a678e433f66fb4053	fork	discussion-burler-fix+fork	2	1	1	1	39957.9	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-abe25ca7150aa0232	fork	discussion-burler-fix+fork	4	3	3	1	58097.6	0	0	0	0	0	1	2	1	22094.5	9600.8	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-ae17a9cab5ff93a36	fork	discussion-burler-fix+fork	5	4	4	1	73799.8	1	3	2	36969.2	25194.2	1	3	2	36969.2	25194.2	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	db5bafa9-d25b-44b1-b009-f03db7d72ced	main	discussion-bouncer-seed	6	7	3	2	79551.4	0	0	0	0	0	0	0	0	0	0	1	1	5	0	1	0	0	0	0	41209.8	0	0	0
+decision-record-on-board	dbd036fa-aa30-4bbe-8ad8-e74809cf4262	main	code-bouncer-judge	6	7	2	2	71603.9	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	20913.5	0	0	0
+decision-record-on-board	dd60dec5-8bdf-4a27-8686-9d360dcdd451	main	plan-burler-review	48	72	39	2	1.28628e+06	8	27	19	695122	415070	7	32	25	786980	539399	4	2	44	2	4	0	0	0	0	227753	0	0	0
+decision-record-on-board	agent-a12aa41cdce844839	fork	plan-burler-review+fork	7	6	6	1	214603	1	5	4	151922	102669	1	5	4	151922	102669	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-a1893eaadc463ac6d	fork	plan-burler-review+fork	8	7	7	1	215462	1	3	2	72370.7	47076.7	1	4	3	97755.1	72370.7	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	agent-a4aecf3c7af2ce722	fork	plan-burler-review+fork	8	7	7	1	224496	1	2	1	55859.1	30985.8	2	5	3	131521	80171.5	0	0		0	0	0	0	0	0	0	0	0	0
+decision-record-on-board	e5be960e-154e-4d80-b935-300e5c250911	main	webster	22	28	10	7	273724	0	0	0	0	0	0	0	0	0	0	4	2	16	1	3	2	0	0	0	77441.1	0	0	0
+decision-record-on-board	agent-a3240591dccd31bd2	fork	webster+fork	13	19	7	1	183513	1	3	2	49408.2	31241.2	1	3	2	49408.2	31241.2	3	1	10	0	1	0	1	0	0	55060	0	0	0
+decision-record-on-board	agent-a5f389e66723d2324	fork	webster+fork	58	137	34	1	1.81678e+06	3	9	6	257038	167055	3	10	7	286771	196788	66	17	11	30	17	44	8	1	0	1556758	2	1	29860.7
+decision-record-on-board	agent-ad539af83a47531ff	fork	webster+fork	40	106	28	1	1.17136e+06	4	10	6	236288	146644	3	12	9	317515	209129	56	8	18	9	7	40	5	1	0	804287	2	0	0
+decision-record-on-board	f4949444-61ec-4809-8ec0-49ff566c0436	main	plan-bouncer-judge	6	7	2	2	86377.4	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	32891.3	0	0	0
+decision-record-on-board	f51c0b5b-368b-4c02-8cd3-cec985b297af	main	plan-bouncer-judge	6	8	2	2	91156.5	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	36885.1	0	0	0
+decision-record-on-board	f8e7ea54-a3dd-40b1-9c37-c4f8d9997116	main	arbiter	9	28	3	1	168946	0	0	0	0	0	0	0	0	0	0	1	1	8	0	1	0	0	0	0	24735.1	0	0	0
+shed-sub-run-block	01964cb4-02a6-4bf5-8336-0053d08b3b99	main	plan-bouncer-judge	6	8	2	2	75836.5	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	23420.5	0	0	0
+shed-sub-run-block	02072f8e-c066-4701-a378-a4832af2946d	main	discussion	26	58	14	2	855296	3	8	5	203643	109860	3	9	6	244875	130805	12	4	18	3	5	3	0	0	0	430898	0	0	0
+shed-sub-run-block	agent-a00d7bb33a2d6b4ca	fork	discussion+fork	2	1	1	1	69483.8	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	agent-a027e3c2cb630f787	fork	discussion+fork	3	2	2	1	89750.3	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	agent-a0fd789e44974c005	fork	discussion+fork	5	4	4	1	142692	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	agent-aa93375d24a1e4182	fork	discussion+fork	7	6	6	1	181051	1	3	2	67622.1	47033.8	1	5	4	110207	87972.5	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	agent-ab96a8e472ff70c42	fork	discussion+fork	4	5	2	1	125959	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	agent-ad22c032bb6314029	fork	discussion+fork	4	3	3	1	94245.9	1	2	1	40495.1	19427	1	2	1	40495.1	19427	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	08be0616-1504-4286-9194-8666bcba21d7	main	code-bouncer-judge	6	7	2	2	63603.6	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	14952.1	0	0	0
+shed-sub-run-block	0b131105-e152-43e4-8972-bed31c744c7d	main	fixer	18	22	13	2	244675	1	5	4	80005.9	63968.8	1	5	4	80005.9	63968.8	1	1	17	0	1	0	3	0	0	25573.3	2	0	0
+shed-sub-run-block	1c55a7a2-9f15-4f83-b2de-74217b42c3e6	main	discussion-burler-fix	13	37	4	2	287293	0	0	0	0	0	0	0	0	0	0	17	3	7	2	3	10	0	0	0	200282	0	0	0
+shed-sub-run-block	agent-a29b8dd2e0054bad6	fork	discussion-burler-fix+fork	2	1	1	1	24359.5	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	agent-a5e1fcb2acd5f8bb2	fork	discussion-burler-fix+fork	2	1	1	1	33358.3	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	agent-a645883df2865827b	fork	discussion-burler-fix+fork	4	3	3	1	56696.3	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	agent-a85fd262d169a10a9	fork	discussion-burler-fix+fork	2	1	1	1	32773.3	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	2ef60db2-036c-45b3-b9dc-7c1e254c950b	main	plan-burler-review	13	33	4	2	262087	0	0	0	0	0	1	2	1	9895.4	5662.05	1	1	12	0	1	0	0	0	0	44441.4	0	0	0
+shed-sub-run-block	33e5cd57-f7f8-4f86-9a5f-78d33af10149	main	code-burler-review	17	38	5	2	440384	0	0	0	0	0	1	2	1	13271.7	6013.5	4	1	16	0	1	0	0	0	0	86551.1	0	0	0
+shed-sub-run-block	agent-a247b7c0a13913739	fork	code-burler-review+fork	3	3	1	1	110190	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	agent-a7bda9245628d5570	fork	code-burler-review+fork	5	5	3	1	141718	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	agent-a833eeed3b2b633c3	fork	code-burler-review+fork	5	6	2	1	120045	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	48f30552-c339-4abe-a6f5-57517f47a92b	main	gate-fixer	12	24	6	1	147163	1	2	1	15202.4	8662.7	1	3	2	39549.8	15202.4	6	2	10	0	1	0	0	0	1	37621.2	0	0	0
+shed-sub-run-block	6063ad2e-6e15-477e-933c-c59440939b81	main	plan-bouncer-judge	6	7	2	2	82080.8	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	28219	0	0	0
+shed-sub-run-block	7a4db2b7-6e84-43e4-91db-eb61e913f498	main	gate-fixer	8	9	5	1	71178.7	0	0	0	0	0	0	0	0	0	0	2	2	6	0	1	0	1	0	0	18951.6	0	0	0
+shed-sub-run-block	7c3ec8d8-386c-4796-9586-42aeb54cbea1	main	gate-fixer	7	11	3	1	81699.6	0	0	0	0	0	0	0	0	0	0	3	2	5	0	1	1	0	0	1	33365.7	0	0	0
+shed-sub-run-block	8965312c-1965-41e5-bab9-4e7de716ebbb	main	webster	30	31	16	9	319634	0	0	0	0	0	0	0	0	0	0	4	2	24	1	3	2	0	0	0	77390.7	0	0	0
+shed-sub-run-block	agent-a12bf991a2787fc97	fork	webster+fork	27	75	16	1	668421	1	6	5	146462	114042	1	6	5	146462	114042	39	5	16	1	3	28	3	1	0	332955	1	0	0
+shed-sub-run-block	agent-a8af52b2352667b10	fork	webster+fork	29	118	13	1	1.07097e+06	0	0	0	0	0	0	0	0	0	0	68	10	9	14	7	35	5	1	0	925493	1	0	0
+shed-sub-run-block	agent-ac5e3542af19b37ab	fork	webster+fork	31	108	16	1	937345	1	2	1	58400.6	13868.8	1	2	1	58400.6	13868.8	61	12	8	22	7	33	3	1	0	813194	0	0	0
+shed-sub-run-block	agent-ac72ed2ecd848e522	fork	webster+fork	28	173	17	1	848374	3	6	3	122918	78298.1	2	8	6	178177	128842	92	5	17	2	3	42	2	0	0	428423	0	0	0
+shed-sub-run-block	agent-afa7f3eb42638aa65	fork	webster+fork	10	13	5	1	113557	1	2	1	24324.9	14602.1	1	2	1	24324.9	14602.1	2	1	8	0	1	1	1	0	0	38508.9	0	0	0
+shed-sub-run-block	98ad294f-000c-43ff-9b6e-4ef2a52e75b6	main	plan-burler-review	38	88	18	3	1.22127e+06	1	2	1	54280.6	27983.5	2	5	3	87072.8	57054.1	5	3	30	2	4	1	0	0	4	340063	3	0	0
+shed-sub-run-block	agent-a13161b4e9f7f5244	fork	plan-burler-review+fork	8	7	7	1	226930	2	4	2	107161	52842.5	1	6	5	160292	130695	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	agent-a2dfa026c7cee9b03	fork	plan-burler-review+fork	7	6	6	1	215746	2	4	2	125524	56323.5	1	5	4	150198	105045	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	agent-a87c7da37e624f0a6	fork	plan-burler-review+fork	7	6	6	1	215982	2	5	3	142547	86783.3	1	5	4	142547	116454	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	999342bd-7900-4ab2-9e6b-d8cb4bdb5b64	main	describe	8	10	4	2	81428.4	1	2	1	20672.7	8041.7	1	2	1	20672.7	8041.7	1	1	7	0	1	0	0	0	1	25792.8	0	0	0
+shed-sub-run-block	9a08335e-78b8-461b-aa37-7988c2a62d12	main	gate-fixer	7	8	4	1	64276.7	0	0	0	0	0	0	0	0	0	0	1	1	7	0	1	0	1	1	0	6560.15	1	0	0
+shed-sub-run-block	9b703d4e-08f3-4862-8696-4cd9904abd59	main	plan-burler-fix	14	26	5	2	164912	0	0	0	0	0	0	0	0	0	0	7	2	8	3	3	0	0	0	0	98078.5	0	0	0
+shed-sub-run-block	agent-a3b17a326d7cf4274	fork	plan-burler-fix+fork	4	3	3	1	33768.8	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	agent-a501b48d73ea96ffa	fork	plan-burler-fix+fork	5	5	3	1	43946	0	0	0	0	0	1	2	1	16998.8	7570.6	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	agent-a7dd9a6c0908ac1a2	fork	plan-burler-fix+fork	5	4	4	1	37410	0	0	0	0	0	1	3	2	22239.3	14883.5	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	agent-ac7ecff31b0359d49	fork	plan-burler-fix+fork	3	2	2	1	25401.6	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	9fa46e20-bab5-45ba-a7ff-5a30bc5f950b	main	plan-burler-fix	25	70	12	3	509138	2	4	2	72645.3	38634	3	6	3	118185	70440.3	34	5	11	6	5	24	0	0	0	353736	0	0	0
+shed-sub-run-block	agent-a597b88fdea4e5cf4	fork	plan-burler-fix+fork	4	3	3	1	61040.8	1	2	1	26868.8	12705.9	1	2	1	26868.8	12705.9	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	agent-a9375160af051c35e	fork	plan-burler-fix+fork	2	1	1	1	29005.8	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	agent-add0ec62b8f465b69	fork	plan-burler-fix+fork	6	5	5	1	84331.7	1	2	1	23653.8	12061.4	1	4	3	54519.9	41615.8	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	agent-af6a4bc8e57bba7e9	fork	plan-burler-fix+fork	3	2	2	1	44453.1	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	a77b21e4-b190-4ff1-bb5c-8ae32321cb04	main	discussion-bouncer-seed	6	7	3	2	84976.4	0	0	0	0	0	0	0	0	0	0	1	1	5	0	1	0	0	0	0	46419	0	0	0
+shed-sub-run-block	aa9efd9f-b796-45cf-bace-3fce03f0d25f	main	discussion-bouncer-judge	6	7	2	2	78310.5	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	31479.4	0	0	0
+shed-sub-run-block	c42c8851-da74-4728-b8ee-9bd61b11dad1	main	code-bouncer-seed	6	6	3	2	73576.6	0	0	0	0	0	0	0	0	0	0	1	1	5	0	1	0	0	0	0	32921	0	0	0
+shed-sub-run-block	d1c5f894-063f-457c-98a9-5c5cff215d97	main	plan-bouncer-seed	8	8	5	2	134954	0	0	0	0	0	1	2	1	26341.9	7283.35	1	1	7	0	1	0	0	0	0	67323	0	0	0
+shed-sub-run-block	f80fcad5-6d5f-433c-adb9-c8cd8e14b452	main	discussion-burler-review	22	49	14	2	626271	3	8	5	242408	130524	3	11	8	279851	188102	5	2	20	0	1	0	0	0	0	152743	0	0	0
+shed-sub-run-block	agent-a6174c563362f5554	fork	discussion-burler-review+fork	3	2	2	1	93304.6	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	agent-a819506a2bfa14cbe	fork	discussion-burler-review+fork	3	2	2	1	119632	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	agent-a8974fe4cb922a30c	fork	discussion-burler-review+fork	6	5	5	1	140807	1	3	2	64188.3	45487	1	4	3	88947.8	64188.3	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	agent-adb0668f0613f8473	fork	discussion-burler-review+fork	2	1	1	1	64331.8	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	ff2ee39d-1896-4684-8752-c15b4f20d8f7	main	plan	37	105	16	4	1.60087e+06	1	5	4	226690	184933	2	7	5	261285	216055	17	4	26	8	5	2	0	0	0	684836	0	0	0
+shed-sub-run-block	agent-a0ea0422565b7a848	fork	plan+fork	12	19	8	1	633807	1	4	3	199755	165329	1	4	3	199755	165329	11	3	9	0	1	1	0	0	0	242457	0	0	0
+shed-sub-run-block	agent-a23b228a07c622380	fork	plan+fork	4	3	3	1	200492	1	2	1	97015.9	42374.6	1	2	1	97015.9	42374.6	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	agent-a2637b43092105ab8	fork	plan+fork	4	6	1	1	97057.2	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	agent-a2ae28ddcd8e6c5d2	fork	plan+fork	3	2	2	1	139244	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	agent-a6789c9a2f9afc069	fork	plan+fork	6	5	5	1	275755	1	3	2	117669	77790.4	1	4	3	171274	117669	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	agent-a72e7dead5bc51d18	fork	plan+fork	6	8	3	1	112938	1	3	2	49998.3	23358.8	1	3	2	49998.3	23358.8	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	agent-a7bf5774c9dd2a6c2	fork	plan+fork	7	9	4	1	117280	1	3	2	45049.6	29406	1	4	3	56161.2	40517.7	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	agent-a94ea0da9e5701796	fork	plan+fork	6	9	4	1	75687.6	1	2	1	15539.6	7307.55	1	3	2	33649	15539.6	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	agent-ac4e7508190b76b8d	fork	plan+fork	9	8	8	1	409505	2	6	4	254588	163437	1	7	6	305682	254588	0	0		0	0	0	0	0	0	0	0	0	0
+shed-sub-run-block	agent-af473176e295aaa16	fork	plan+fork	3	2	2	1	171652	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+cold-gate-fixer	0472ec83-a6ef-4f42-9028-e0b6206a9144	main	code-burler-review	18	51	5	2	583158	0	0	0	0	0	1	2	1	13239.1	5987.4	4	2	16	0	1	0	0	0	0	184210	0	0	0
+cold-gate-fixer	agent-a284967a1e05045cc	fork	code-burler-review+fork	4	7	1	1	162815	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+cold-gate-fixer	agent-ac034c1254bf1ac67	fork	code-burler-review+fork	4	4	2	1	104408	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+cold-gate-fixer	agent-aec4843da72ffeb11	fork	code-burler-review+fork	5	8	2	1	133137	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+cold-gate-fixer	0bf3598b-c7af-4d72-bfcc-f3fec9c34d9f	main	describe	8	9	5	2	89756.8	0	0	0	0	0	0	0	0	0	0	1	1	6	0	1	0	0	0	1	33332	0	0	0
+cold-gate-fixer	6df1bf22-e684-4670-9ca8-a6de058ca77c	main	conflict	11	25	6	2	153398	0	0	0	0	0	1	2	1	11905.1	7835.2	10	2	7	0	1	3	1	1	0	62715.1	1	0	0
+cold-gate-fixer	ad9c9614-817a-400d-af16-ca295292629f	main	fixer	22	21	19	2	287545	0	0	0	0	0	2	7	5	70384.2	55513.2	2	2	8	4	4	0	3	2	0	210982	3	0	0
+cold-gate-fixer	be5a8b45-8914-45c5-a53b-d0430db0a92c	main	code-bouncer-judge	6	7	2	2	79242.7	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	31195.9	0	0	0
+cold-gate-fixer	c611e498-528f-4311-a550-d99a2ea4b5a9	main	code-bouncer-seed	6	6	3	2	86446.6	0	0	0	0	0	0	0	0	0	0	1	1	5	0	1	0	0	0	0	38206.7	0	0	0
+cold-gate-fixer	e99947b7-862b-4c61-a9a1-60cf783f928b	main	code-burler-fix	26	92	9	2	656663	0	0	0	0	0	1	2	1	43600.1	19578.3	43	5	14	3	5	22	2	1	0	363543	1	0	0
+cold-gate-fixer	agent-a08f762854551bd0e	fork	code-burler-fix+fork	3	2	2	1	62028.1	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+cold-gate-fixer	agent-a0940f984af7100e1	fork	code-burler-fix+fork	3	2	2	1	65126.5	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+cold-gate-fixer	agent-a200e1ed2783997a9	fork	code-burler-fix+fork	3	2	2	1	55806.9	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+cold-gate-fixer	agent-ac7b34599c12a6667	fork	code-burler-fix+fork	3	4	1	1	68455.4	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0

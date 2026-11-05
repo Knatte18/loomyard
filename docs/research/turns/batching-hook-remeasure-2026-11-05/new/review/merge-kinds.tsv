@@ -1,0 +1,47 @@
+role	class	command	removable_turns	removable_weight
+discussion-burler-fix	read	Read	6	68183
+discussion-burler-fix	search	grep	4	115211
+discussion-burler-fix	search	sed	1	13135
+discussion-burler-fix+fork	search	grep	6	101801
+discussion-burler-fix+fork	read	Read	2	19763
+discussion-burler-fix+fork	search	sed	2	24041
+discussion-burler-fix+fork	read	sed	1	14111
+discussion-burler-review	search	grep	13	233978
+discussion-burler-review	read	Read	4	90781
+discussion-burler-review	search	sed	2	33214
+discussion-burler-review	read	cat	1	16199
+discussion-burler-review	read	sed	1	17029
+discussion-burler-review	search	ls	1	16841
+discussion-burler-review+fork	search	grep	16	359984
+discussion-burler-review+fork	search	sed	4	69819
+discussion-burler-review+fork	read	Read	2	37924
+discussion-burler-review+fork	read	sed	1	17668
+discussion-burler-review+fork	search	ls	1	22389
+discussion-burler-review@sonnet	read	Read	2	76517
+plan-burler-fix	search	grep	12	210572
+plan-burler-fix	read	Read	7	88364
+plan-burler-fix	git-read	git -C	1	13968
+plan-burler-fix	search	awk	1	15535
+plan-burler-fix	search	sed	1	14555
+plan-burler-fix+fork	search	grep	9	101226
+plan-burler-fix+fork	quarry	lym quarry	1	6666
+plan-burler-fix+fork	search	sed	1	13985
+plan-burler-fix+fork	search	wc	1	23173
+plan-burler-review	search	grep	6	175219
+plan-burler-review	read	Read	4	95504
+plan-burler-review	git-read	git -C	3	46672
+plan-burler-review	git-read	cat	2	22259
+plan-burler-review	git-read	ls	1	12761
+plan-burler-review	git-read	sed	1	15969
+plan-burler-review	quarry	for	1	16867
+plan-burler-review	quarry	grep	1	15375
+plan-burler-review	read	sed	1	16673
+plan-burler-review	search	cat	1	32325
+plan-burler-review	search	cd	1	24122
+plan-burler-review+fork	search	grep	5	166386
+plan-burler-review+fork	read	sed	2	50178
+plan-burler-review+fork	git-read	git -C	1	16663
+plan-burler-review+fork	git-read	sed	1	14408
+plan-burler-review+fork	search	cd	1	28682
+plan-burler-review@sonnet	search	grep	4	107221
+plan-burler-review@sonnet	search	sed	3	85169

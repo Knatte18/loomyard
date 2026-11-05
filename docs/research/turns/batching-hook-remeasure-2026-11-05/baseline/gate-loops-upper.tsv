@@ -1,0 +1,6 @@
+slug	session	role	fail_turn	green_turn	turns	ctx_tokens	weight	peak_ctx
+batten-remote-order	agent-a563283c1d0574679	webster+fork	16	21	5	2215064	247840	447469
+batten-remote-order	agent-a56eda91227d880e7	webster+fork	30	32	2	644288	66808	322381
+batten-remote-order	agent-a620465628d6a503c	webster+fork	18	23	5	1649889	170693	330937
+batten-remote-order	agent-a620465628d6a503c	webster+fork	28	37	9	3224791	406802	369834
+batten-remote-order	agent-ad0bcb92cf8ad6c29	webster+fork	28	56	28	7706701	1073593	302672

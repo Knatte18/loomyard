@@ -1,0 +1,22 @@
+slug	session	turns	calls	calls_per_turn	edit_tool_calls	shell_edit_calls	awk_mv_edit_calls	check_turns	lookup_turns
+arbiter-settles-escalations	158d9ec9-1f36-4758-b9be-8215a4de3392	37	63	1.70	21	0	0	3	20
+claude-code-credit	e6e92834-0454-4080-abee-051a305f886d	14	22	1.57	4	0	0	1	5
+startup-token-trim	61754351-d7e3-4500-9f48-df6b9ab92262	60	86	1.43	23	1	0	1	16
+anchor-scratch-excluded	104cb30a-f59c-4ebf-bd72-0c0f52cfd958	29	77	2.66	31	0	0	3	9
+codex-creel-trial	f2629b50-778b-475d-8d19-b4727aa3e71c	64	77	1.20	7	0	0	2	15
+codex-creel-hooks	0adf25e2-2f58-4ace-9be4-0c219030349b	33	106	3.21	52	0	0	4	11
+research-dir-tidy	2d526fb1-cb84-4fdd-b260-15f6ac067676	61	149	2.44	61	1	0	2	22
+codex-credit-line	d66213ac-5e2f-4f9d-8136-548ca2292b3f	14	22	1.57	4	0	0	2	5
+codex-greet-finish	b3a35cd5-a6bc-4a56-ad16-b8c185583a30	68	64	0.94	3	0	0	1	15
+sketch-promote-raddle	965be271-1a67-4190-bdd1-f355d3dedef5	21	61	2.90	24	0	0	2	9
+pattern-distill	80bd1d5a-ef7a-48b8-b593-7140f29190e0	38	48	1.26	4	0	0	2	11
+codex-writer-cannot-commit	37533a40-ed87-4465-9172-679c1d58b272	19	64	3.37	30	1	0	2	6
+sessions-no-self-credit	d11fd1a7-3b6f-4228-a8d7-e48164a71d47	18	33	1.83	10	0	0	3	6
+branch-name-recorded	f23ddec2-be25-41b0-a290-16fad034c5a9	38	120	3.16	72	0	0	5	14
+codex-trial-darn-e2e	5caf0b18-5d6d-40d5-81eb-3ee81aa2cd5e	27	34	1.26	3	0	0	1	6
+sketch-board-type	3cb4cd97-17c3-45ee-bdb8-2a90c3e98057	39	136	3.49	77	1	0	2	14
+profiles-follow-template	d4aedab1-b4b5-4b2c-a6fe-984c6f992b16	32	121	3.78	61	0	0	4	15
+teardown-gone-pair	8955be4b-12e2-4f21-850b-a150b6ebe628	45	108	2.40	44	1	0	4	18
+push-holds-remote-refs	472d05ba-3ef7-4a3a-bee7-4e7542dc7d7b	32	75	2.34	27	1	0	3	7
+quiet-notice-ignores-fixers	00fff4af-2fd3-4fc9-9a3c-137f32683f68	40	75	1.88	18	0	0	3	23
+TOTAL	20 sessions	729	1541	2.11	576	6	0	50	247

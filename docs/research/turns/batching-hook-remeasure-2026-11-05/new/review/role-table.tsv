@@ -1,0 +1,15 @@
+role	sessions	turns	turns_per_session	ctx_first	ctx_mean	ctx_peak	cost_usd	cost_per_session	read_share	write_share	output_share	wall_s	wall_s_per_session
+discussion-bouncer-judge	4	24	6.0	21373	35846	54073	0.78	0.19	0.17	0.59	0.23	139	34
+discussion-bouncer-seed	2	12	6.0	21350	34464	53102	0.34	0.17	0.19	0.67	0.14	48	24
+discussion-burler-fix	4	78	19.5	21499	76166	151709	6.36	1.59	0.17	0.36	0.47	1497	374
+discussion-burler-fix+fork	16	46	2.9	98505	99944	131617	2.71	0.17	0.33	0.15	0.52	714	44
+discussion-burler-review	3	87	29.0	21486	111381	209471	6.80	2.27	0.27	0.38	0.35	1299	433
+discussion-burler-review+fork	12	54	4.5	133472	141792	171865	4.24	0.35	0.36	0.13	0.51	1109	92
+discussion-burler-review@sonnet	1	23	23.0	21409	128190	227184	1.67	1.67	0.33	0.33	0.35	454	454
+plan-bouncer-judge	5	30	6.0	21244	37273	57651	0.94	0.19	0.19	0.66	0.16	127	25
+plan-bouncer-seed	3	21	7.0	21225	37042	71344	0.59	0.20	0.21	0.64	0.15	86	28
+plan-burler-fix	7	189	27.0	21353	78392	154674	10.41	1.49	0.27	0.37	0.36	1932	276
+plan-burler-fix+fork	28	81	2.9	87215	89210	141933	3.51	0.13	0.40	0.19	0.41	702	25
+plan-burler-review	4	126	31.5	21342	158741	340964	11.90	2.98	0.32	0.35	0.33	1887	471
+plan-burler-review+fork	12	48	4.0	169864	188859	289833	4.19	0.35	0.43	0.15	0.42	851	70
+plan-burler-review@sonnet	3	90	30.0	21243	156385	254974	6.18	2.06	0.43	0.27	0.29	1433	477

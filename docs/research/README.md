@@ -143,6 +143,7 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [hook-first-effect.md](turns/hook-first-effect.md) — the effect of reading a session's state from hook lines before the pane.
 - [turn-savings-measure-2026-11-04](turns/turn-savings-measure-2026-11-04/report.md) — turn savings measured on landed runs.
 - [writer-lookups-measure-2026-11-04](turns/writer-lookups-measure-2026-11-04/report.md) — how the Plan and Discussion writers explore the code and use lookup subagents.
+- [batching-hook-remeasure-2026-11-05](turns/batching-hook-remeasure-2026-11-05/report.md) — the batching hook and the edit-round rule, re-measured once the hook reached forks.
 
 ## twill — fork-based writers and fixers
 

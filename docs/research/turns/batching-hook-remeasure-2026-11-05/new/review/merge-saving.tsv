@@ -1,0 +1,15 @@
+role	cost_usd	strict_turns	strict_per_session	strict_weight_share	strict_saving_usd	class_weight_share	class_saving_usd
+discussion-bouncer-judge	0.78	0	0.0	0.00	0.00	0.00	0.00
+discussion-bouncer-seed	0.34	0	0.0	0.00	0.00	0.00	0.00
+discussion-burler-fix	6.36	11	2.8	0.11	0.70	0.12	0.76
+discussion-burler-fix+fork	2.71	11	0.7	0.18	0.49	0.29	0.79
+discussion-burler-review	6.80	22	7.3	0.19	1.29	0.23	1.56
+discussion-burler-review+fork	4.24	24	2.0	0.35	1.48	0.43	1.82
+discussion-burler-review@sonnet	1.67	2	2.0	0.09	0.15	0.10	0.17
+plan-bouncer-judge	0.94	0	0.0	0.00	0.00	0.00	0.00
+plan-bouncer-seed	0.59	0	0.0	0.00	0.00	0.10	0.06
+plan-burler-fix	10.41	22	3.1	0.10	1.04	0.12	1.25
+plan-burler-fix+fork	3.51	12	0.4	0.12	0.42	0.20	0.70
+plan-burler-review	11.90	22	5.5	0.12	1.43	0.17	2.02
+plan-burler-review+fork	4.19	10	0.8	0.18	0.75	0.39	1.63
+plan-burler-review@sonnet	6.18	7	2.3	0.06	0.37	0.08	0.49
