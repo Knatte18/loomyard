@@ -39,8 +39,9 @@ func TestCloneHub_FreshBindWithoutShortnameRefuses(t *testing.T) {
 	noProbeResidueInParent(t, cloneParent, "noshortname-warp")
 }
 
-// TestCloneHub_ShortnameRecordLifecycle walks one repo through its shortname record:
-// recorded at the first clone and committed on weft:main, derived by a second clone, kept by a --reset re-clone, and refused when a different shortname is supplied.
+// TestCloneHub_ShortnameRecordLifecycle walks one repo through its shortname record.
+// The record is made at the first clone and committed on weft:main, derived by a second clone, kept by a --reset re-clone, and refused when a different shortname is supplied.
+// A --reset refusal leaves the existing hub in place.
 func TestCloneHub_ShortnameRecordLifecycle(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -68,6 +69,8 @@ func TestCloneHub_ShortnameRecordLifecycle(t *testing.T) {
 	}
 
 	t.Run("SecondCloneDerivesShortname", func(t *testing.T) {
+		t.Parallel()
+
 		parent := t.TempDir()
 		res, err := fabricengine.CloneHub(parent, fabricengine.CloneOptions{WeftURL: weftURL})
 		if err != nil {
@@ -80,6 +83,8 @@ func TestCloneHub_ShortnameRecordLifecycle(t *testing.T) {
 	})
 
 	t.Run("DisagreeingShortnameRefuses", func(t *testing.T) {
+		t.Parallel()
+
 		parent := t.TempDir()
 		_, err := fabricengine.CloneHub(parent, fabricengine.CloneOptions{WeftURL: weftURL, Shortname: "other"})
 		if err == nil {
@@ -87,6 +92,36 @@ func TestCloneHub_ShortnameRecordLifecycle(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), `"tst"`) {
 			t.Errorf("CloneHub() error = %q; want it to name the recorded shortname", err.Error())
+		}
+	})
+
+	// This subtest and ResetKeepsRecord do not call t.Parallel: they share the one existing hub (firstParent and first) and run in order, since ResetKeepsRecord tears that hub down and rebuilds it.
+	t.Run("ResetWithDisagreeingShortnameKeepsHub", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			warpURL string
+		}{
+			{"TwoArgument", filepath.ToSlash(warpBare)},
+			{"OneArgument", ""},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				_, err := fabricengine.CloneHub(firstParent, fabricengine.CloneOptions{
+					WeftURL:   weftURL,
+					WarpURL:   tt.warpURL,
+					Shortname: "other",
+					Reset:     true,
+				})
+				if err == nil {
+					t.Fatal("CloneHub(Reset) with a disagreeing shortname = nil error; want a refusal")
+				}
+				if !strings.Contains(err.Error(), `"tst"`) {
+					t.Errorf("CloneHub(Reset) error = %q; want it to name the recorded shortname", err.Error())
+				}
+				if shortname, found := fabricengine.ReadShortname(first.BoardDir); !found || shortname != "tst" {
+					t.Errorf("ReadShortname(existing board) = %q, %v; want %q, true: the refused reset must leave the hub in place", shortname, found, "tst")
+				}
+			})
 		}
 	})
 

@@ -96,6 +96,8 @@ var destructiveGuardAllowlist = []scankit.Entry{
 		"a fabric-internal marker in the records worktree's untracked lock directory, never operator content"},
 	{Key: "internal/fabricengine/recordsprobe.go", Why: "the binding probe's os.RemoveAll(probeDir) removes the throwaway probe clone directory the " +
 		"same function created moments earlier"},
+	{Key: "internal/fabricengine/resetsubpathcheck.go", Why: "checkSubpathBeforeReset's os.RemoveAll(stageDir) removes the throwaway staging directory the " +
+		"same function created moments earlier"},
 	{Key: "internal/fabricengine/index.go", Why: "refreshCorrIndexAfterSwitch's os.Remove(path) deliberately deletes the correspondence-index " +
 		"cache before rebuilding it, so a failed refresh misses honestly rather than answering cross-branch"},
 	{Key: "internal/fabricengine/mergestate.go", Why: "deleteMergeState's os.Remove(path) deletes fabric's own merge-state record inside the " +

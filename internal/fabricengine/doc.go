@@ -509,6 +509,7 @@
 // `CloneHub` resolves the effective warp URL from that record when the caller supplies no warp URL, and writes the record when none exists yet and a warp URL is supplied;
 // a supplied URL that disagrees with the recorded one is a hard error, never a silent re-point.
 // That resolution runs through a throwaway pre-hub probe clone of the weft remote (recordsprobe.go), because the hub is named after the warp repo and therefore has no path to resolve into until the warp URL is known.
+// `clone --reset` removes an existing hub only after the probe has checked the warp binding, the shortname and the old-order guard, and has checked an explicit `--subpath` against staged clones of both remotes (resetsubpathcheck.go), so a refused argument leaves the hub untouched.
 // `Reconcile` backfills the record once per hub from the warp side's own `origin` remote (reconcile.go's reconcileWarpBinding), with the CLI layer driving the commit and push, exactly as clone's own binding write is committed CLI-side.
 //
 // The hub's shortname is a fifth repo-wide record, held the same way as a plain single-line file, `.lym-shortname`, beside `.lym-warp` at the board root (see shortnamebinding.go).

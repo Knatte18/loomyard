@@ -47,8 +47,8 @@
 // # CloneHub{Reset: true}
 //
 // This column is re-scoped to the ownership axis and is not run against the ten states.
-// resetHub declares dirtinessNA (clone.go:585), so no dirtiness state can refuse it — total hub destruction on --reset is correct behaviour — which would make the permitted root the hub root itself and the manifest diff vacuous across all ten states.
-// The gate is structurally unreachable for Reset: resetHub refuses a non-hub at its own pre-flight (clone.go:573-577, !looksLikeHub) BEFORE the pathRequest at :579 is built, and the gate's pathOwnershipFabricHub predicate is that SAME looksLikeHub call (destroy.go:346-350), so a RefusedByGate(CheckOwnership) expectation would fail against a correct binary.
+// resetHub declares dirtinessNA, so no dirtiness state can refuse it — total hub destruction on --reset is correct behaviour — which would make the permitted root the hub root itself and the manifest diff vacuous across all ten states.
+// The gate is structurally unreachable for Reset: CloneHub refuses a non-hub offline through checkResetTarget (!looksLikeHub) BEFORE resetHub builds its pathRequest, and the gate's pathOwnershipFabricHub predicate is that SAME looksLikeHub call, so a RefusedByGate(CheckOwnership) expectation would fail against a correct binary.
 // This column therefore uses RefusedBefore("is not a fabric hub") and drives exactly two targets: a <derived>-LYMHUB-named directory that is not a hub (refused at the pre-flight, contents surviving — R4's `clone --reset` defect), and a real hub (torn down and rebuilt through fabriccli.CloneAndWire, the positive case proving the column is not trivially always-refusing).
 //
 // # The seventeen hostile-input cases
@@ -989,8 +989,7 @@ func pullCase() VerbCase {
 }
 
 // cloneHubResetNonHubCase builds the CloneHub{Reset: true} column's non-hub target: an operator
-// directory whose name happens to match the derived <name>-LYMHUB path is refused at resetHub's own
-// pre-flight, contents fully surviving — R4's `clone --reset` defect.
+// directory whose name happens to match the derived <name>-LYMHUB path is refused at CloneHub's offline checkResetTarget pre-flight, contents fully surviving — R4's `clone --reset` defect.
 func cloneHubResetNonHubCase() VerbCase {
 	return VerbCase{
 		Name:   "CloneHubReset/NonHubTarget",

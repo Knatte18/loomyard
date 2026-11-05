@@ -180,14 +180,14 @@
 //     the cell failed the same way, the offending paths additionally including the clone's own ".git"
 //     directory ("verb-prune-structural-orphan-weft/.git: removed (was dir)").
 //   - (8) the Reset column's non-hub target x CloneHub{Reset} x "." -- R4, `clone --reset` destroyed a
-//     non-hub `<derived>-LYMHUB`. Neutered clone.go's resetHub own pre-flight (the `if !looksLikeHub(hubPath)`
+//     non-hub `<derived>-LYMHUB`. Neutered clone.go's checkResetTarget (the `if !looksLikeHub(hubPath)`
 //     guard, short-circuited to never fire). Ran `-run 'TestCloneHubReset/\./CloneHubReset/NonHubTarget$'`:
 //     the cell failed with "expected pre-flight refusal containing \"is not a fabric hub\"; got err =
 //     reset: remove hub at ...: refusing to reset hub: ownership check failed for ...: ... does not look
 //     like a fabric hub (no <Bolt directory> entry and no weft sibling)" -- the gate's own ownedFabricHub check
-//     caught what the pre-flight was neutered out of catching, so the operator-content sentinel survived
+//     caught what checkResetTarget was neutered out of catching, so the operator-content sentinel survived
 //     this particular run, but the cell still failed on the Kind mismatch (a gate refusal, not the
-//     pre-flight's), proving the pre-flight itself is load-bearing rather than redundant with the gate.
+//     checkResetTarget's), proving checkResetTarget itself is load-bearing rather than redundant with the gate.
 //   - (9) hostile input ".." x Remove x "." -- R5, `remove ..` destroyed an entire hub. Neutered
 //     slug.go's validateWorktreeSlug relative-path-element guard (the
 //     `slug != filepath.Clean(slug) || slug == "." || slug == ".."` condition, short-circuited to never

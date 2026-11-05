@@ -7,6 +7,7 @@
 // reads a single file from a remote without first materializing a local repo directory.
 // This file is that materialization: a temporary clone, read, then removed, entirely before CloneHub
 // commits to a hub layout.
+// It also holds the weft-branch fetch helper the --reset subpath check shares with the probe.
 
 package fabricengine
 
@@ -22,7 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// warpProbeDirPrefix is the os.MkdirTemp prefix for the probe's throwaway clone directory.
+// warpProbeDirPrefix is the os.MkdirTemp prefix for the throwaway clone directories of the pre-hub probe and of the --reset subpath check.
 // This is a MkdirTemp prefix, not a _lym/.lym path token, so it does not fall under the Lymdirs Single-Declarer Invariant, and TestEnforcement_GeometryLiterals (exact-equality matching) does not trip on it.
 const warpProbeDirPrefix = ".lym-clone-probe-"
 
@@ -169,22 +170,32 @@ func probeTreeHasPath(weftURL, probeDir, path string) (bool, error) {
 // It fetches the branch into the probe clone.
 // A candidate without the branch answers false, and any other git failure is an error.
 func probeMainWeftHasPath(weftURL, probeDir, path string) (bool, error) {
-	branchRef := "refs/heads/" + RecordsBranchName("main")
-	listed, err := gitexec.Run([]string{"ls-remote", "--heads", "origin", branchRef}, probeDir)
-	if err != nil {
-		return false, wrapProbeError(weftURL, "ls-remote", err)
-	}
-	if strings.TrimSpace(listed) == "" {
-		return false, nil
-	}
-	if _, err := gitexec.Run([]string{"fetch", "--depth", "1", "origin", branchRef}, probeDir); err != nil {
-		return false, wrapProbeError(weftURL, "fetch", err)
+	present, err := fetchWeftBranchTip(weftURL, probeDir, RecordsBranchName("main"))
+	if err != nil || !present {
+		return false, err
 	}
 	stdout, err := gitexec.Run([]string{"ls-tree", "FETCH_HEAD", "--name-only", "--", path}, probeDir)
 	if err != nil {
 		return false, wrapProbeError(weftURL, "ls-tree", err)
 	}
 	return strings.TrimSpace(stdout) != "", nil
+}
+
+// fetchWeftBranchTip fetches the tip of branch from origin into FETCH_HEAD of the clone at dir, one commit deep, and reports whether the remote carries the branch.
+// A remote without the branch answers false with nothing fetched, and any git failure is an error.
+func fetchWeftBranchTip(weftURL, dir, branch string) (bool, error) {
+	branchRef := "refs/heads/" + branch
+	listed, err := gitexec.Run([]string{"ls-remote", "--heads", "origin", branchRef}, dir)
+	if err != nil {
+		return false, wrapProbeError(weftURL, "ls-remote", err)
+	}
+	if strings.TrimSpace(listed) == "" {
+		return false, nil
+	}
+	if _, err := gitexec.Run([]string{"fetch", "--depth", "1", "origin", branchRef}, dir); err != nil {
+		return false, wrapProbeError(weftURL, "fetch", err)
+	}
+	return true, nil
 }
 
 // wrapProbeError formats a probe-phase failure as "probe weft <url>: <detail>", using cause's own

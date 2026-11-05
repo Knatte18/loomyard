@@ -309,8 +309,7 @@ func assertCellTally(t *testing.T, ran, omitted int) {
 	t.Logf("cross-product cell tally: %d ran, %d omitted (omission table), %d CloneHub{Reset} column cells, %d total", ran, omitted, cloneHubResetCellCount(), total)
 }
 
-// TestCloneHubReset drives the CloneHub{Reset: true} column: two targets (a non-hub directory refused at
-// resetHub's own pre-flight, and a real hub torn down and rebuilt) at both anchors.
+// TestCloneHubReset drives the CloneHub{Reset: true} column: two targets (a non-hub directory refused at CloneHub's offline checkResetTarget pre-flight, and a real hub torn down and rebuilt) at both anchors.
 // It is a separate test function rather than a row in TestCrossProduct's loop because the column is
 // scoped to the ownership axis, not to the ten-member States matrix -- see verbs.go's doc comment on
 // cloneHubResetNonHubCase and cloneHubResetRealHubCase for why folding it into the loop would either

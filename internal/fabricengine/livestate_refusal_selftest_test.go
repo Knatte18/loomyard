@@ -306,9 +306,7 @@ func TestRefusedBefore(t *testing.T) {
 			t.Fatalf("mkdir %s: %v", hubPath, err)
 		}
 
-		// A plain directory at the derived hub path has no Bolt checkout entry and no weft sibling, so
-		// resetHub's own looksLikeHub pre-flight (clone.go:573-577) refuses before CloneHub ever
-		// touches the network.
+		// A plain directory at the derived hub path has no Bolt checkout entry and no weft sibling, so checkResetTarget's looksLikeHub pre-flight refuses before CloneHub ever touches the network.
 		_, err := fabricengine.CloneHub(cwd, fabricengine.CloneOptions{
 			WeftURL: "https://example.invalid/reset-hub-preflight-weft.git",
 			WarpURL: warpURL,
@@ -318,7 +316,7 @@ func TestRefusedBefore(t *testing.T) {
 			t.Fatalf("CloneHub(Reset: true) against a non-hub directory: want an error, got nil")
 		}
 		if !RefusedBefore(err, "is not a fabric hub") {
-			t.Errorf("RefusedBefore(%v, ...) = false; want true for resetHub's own pre-flight refusal", err)
+			t.Errorf("RefusedBefore(%v, ...) = false; want true for the offline pre-flight refusal", err)
 		}
 	})
 }

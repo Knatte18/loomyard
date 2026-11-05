@@ -107,14 +107,17 @@ type CloneResult struct {
 // URL and the warp URL's availability differs between them:
 //
 //   - Two-argument form (opts.WarpURL != ""): the hub name is derivable with no network at all, so
-//     the hub-exists check (and any --reset teardown) runs offline, exactly as before this change,
+//     the hub-exists check, or with --reset the refusal of a target that is not a hub, runs offline,
 //     and only then does the pre-hub probe of opts.WeftURL run to resolve the effective warp
-//     binding and check the old-order guard.
+//     binding and shortname and check the old-order guard.
 //   - One-argument form (opts.WarpURL == ""): the hub name is unknowable until the binding is read,
-//     so the pre-hub probe of opts.WeftURL runs first, and the hub name, the --reset teardown, and
-//     the hub-exists check all follow it.
+//     so the pre-hub probe of opts.WeftURL runs first, and the hub name and the offline checks
+//     follow it.
 //
-// After that resolution, the operation proceeds exactly as before this change:
+// In both forms --reset removes the existing hub only after the probe has checked the warp binding, the shortname and the old-order guard, and after an explicit opts.Subpath has been checked against staged clones of both remotes.
+// A refused argument therefore leaves the existing hub untouched.
+//
+// After that resolution, the operation proceeds as follows:
 //  1. Create the Hub directory; if it fails, return the wrapped error (no teardown yet).
 //  2. Clone warp repo to <Hub>/<name>; on failure, teardown and return the error.
 //  3. Clone weft repo to <Hub>/<name>-weft; on failure, teardown and return the error.
@@ -163,8 +166,8 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 	var writeShortname bool
 
 	if opts.WarpURL != "" {
-		// Two-argument form: the hub name is derivable with no network at all, so resolve it,
-		// apply --reset, and check for an existing hub before ever touching the network.
+		// Two-argument form: the hub name is derivable with no network at all.
+		// Resolve it and run the offline checks before ever touching the network.
 		name = DeriveWarpName(opts.WarpURL)
 		if name == "" {
 			return CloneResult{}, fmt.Errorf("could not derive repo name from warp URL %s", opts.WarpURL)
@@ -172,11 +175,10 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		hubPath = HubPath(cwd, name)
 		rec = NewMutations(hubPath)
 		if opts.Reset {
-			if err := resetHub(rec, cwd, hubPath); err != nil {
+			if _, err := checkResetTarget(hubPath); err != nil {
 				return CloneResult{}, err
 			}
-		}
-		if _, err := os.Stat(hubPath); err == nil {
+		} else if _, err := os.Stat(hubPath); err == nil {
 			return CloneResult{}, fmt.Errorf("hub already exists at %s", hubPath)
 		}
 
@@ -228,32 +230,39 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		}
 		hubPath = HubPath(cwd, name)
 		rec = NewMutations(hubPath)
-		if opts.Reset {
-			if err := resetHub(rec, cwd, hubPath); err != nil {
+	}
+
+	// --subpath can only be checked against the cloned trees, so a --reset clone checks it against staged shallow clones while the existing hub is still intact.
+	if opts.Reset && subpathRequestedExplicitly {
+		if _, statErr := os.Stat(hubPath); statErr == nil {
+			if err := checkSubpathBeforeReset(cwd, opts.WeftURL, effective, requestedAnchor); err != nil {
 				return CloneResult{}, err
 			}
 		}
-		// The asymmetry with the two-argument form is deliberate: an offline two-argument re-clone
-		// against an existing hub still fails with "hub already exists", exactly as today; an
-		// offline one-argument invocation fails with "probe weft <url>:" instead, which is the
-		// irreducible cost of deriving the hub name from a remote fact.
-		if _, err := os.Stat(hubPath); err == nil {
-			return CloneResult{}, fmt.Errorf("hub already exists at %s", hubPath)
+	}
+
+	// Every argument has now been checked against the remotes, so --reset may remove the existing hub.
+	// The offline check of the two-argument form repeats here, as the non-hub refusal with Reset and as the hub-exists check without it.
+	// The one-argument form runs its offline check here for the first time, and the asymmetry with the two-argument form is deliberate.
+	// An offline two-argument re-clone against an existing hub fails with "hub already exists".
+	// An offline one-argument invocation fails with "probe weft <url>:" instead, the irreducible cost of deriving the hub name from a remote fact.
+	if opts.Reset {
+		if err := resetHub(rec, cwd, hubPath); err != nil {
+			return CloneResult{}, err
 		}
+	} else if _, err := os.Stat(hubPath); err == nil {
+		return CloneResult{}, fmt.Errorf("hub already exists at %s", hubPath)
 	}
 
 	warpURL := effective
 
-	// Create Hub directory exclusively, minting the token teardownHub needs to prove — rather than
-	// merely assume — that a later teardown call is removing a directory this invocation created.
-	// os.Mkdir's EEXIST is now the safety property, and the two offline "hub already exists" stat
-	// guards above are UX and ordering only, not the last word on collision safety: this call staying
-	// after both stat guards, rather than folding into either, is deliberate (see this function's doc
-	// comment for why moving it would either leak a residual hub or break the offline-before-network
-	// ordering). Being later, the exclusive create is also strictly more correct than the stat guards
-	// it follows — it closes a real time-of-check-to-time-of-use window that exists between a stat and
-	// a plain os.MkdirAll, in which a concurrent process can create the hub in between and have
-	// MkdirAll silently accept it.
+	// Create the hub directory exclusively, minting the token teardownHub needs to prove that a later teardown call is removing a directory this invocation created.
+	// os.Mkdir's EEXIST is the safety property.
+	// The "hub already exists" stat guards above are UX and ordering only, not the last word on collision safety.
+	// This call staying after them, rather than folding into one, is deliberate:
+	// see this function's doc comment for why moving it would either leak a residual hub or break the offline-before-network ordering.
+	// Being later, the exclusive create is also strictly more correct than the stat guards it follows.
+	// It closes a real time-of-check-to-time-of-use window between a stat and a plain os.MkdirAll, in which a concurrent process can create the hub and have MkdirAll silently accept it.
 	hubTok, err := createExclusiveDir(rec, hubPath)
 	if err != nil {
 		return CloneResult{}, err
@@ -619,24 +628,11 @@ func refuseUncheckedOutWarpClone(warpWorktreePath, warpURL string) error {
 // Either is enough — a hub whose Bolt checkout was hand-deleted is still recognisably a hub, and
 // so is one mid-clone whose board has not been materialised yet.
 // An absent path stays a silent no-op, so --reset remains idempotent.
-// rec is CloneHub's own recorder, already non-nil at both call sites (see this function's callers'
-// own comment) — threaded through to removePath.
+// rec is CloneHub's own recorder, threaded through to removePath.
 func resetHub(rec *Mutations, cwd, hubPath string) error {
-	info, statErr := os.Stat(hubPath)
-	if os.IsNotExist(statErr) {
-		return nil
-	}
-	if statErr != nil {
-		return fmt.Errorf("reset: inspect %s: %w", hubPath, statErr)
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("reset: refusing to remove %s: it is not a directory, so it is not a hub", hubPath)
-	}
-
-	if !looksLikeHub(hubPath) {
-		return fmt.Errorf(
-			"reset: refusing to remove %s: it has no %s and no %q sibling, so it is not a fabric hub — remove it yourself if that is really what you meant",
-			hubPath, BoltDirName, "*"+weftname.Suffix)
+	present, err := checkResetTarget(hubPath)
+	if err != nil || !present {
+		return err
 	}
 
 	req := pathRequest{
@@ -652,6 +648,28 @@ func resetHub(rec *Mutations, cwd, hubPath string) error {
 		return fmt.Errorf("reset: remove hub at %s: %w", hubPath, err)
 	}
 	return nil
+}
+
+// checkResetTarget refuses a --reset target that exists but is not a fabric hub, and reports whether the target is present.
+// It reads the filesystem only and removes nothing,
+// so a clone can run it before touching the network and remove the hub only once every argument has been checked against the remotes.
+func checkResetTarget(hubPath string) (present bool, err error) {
+	info, statErr := os.Stat(hubPath)
+	if os.IsNotExist(statErr) {
+		return false, nil
+	}
+	if statErr != nil {
+		return false, fmt.Errorf("reset: inspect %s: %w", hubPath, statErr)
+	}
+	if !info.IsDir() {
+		return false, fmt.Errorf("reset: refusing to remove %s: it is not a directory, so it is not a hub", hubPath)
+	}
+	if !looksLikeHub(hubPath) {
+		return false, fmt.Errorf(
+			"reset: refusing to remove %s: it has no %s and no %q sibling, so it is not a fabric hub — remove it yourself if that is really what you meant",
+			hubPath, BoltDirName, "*"+weftname.Suffix)
+	}
+	return true, nil
 }
 
 // looksLikeHub reports whether hubPath carries the structural marks of a fabric hub:
