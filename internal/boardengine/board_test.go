@@ -712,7 +712,7 @@ func TestFilterLabelValidation(t *testing.T) {
 	})
 }
 
-// TestSetRunStatus pins SetRunStatus's skip: an entry with no status is set, a done entry and an absent slug are left alone.
+// TestSetRunStatus pins SetRunStatus's skip: an entry with no status is set, and a done entry, an entry already carrying the status and an absent slug are left alone.
 func TestSetRunStatus(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -723,21 +723,34 @@ func TestSetRunStatus(t *testing.T) {
 		slug   string
 		want   *string
 		absent bool
+		// unchanged requires the call to write nothing, which shows in the rendered Home.md, removed before the call, staying absent: a write renders it again.
+		unchanged bool
 	}{
 		{name: "entry with no status is set", seed: map[string]any{"slug": "x", "labels": bugLabels}, slug: "x", want: strPtr("running · Webster")},
 		{name: "done entry is left done", seed: map[string]any{"slug": "x", "labels": bugLabels, "status": "done"}, slug: "x", want: strPtr("done")},
+		{name: "entry already carrying the status writes nothing", seed: map[string]any{"slug": "x", "labels": bugLabels, "status": "running · Webster"}, slug: "x", want: strPtr("running · Webster"), unchanged: true},
 		{name: "absent slug creates nothing", seed: map[string]any{"slug": "x", "labels": bugLabels}, slug: "ghost", absent: true},
 	}
 	for _, tc := range rows {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			b := boardengine.New(boardengine.Config{Path: t.TempDir(), Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels, SkipGit: true})
+			boardPath := t.TempDir()
+			b := boardengine.New(boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels, SkipGit: true})
 			if _, err := b.UpsertTask(tc.seed); err != nil {
 				t.Fatalf("seed: %v", err)
+			}
+			homePath := filepath.Join(boardPath, "Home.md")
+			if err := os.Remove(homePath); err != nil {
+				t.Fatalf("remove rendered Home.md: %v", err)
 			}
 
 			if err := b.SetRunStatus(tc.slug, "running · Webster"); err != nil {
 				t.Fatalf("SetRunStatus = %v; want nil", err)
+			}
+
+			_, statErr := os.Stat(homePath)
+			if tc.unchanged && statErr == nil {
+				t.Errorf("Home.md was rendered again; want the call to write nothing")
 			}
 
 			task, found, err := b.GetTask(tc.slug)

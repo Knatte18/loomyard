@@ -237,6 +237,8 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 	// every write this step makes then names the row itself.
 	// A named row not found is a hard error that changes nothing on disk.
 	// Shed never guesses, neither restarting from the first producer nor advancing to the nearest match, because both fabricate a status nobody confirmed.
+	// started records whether the status on disk names a row yet, which step 3b reads.
+	started := st.CurrentProducer != ""
 	st.CurrentProducer = RowAt(s.Producers, st.CurrentProducer)
 	def, ok := findProducer(s.Producers, st.CurrentProducer)
 	if !ok {
@@ -294,6 +296,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 			return StepResult{}, fmt.Errorf("shedengine: status file %q vanished mid-run; Shed refuses to create one", s.StatusPath)
 		}
 		// The status on disk still records the run's start as empty, so the resolved row is applied again.
+		started = st.CurrentProducer != ""
 		st.CurrentProducer = RowAt(s.Producers, st.CurrentProducer)
 	}
 
@@ -304,10 +307,14 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 	// error text goes with it: Activity.Wait is composed from it, so the pane would otherwise
 	// keep asserting a specific failure reason the loop is at that moment retrying past.
 	//
+	// A run at its start, whose status still names no row, takes the same write, the start write.
+	// Without it the status names no row until the first row's verdict.
+	// A first row that runs for minutes, such as a writer, would then show as no row at all and stay unseen by CommitStatus's readers.
+	//
 	// This is the only write in the loop that is not the record of a producer's verdict, and it
 	// is deliberately conditional: on the ordinary running-to-running path it never fires, so
 	// the loop's one-persist-per-iteration shape is unchanged for every step after the first.
-	if st.State != StateRunning {
+	if st.State != StateRunning || !started {
 		if err := s.persistMarked(true, st.CurrentProducer, StateRunning, "", st.History, false, false, "", "", "", "", false); err != nil {
 			return StepResult{}, err
 		}

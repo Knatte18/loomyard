@@ -41,7 +41,7 @@ func TestRecipeKeyedWiring(t *testing.T) {
 		wantFinished string
 	}{
 		{"Tapestry", shedrun.RecipeTapestry, false, true, "a tapestry run, a task driven from discussion to landing", ""},
-		{"Motif", shedrun.RecipeMotif, false, false, "a motif run, a task's Discussion", boardengine.StatusDraft},
+		{"Motif", shedrun.RecipeMotif, false, false, "a motif run, a task's Discussion", boardengine.StatusDiscussed},
 		{"Darn", shedrun.RecipeDarn, true, false, "its decision record through one build session", ""},
 		{"Pawl", shedrun.RecipePawl, false, false, "a beam's life", ""},
 		{"Sampler", shedrun.RecipeSampler, true, false, "made with the operator in one interactive session", ""},

@@ -1,5 +1,5 @@
 // names.go declares the batten recipe's row-name constants, the authority the recipe file's
-// row names are pinned against, and RecipeEngines, the derived engine set the cross-consumer
+// row names are pinned against, RowsBeforeRunShed, and RecipeEngines, the derived engine set the cross-consumer
 // coverage guard in internal/shedrecipe trusts.
 
 package battenrecipe
@@ -46,6 +46,23 @@ const (
 	// NameWorktreeTeardown is the row that tears the task worktree down.
 	NameWorktreeTeardown = "Worktree-Teardown"
 )
+
+// RowsBeforeRunShed returns the names of the batten recipe's rows listed before Run-Shed, in recipe order: the rows a task's run passes through before its inner run starts.
+// A recipe that fails to parse or holds no Run-Shed row panics, naming this package, as RecipeEngines does.
+func RowsBeforeRunShed() []string {
+	recipe, err := shedbuild.Parse(recipes.BattenRecipe)
+	if err != nil {
+		panic(fmt.Sprintf("battenrecipe: RowsBeforeRunShed: %v", err))
+	}
+	var rows []string
+	for _, row := range recipe.Producers {
+		if row.Name == NameRunShed {
+			return rows
+		}
+		rows = append(rows, row.Name)
+	}
+	panic("battenrecipe: RowsBeforeRunShed: the batten recipe holds no " + NameRunShed + " row")
+}
 
 // RecipeEngines parses recipes.BattenRecipe, collects each row's engine name, de-duplicates,
 // and returns the result sorted. It is the input the cross-consumer coverage guard in

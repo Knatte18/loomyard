@@ -131,6 +131,7 @@
 //
 // current_producer, state, pause_reason, error, activity and history are Shed-owned and rewritten on every persist.
 // An empty current_producer is a run at its start, the first row of the producer list: a seed writes it so, naming no row, and a step's read resolves it to that row before anything else reads it.
+// Before calling that row the step writes it as current_producer and tells CommitStatus, the start write, so the status names the row in flight from the run's first call on.
 // pause_reason is the why of a paused run: every write that records paused sets it, and every other write clears it.
 // A pause request reads "pause requested", a cancelled context "cancelled", a fired condition its condition reason, Goto "goto to <row>" and a Relaunch onto a row "re-launched onto <row>";
 // a Relaunch that moves nothing leaves the reason as it stands.

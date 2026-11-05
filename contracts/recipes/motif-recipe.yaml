@@ -10,12 +10,11 @@
 #
 # The top-level keys serve a motif run alone, since an expansion reads none of a block recipe's keys.
 # contract: loom takes the loom contract's record-only form, one record row and neither a build row nor a Finalize row, which needs no verify_source.
-# profile_recipe: tapestry gives a motif task tapestry's run-profile block and default profile.
+# A motif task takes the motif block of its run profile and the motif default profile, like any recipe.
 
 version: 1
 entry: Discussion-Write
 contract: loom
-profile_recipe: tapestry
 terminals:
   - Discussion-Bouncer
 

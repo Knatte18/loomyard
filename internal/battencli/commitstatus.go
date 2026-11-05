@@ -9,6 +9,10 @@
 // The push is spawned, not run: the seam starts fabric's detached push and returns.
 // The child logs a push rejected because a Board write advanced the branch at warn, and the next transition's spawn catches the branch up.
 //
+// Before anything else, a transition at a row listed before Run-Shed writes "<state> · <row>" on the task's board entry,
+// so the board follows batten from its claim at Worktree-Create until the inner run starts and writes the entry's status itself.
+// A failed board write only warns, since the board is the hub's overview, never the run's own bookkeeping.
+//
 // On top of loomcli's own dispositions, this seam adds one more, evaluated first: an on-disk
 // no-op-transition skip. Each `lym batten step` is a fresh process, so the skip's memory cannot live
 // in a closure variable -- it would start empty every call and the skip would work for `run` mode
@@ -27,7 +31,10 @@ package battencli
 import (
 	"fmt"
 	"os"
+	"slices"
 
+	"github.com/Knatte18/loomyard/internal/battenrecipe"
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -48,6 +55,9 @@ type commitStatusDeps struct {
 	Commit func(msg string) (committed bool, err error)
 	// Spawn starts the detached push of the fabric sibling worktree's unpushed commits.
 	Spawn func() error
+	// SetBoardStatus writes status onto the run's board entry, leaving an entry that is absent or already done untouched.
+	// Nil writes nothing.
+	SetBoardStatus func(status string) error
 }
 
 // spawnStatusPush starts the detached push of the status records at a location, held under a gate slug; a test swaps it for a recorder.
@@ -110,6 +120,7 @@ func commitRunRecords(deps commitStatusDeps, slug string) error {
 
 // battenCommitStatusDeps builds a commitStatusDeps over location and runID, filling each field from fabric:
 // MergeActive from fabricengine.MergeStateActive, Commit from fabricengine.CommitAnchoredPaths scoped to battenRunCommitPaths(location, runID), and Spawn from spawnStatusPush.
+// SetBoardStatus writes the hub board's entry runID names, a batten run's id being its task's slug.
 // The spawned push runs from the prime, so it is the prime's records side only, and it waits under the pair's pause entry with runID as its gate slug.
 func battenCommitStatusDeps(location *lymcwd.Location, runID string) commitStatusDeps {
 	return commitStatusDeps{
@@ -123,6 +134,13 @@ func battenCommitStatusDeps(location *lymcwd.Location, runID string) commitStatu
 		Spawn: func() error {
 			_, err := spawnStatusPush(location, runID)
 			return err
+		},
+		SetBoardStatus: func(status string) error {
+			board, err := boardengine.OpenHub(location.HubPath)
+			if err != nil {
+				return err
+			}
+			return board.SetRunStatus(runID, status)
 		},
 	}
 }
@@ -140,7 +158,7 @@ type commitStatusMarker struct {
 // newCommitStatusSeam builds the shedengine.Shed.CommitStatus closure from deps, wrapped in an
 // on-disk no-op-transition skip read from and written to markerPath (locked via markerLockPath).
 //
-// Evaluation order: the no-op-transition skip first -- when the incoming (producer, state) pair equals the marker's last-committed pair, return nil without committing or pushing --
+// Evaluation order: the board status write of a row before Run-Shed first, then the no-op-transition skip -- when the incoming (producer, state) pair equals the marker's last-committed pair, return nil without committing or pushing --
 // then the shared statuscommit core's three dispositions: skip-while-mid-merge, commit-hard-errors, spawn-warns.
 //
 // A missing or corrupt marker falls back to committing once rather than erroring:
@@ -160,7 +178,13 @@ func newCommitStatusSeam(deps commitStatusDeps, markerPath, markerLockPath strin
 			logger.Warn("battencli: status commit succeeded but the marker write failed; a future call may recommit", "producer", producer, "state", st, "error", err)
 		}
 	})
+	preRunRows := battenrecipe.RowsBeforeRunShed()
 	return func(producer, st string) error {
+		if deps.SetBoardStatus != nil && slices.Contains(preRunRows, producer) {
+			if err := deps.SetBoardStatus(boardengine.RunStatus(st, producer)); err != nil {
+				logger.Warn("battencli: board status write failed, next transition retries", "producer", producer, "state", st, "error", err)
+			}
+		}
 		marker, found, err := state.ReadJSON[commitStatusMarker](markerPath, markerLockPath)
 		if err != nil {
 			logger.Warn("battencli: status commit marker unreadable; treating it as absent", "producer", producer, "state", st, "error", err)

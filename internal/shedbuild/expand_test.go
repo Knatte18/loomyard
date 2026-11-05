@@ -153,7 +153,7 @@ func TestExpand(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Parse(parent) = _, %v; want nil", err)
 		}
-		foreign := strings.Replace(sub, "terminals: [Post]", "terminals: [NotMine]\ncontract: loom\nverify_source: plan\namendment_target: S1\nprofile_recipe: sub", 1)
+		foreign := strings.Replace(sub, "terminals: [Post]", "terminals: [NotMine]\ncontract: loom\nverify_source: plan\namendment_target: S1", 1)
 		got, err := Expand(parent, mapResolver(map[string]string{"sub": foreign}))
 		if err != nil {
 			t.Fatalf("Expand(...) = _, %v; want nil", err)
@@ -161,8 +161,8 @@ func TestExpand(t *testing.T) {
 		if !reflect.DeepEqual(got.Terminals, []string{"Post"}) {
 			t.Errorf("Expand(...).Terminals = %v; want the parent's [Post]", got.Terminals)
 		}
-		if got.Contract != "" || got.VerifySource != "tree_scope" || got.AmendmentTarget != "Pre" || got.ProfileRecipe != "" {
-			t.Errorf("Expand(...) contract, verify_source, amendment_target, profile_recipe = %q, %q, %q, %q; want the parent's \"\", \"tree_scope\", \"Pre\", \"\"", got.Contract, got.VerifySource, got.AmendmentTarget, got.ProfileRecipe)
+		if got.Contract != "" || got.VerifySource != "tree_scope" || got.AmendmentTarget != "Pre" {
+			t.Errorf("Expand(...) contract, verify_source, amendment_target = %q, %q, %q; want the parent's \"\", \"tree_scope\", \"Pre\"", got.Contract, got.VerifySource, got.AmendmentTarget)
 		}
 	})
 

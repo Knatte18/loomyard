@@ -10,9 +10,11 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -96,6 +98,97 @@ func TestNewCommitStatusSeam(t *testing.T) {
 				t.Errorf("Commit msg = %q; want %q", msg, want)
 			}
 		})
+	}
+}
+
+// TestNewCommitStatusSeam_WritesBoardStatusBeforeRunShed pins the seam's board write.
+// A transition at a row before Run-Shed writes "<state> · <row>" on the entry.
+// A transition at Run-Shed or a later row writes nothing, since the inner run writes the entry's status from its start on.
+func TestNewCommitStatusSeam_WritesBoardStatusBeforeRunShed(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	markerPath := filepath.Join(t.TempDir(), "last-commit")
+	var written []string
+	seam := newCommitStatusSeam(commitStatusDeps{
+		MergeActive:    func() (bool, error) { return false, nil },
+		Commit:         func(string) (bool, error) { return true, nil },
+		Spawn:          func() error { return nil },
+		SetBoardStatus: func(status string) error { written = append(written, status); return nil },
+	}, markerPath, markerPath+".lock")
+
+	for _, call := range []struct{ producer, state string }{
+		{"Worktree-Create", "running"},
+		{"Seed-Child", "blocked"},
+		{"Open-IDE", "running"},
+		{"Run-Shed", "running"},
+		{"Land", "running"},
+		{"Worktree-Teardown", "done"},
+	} {
+		if err := seam(call.producer, call.state); err != nil {
+			t.Fatalf("seam(%q, %q) = %v; want nil", call.producer, call.state, err)
+		}
+	}
+
+	want := []string{"running · Worktree-Create", "blocked · Seed-Child", "running · Open-IDE"}
+	if !reflect.DeepEqual(written, want) {
+		t.Errorf("board statuses written = %q; want %q", written, want)
+	}
+}
+
+// TestNewCommitStatusSeam_BoardWriteFailureDoesNotStopTheCommit pins that a failing board write at a row before Run-Shed is only warned about:
+// the seam returns nil and still commits and spawns the push.
+func TestNewCommitStatusSeam_BoardWriteFailureDoesNotStopTheCommit(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	markerPath := filepath.Join(t.TempDir(), "last-commit")
+	var commits, spawns int
+	seam := newCommitStatusSeam(commitStatusDeps{
+		MergeActive:    func() (bool, error) { return false, nil },
+		Commit:         func(string) (bool, error) { commits++; return true, nil },
+		Spawn:          func() error { spawns++; return nil },
+		SetBoardStatus: func(string) error { return errors.New("board unreadable") },
+	}, markerPath, markerPath+".lock")
+
+	if err := seam("Worktree-Create", "running"); err != nil {
+		t.Fatalf("seam(Worktree-Create, running) = %v; want nil", err)
+	}
+
+	if commits != 1 || spawns != 1 {
+		t.Errorf("commits = %d, spawns = %d; want 1 and 1", commits, spawns)
+	}
+}
+
+// TestBattenCommitStatusDeps_SetBoardStatusWritesTheRunsEntry pins that the real SetBoardStatus writes the status onto the board entry whose slug is the run id.
+// It sets the board skip variables, which are process-global, so it does not call t.Parallel.
+func TestBattenCommitStatusDeps_SetBoardStatusWritesTheRunsEntry(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Setenv("BOARD_SKIP_GIT", "1")
+	t.Setenv("BOARD_SKIP_PUSH", "1")
+
+	const slug = "some-slug"
+	hub := boardkit.HubWithBoardConfig(t)
+	board, err := boardengine.OpenHub(hub)
+	if err != nil {
+		t.Fatalf("OpenHub: %v", err)
+	}
+	if _, err := board.UpsertTask(map[string]any{"slug": slug, "kind": "task", "labels": []string{"bug"}}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	location := &lymcwd.Location{HubPath: hub, WorktreeName: "code", AnchorRel: "."}
+
+	status := boardengine.RunStatus("running", "Worktree-Create")
+	if err := battenCommitStatusDeps(location, slug).SetBoardStatus(status); err != nil {
+		t.Fatalf("SetBoardStatus(%q) = %v; want nil", status, err)
+	}
+
+	task, found, err := board.GetTask(slug)
+	if err != nil || !found {
+		t.Fatalf("GetTask(%q) = %v, %v; want the entry", slug, found, err)
+	}
+	if task.Status == nil || *task.Status != status {
+		t.Errorf("board status = %v; want %q", task.Status, status)
 	}
 }
 

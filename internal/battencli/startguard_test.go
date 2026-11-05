@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/runproc"
@@ -50,9 +51,9 @@ func TestStartGuard_Refuse(t *testing.T) {
 		// project and beam are what the Project seam reads; marked and unreadable describe the PairMark seam.
 		project, beam, marked, unreadable bool
 		projectErr                        error
-		// draft is what the Draft seam reads: a task whose board status is draft.
-		draft    bool
-		draftErr error
+		// unreleased is what the Unreleased seam reads: the board status of a task no run starts, empty for a released entry.
+		unreleased    string
+		unreleasedErr error
 		// noSeams leaves every seam nil.
 		noSeams bool
 		// wantExact is the refusal's whole text, "{verb}" standing for the verb under test.
@@ -92,7 +93,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 			wantErrors: []string{"a.txt, dir/b.txt", "commit or revert", `run "lym batten {verb} some-slug" again`},
 		},
 		{
-			// A released task reads a nil status, so the Draft seam reads false.
+			// A released task reads a nil status, so the Unreleased seam reads empty.
 			name:  "CleanStartPasses",
 			verbs: []string{"run", "step"},
 		},
@@ -156,23 +157,29 @@ func TestStartGuard_Refuse(t *testing.T) {
 			wantErrors: []string{"some-slug left a pair from an earlier run (task worktree)", `run "lym batten cancel some-slug --remove" from the prime`, `then "lym board set-status '{"slug":"some-slug","status":null}'" and "lym batten {verb} some-slug"`},
 		},
 		{
-			name:      "DraftTaskRefusesAFreshStartNamingTheRelease",
-			verbs:     []string{"run", "step"},
-			draft:     true,
-			wantExact: "some-slug is a draft task, which no run starts; way forward: run `lym board set-status '{\"slug\":\"some-slug\",\"status\":null}'` to release it, then `lym batten {verb} some-slug`",
-		},
-		{
-			name:     "DraftTaskWithARunStatusFileResumes",
-			verbs:    []string{"run", "step"},
-			draft:    true,
-			found:    true,
-			producer: battenrecipe.NameRunShed,
-		},
-		{
-			name:       "DraftProbeErrorRefusesNamingTheProbeAndTheRerun",
+			name:       "DraftTaskRefusesAFreshStartNamingTheRelease",
 			verbs:      []string{"run", "step"},
-			draftErr:   errors.New("board unreadable"),
-			wantErrors: []string{"the board entry's status", "board unreadable", `run "lym batten {verb} some-slug" again`},
+			unreleased: boardengine.StatusDraft,
+			wantExact:  "some-slug is a draft task, which no run starts; way forward: run `lym board set-status '{\"slug\":\"some-slug\",\"status\":null}'` to release it, then `lym batten {verb} some-slug`",
+		},
+		{
+			name:       "DiscussedTaskRefusesAFreshStartNamingTheRelease",
+			verbs:      []string{"run", "step"},
+			unreleased: boardengine.StatusDiscussed,
+			wantExact:  "some-slug is a discussed task, which no run starts; way forward: run `lym board set-status '{\"slug\":\"some-slug\",\"status\":null}'` to release it, then `lym batten {verb} some-slug`",
+		},
+		{
+			name:       "UnreleasedTaskWithARunStatusFileResumes",
+			verbs:      []string{"run", "step"},
+			unreleased: boardengine.StatusDiscussed,
+			found:      true,
+			producer:   battenrecipe.NameRunShed,
+		},
+		{
+			name:          "UnreleasedProbeErrorRefusesNamingTheProbeAndTheRerun",
+			verbs:         []string{"run", "step"},
+			unreleasedErr: errors.New("board unreadable"),
+			wantErrors:    []string{"the board entry's status", "board unreadable", `run "lym batten {verb} some-slug" again`},
 		},
 		{
 			name:       "LeftRecordsWorktreeRefusesAStart",
@@ -295,11 +302,11 @@ func TestStartGuard_Refuse(t *testing.T) {
 			wantErrors: []string{"some-slug left a pair from an earlier run (records worktree)"},
 		},
 		{
-			name:    "BeamProjectWhoseStatusIsDraftPassesWhereADraftTaskIsRefused",
-			verbs:   []string{"run", "step"},
-			project: true,
-			beam:    true,
-			draft:   true,
+			name:       "BeamProjectWhoseStatusIsDraftPassesWhereADraftTaskIsRefused",
+			verbs:      []string{"run", "step"},
+			project:    true,
+			beam:       true,
+			unreleased: boardengine.StatusDraft,
 		},
 		{
 			name:       "UnmarkedBeamPairIsJudgedAsAFreshStart",
@@ -369,9 +376,9 @@ func TestStartGuard_Refuse(t *testing.T) {
 						ReachedParent: func(shedengine.Status, bool) (bool, error) {
 							return tt.reached, tt.reachedErr
 						},
-						Project:  func() (bool, bool, error) { return tt.project, tt.beam, tt.projectErr },
-						PairMark: func() (bool, bool, error) { return tt.marked, !tt.unreadable, nil },
-						Draft:    func() (bool, error) { return tt.draft, tt.draftErr },
+						Project:    func() (bool, bool, error) { return tt.project, tt.beam, tt.projectErr },
+						PairMark:   func() (bool, bool, error) { return tt.marked, !tt.unreadable, nil },
+						Unreleased: func() (string, error) { return tt.unreleased, tt.unreleasedErr },
 					}
 				}
 

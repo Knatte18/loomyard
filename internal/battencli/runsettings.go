@@ -9,12 +9,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
-	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/runprofile"
 )
 
 // prepareRunSettings returns the local-layer document of each module a board task's run settings and its run profile's block for the task's recipe, the task's keys laid over the profile's.
-// The recipe whose block and default profile apply is the one loomrecipe.ProfileRecipe resolves the task's recipe name to.
 // The profile is the task's own, else that recipe's default from the run profiles under dirs; with neither, the task's settings stand alone.
 // An unknown profile, a profile holding no block for the recipe, a default held only under the recipe's former name, a profiles file that does not decode, or a refusal of the profile's or the task's settings, wraps battenshed.ErrInvalidRunSettings;
 // a profiles file that cannot be read is returned as it is.
@@ -26,11 +24,7 @@ func prepareRunSettings(dirs configengine.Dirs, settings battenshed.RunSettings)
 	if err != nil {
 		return nil, err
 	}
-	// A recipe that selects no embedded recipe keeps the name the task gave it, so the missing profile or block refuses as before.
 	recipe := settings.Recipe
-	if profileRecipe, resolveErr := loomrecipe.ProfileRecipe(recipe); resolveErr == nil {
-		recipe = profileRecipe
-	}
 	name := settings.Profile
 	if name == "" {
 		name, err = profiles.Default(recipe)

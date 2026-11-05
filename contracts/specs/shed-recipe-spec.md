@@ -88,7 +88,6 @@ Its production import set is one-way: it imports `internal/shedrecipe`, `interna
 It requires a `version` (currently only `1` is accepted), a told `entry` producer name, a told `terminals` list, and a `producers` list.
 It may also set an optional top-level `amendment_target`, the name of the row a plan amendment routes to; `Parse` decodes it without checking that it names a row, since routing is `shedengine`'s and `shedcheck`'s.
 It may also set a top-level `contract`, empty or `loom`, and a top-level `verify_source`, empty, `plan` or `tree_scope`; `Parse` refuses any other value of either, naming the key, the legal values and the way forward.
-It may also set a top-level `profile_recipe`, the name of the recipe whose run-profile block a task takes; empty means the recipe's own name, and `Parse` decodes it without checking that it names a recipe.
 A row is an engine row or a block row.
 An engine row carries `name`, `engine`, `config`, `on_done`, `on_stuck`, `on_reroute`, `segment`, `max_bounces` and `entry_gate` — the same field set `shedengine.ProducerDef` itself carries, `segment` included per the reversal recorded above.
 A block row carries only `name`, `block`, `block_gate` and `on_done`, and no engine: `block` names the recipe to run inline, `block_gate` the shipped check that gates it.
@@ -106,7 +105,7 @@ A block row carries only `name`, `block`, `block_gate` and `on_done`, and no eng
 The block row becomes an `engine: Block` row whose `on_done` is the sub-recipe's `entry` and whose skip target is the block's exit; the exit is the block row's own `on_done`, or, when that is empty, the exit of the block enclosing it, and an outermost block row must set `on_done`.
 Every inlined row's empty `on_done`, and an inlined block row's empty skip target, become the exit of the innermost block enclosing the row.
 Each inlined row carries its block path, the enclosing block rows' names joined by `/`, outermost first.
-A sub-recipe's `terminals`, `contract`, `verify_source`, `amendment_target` and `profile_recipe` are not read, since those belong to the run, so a recipe that runs alone may also be a block.
+A sub-recipe's `terminals`, `contract`, `verify_source` and `amendment_target` are not read, since those belong to the run, so a recipe that runs alone may also be a block.
 A recipe with no block row is returned unchanged.
 
 **Strictness.** Unknown keys and duplicate keys are errors at both document level and row level, and every message the decoder produces keeps its own yaml line number.

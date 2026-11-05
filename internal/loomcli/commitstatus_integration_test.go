@@ -13,7 +13,7 @@ import (
 )
 
 // TestWiredCommitStatus_WritesFinishedStatus drives the seam each of wireLightweight and wire installs through a run's last transition and asserts the board status it leaves:
-// a recipe with no Finalize row releases the entry as draft, and one with a Finalize row leaves the status of the last running transition.
+// a recipe with no Finalize row marks the entry discussed, and one with a Finalize row leaves the status of the last running transition.
 // It is serial because it sets the board skip variable, which is process-global.
 func TestWiredCommitStatus_WritesFinishedStatus(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -40,7 +40,7 @@ func TestWiredCommitStatus_WritesFinishedStatus(t *testing.T) {
 		recipe string
 		want   string
 	}{
-		{"FinalizeLessRunReleasesTheEntryAsDraft", "motifrun", shedrun.RecipeMotif, boardengine.StatusDraft},
+		{"FinalizeLessRunMarksTheEntryDiscussed", "motifrun", shedrun.RecipeMotif, boardengine.StatusDiscussed},
 		{"FinalizingRunLeavesTheLastRunningStatus", "tapestryrun", shedrun.RecipeTapestry, running},
 	}
 	for _, w := range wirings {

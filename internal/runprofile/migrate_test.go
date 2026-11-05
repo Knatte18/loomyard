@@ -117,19 +117,19 @@ func TestLackingTemplateBlocks(t *testing.T) {
 	}{
 		{name: "the template itself lacks nothing", existing: runprofile.ConfigTemplate()},
 		{
-			name:     "a starting profile seeded before sampler lists its sampler block",
+			name:     "a starting profile seeded before motif and sampler lists their blocks",
 			existing: "light:\n  tapestry:\n    loom: {plan_max_bounces: 1}\n  darn:\n    loom: {code_max_bounces: 1}\n  pawl:\n    loom: {code_max_bounces: 1}\n",
-			want:     []string{"light.sampler"},
+			want:     []string{"light.motif", "light.sampler"},
 		},
 		{
 			name:     "defaults lacking a template recipe list it",
 			existing: "defaults: {darn: docs}\ndocs:\n  darn:\n    darn: {writer: opus}\n",
-			want:     []string{"defaults.pawl", "defaults.tapestry"},
+			want:     []string{"defaults.motif", "defaults.pawl", "defaults.tapestry"},
 		},
 		{
 			name:     "a former block differing from the current one is listed and an equal one is not",
 			existing: "light:\n  loom:\n    loom: {plan_max_bounces: 7}\n  tapestry:\n    loom: {plan_max_bounces: 1}\n  darn:\n    loom: {code_max_bounces: 1}\n  pawl:\n    loom: {code_max_bounces: 1}\n  sampler:\n    loom: {code_max_bounces: 1}\nsolid:\n  loom:\n    loom: {plan_max_bounces: 2}\n  tapestry:\n    loom: {plan_max_bounces: 2}\n  darn:\n    loom: {code_max_bounces: 1}\n  pawl:\n    loom: {code_max_bounces: 1}\n  sampler:\n    loom: {code_max_bounces: 1}\n",
-			want:     []string{"light.loom: differs from light.tapestry"},
+			want:     []string{"light.loom: differs from light.tapestry", "light.motif", "solid.motif"},
 		},
 		{name: "a profile the template lacks lists nothing", existing: "broad:\n  darn:\n    loom: {code_max_bounces: 2}\n"},
 		{name: "an empty document lists nothing", existing: ""},

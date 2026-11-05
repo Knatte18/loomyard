@@ -12,16 +12,13 @@
 // A recipe holding neither a build row nor a Finalize row is the contract's record-only form, which lands nothing and needs the record row alone.
 // The engine sets come from shedrecipe, so a new loom recipe needs no change to the check.
 //
-// # Block rows and profile_recipe
+// # Block rows
 //
 // A row with block or block_gate set is a block row: it names a recipe to run inline and the check that gates it.
 // A block row carries only name, block, block_gate and on_done, and no engine.
 // Parse refuses a block row that also sets engine, config, on_stuck, on_reroute, segment, max_bounces or entry_gate, one missing block or block_gate, and a hand-written row whose engine is shedrecipe.EngineBlock, each naming the row and the way forward.
 // A block row's on_done may be empty at Parse; Expand judges it.
 // Row.SkipTo and Row.BlockPath sit outside the format and are set only by expansion, so a file that writes either is refused as an unknown key.
-//
-// A recipe may set a top-level profile_recipe naming the recipe whose run-profile block a task takes; empty means the recipe's own name.
-// Parse decodes it into Recipe.ProfileRecipe without checking that it names a recipe.
 //
 // # Blocks
 //
@@ -34,7 +31,7 @@
 // A block's exit is its row's on_done as the recipe file sets it, or, when that is empty, the exit of the block enclosing it.
 // Every inlined row's empty on_done, and an inlined block row's empty skip target, become the exit of the innermost block enclosing the row.
 // Each inlined row's BlockPath is the names of the block rows enclosing it, outermost first, joined by "/"; the outermost block row and every row outside a block carry none.
-// A sub-recipe's terminals and its top-level keys, contract, verify_source, amendment_target and profile_recipe, are not read; the parent's stay the run's, so a recipe that runs alone may also be a block.
+// A sub-recipe's terminals and its top-level keys, contract, verify_source and amendment_target, are not read; the parent's stay the run's, so a recipe that runs alone may also be a block.
 //
 // Expand refuses, naming the block row and a way forward: a resolver that refuses the recipe, a nil resolver meeting a block row, a recipe that includes itself directly or through its own blocks, an inlined row named like a row outside its block, an inlined segment used outside the block, an inlined on_done, on_stuck or on_reroute that names no row of its recipe, an outermost block row with an empty on_done, and a block row whose on_done lies inside its own block.
 // The same recipe in two blocks of one parent is refused by the row-name check.

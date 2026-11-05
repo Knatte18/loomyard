@@ -59,7 +59,7 @@
 // The claim is one Bolt commit that also records this machine as the entry's owner, and an absent or done entry is skipped.
 // A failed owner write or push refuses the row, and so does an entry another machine owns, which the claim never takes.
 // The claim stays when the row then fails, and the stopped run resumes with the same verb.
-// No other row writes a board status; loom's transitions are the only later writer.
+// Each later transition at a row before Run-Shed writes "<state> · <row>" on the entry through the status seam, and from Run-Shed on the inner run's own transitions are the only writer.
 // A pair is forked from the entry's parent beam, or from the prime outside a beam; a beam project's pair is forked unmarked at the anchor the seed records, since the pawl run's Beam-Up marks it.
 // A member's pair is judged against its beam's hold again once it is made, and when the row finds it already complete: a beam whose run holds its entry reads as held, so the row removes the member's pair and refuses, the member keeping its claim.
 //

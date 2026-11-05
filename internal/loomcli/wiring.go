@@ -215,12 +215,13 @@ func boardStatus(producer, state, finished string) (string, bool) {
 
 // finishedBoardStatus returns the board status a finished run of recipe writes.
 // A recipe with a Finalize row writes none, since its landing marks the entry done.
-// One with none lands nothing and writes the draft status, which releases the entry from its run lock without dobby starting it again.
+// One with none lands nothing, its run ending at the Discussion approval, and writes the discussed status:
+// that releases the entry from its run lock without dobby starting it again, and shows it on the board as finished.
 func finishedBoardStatus(recipe string) string {
 	if recipeHasEngine(recipe, shedrecipe.LoomFinalizeEngine) {
 		return ""
 	}
-	return boardengine.StatusDraft
+	return boardengine.StatusDiscussed
 }
 
 // commitStatusDeps returns loomCommitStatusDeps over location and the run, with the finished status of the run's recipe.

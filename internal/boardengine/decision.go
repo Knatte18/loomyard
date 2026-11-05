@@ -16,6 +16,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
+// StatusDiscussed is the status a finished Discussion-only run leaves on its task: the Discussion was approved, its decision record stored, and no code built.
+// It is no run status and no draft, so nothing starts the task until it is released.
+const StatusDiscussed = "discussed"
+
+// isDiscussedStatus reports whether t carries StatusDiscussed.
+func isDiscussedStatus(t Task) bool {
+	return t.Status != nil && *t.Status == StatusDiscussed
+}
+
 // ErrRecordEntryDone is the error StoreDecisionRecord wraps when the entry is done.
 var ErrRecordEntryDone = errors.New("a landed entry keeps the decision record it last stored")
 

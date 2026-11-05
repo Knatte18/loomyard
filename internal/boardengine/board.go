@@ -190,11 +190,11 @@ func (b *Board) SetStatus(idOrSlug any, status *string) error {
 	return err
 }
 
-// SetRunStatus sets status on the entry slug under the write lock, and writes nothing when the entry is absent or done.
+// SetRunStatus sets status on the entry slug under the write lock, and writes nothing when the entry is absent, done or already carries status.
 func (b *Board) SetRunStatus(slug, status string) error {
 	_, err := b.boardCriticalSection(func(store *Store) (any, error) {
 		task, found := store.GetTask(slug)
-		if !found || isDone(task) {
+		if !found || isDone(task) || (task.Status != nil && *task.Status == status) {
 			return noWrite{}, nil
 		}
 		return nil, store.SetStatus(slug, &status)

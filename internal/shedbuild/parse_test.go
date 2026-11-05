@@ -113,27 +113,6 @@ producers:
 			},
 		},
 		{
-			name: "profile_recipe decodes into the field",
-			yaml: `
-version: 1
-entry: start
-profile_recipe: tapestry
-terminals: [done]
-producers:
-  - name: row1
-    engine: bouncer
-`,
-			wantRecipe: &Recipe{
-				Version:       1,
-				Entry:         "start",
-				ProfileRecipe: "tapestry",
-				Terminals:     []string{"done"},
-				Producers: []Row{
-					{Name: "row1", Engine: "bouncer"},
-				},
-			},
-		},
-		{
 			name:       "a block row setting engine is refused naming the key and the way forward",
 			yaml:       blockRowYAML("engine: bouncer"),
 			wantErrSub: `shedbuild: producer 0 "Motif": a block row carries only name, block, block_gate and on_done, and sets engine; way forward: remove engine, since the block's rows carry their own`,
@@ -669,9 +648,6 @@ producers:
 			}
 			if !recipeEqual(got, *tt.wantRecipe) {
 				t.Errorf("Parse(%q) = %+v; want %+v", tt.name, got, *tt.wantRecipe)
-			}
-			if got.ProfileRecipe != tt.wantRecipe.ProfileRecipe {
-				t.Errorf("Parse(%q) ProfileRecipe = %q; want %q", tt.name, got.ProfileRecipe, tt.wantRecipe.ProfileRecipe)
 			}
 			for i, row := range got.Producers {
 				if want := tt.wantRecipe.Producers[i]; row.Block != want.Block || row.BlockGate != want.BlockGate {

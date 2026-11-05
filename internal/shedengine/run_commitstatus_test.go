@@ -10,6 +10,7 @@ package shedengine
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -277,6 +278,104 @@ func TestRun_CommitStatusReceivesTransitionProducerAndState(t *testing.T) {
 		if calls[i] != w {
 			t.Errorf("calls[%d] = %+v; want %+v", i, calls[i], w)
 		}
+	}
+}
+
+// TestStep_StartWriteNamesTheFirstRow pins the start write.
+// A step over a status that names no row writes the first row as current_producer, still running with no history.
+// It tells CommitStatus before that row's producer is called, so a reader during the first call sees the row in flight.
+func TestStep_StartWriteNamesTheFirstRow(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+	var calls []commitStatusCall
+	shed.CommitStatus = recordingCommitStatus(&calls)
+	var duringCall Status
+	a := &funcProducer{fn: func(ctx context.Context) (Outcome, OutputPointer, error) {
+		duringCall = readStatus(t, statusPath, statusLockPath)
+		return Done, OutputPointer{}, nil
+	}}
+	shed.Producers = []ProducerDef{
+		{Name: "A", Producer: a, OnDone: "B"},
+		{Name: "B", Producer: fixedOutcomeProducer(Done, "")},
+	}
+	seedStatus(t, statusPath, statusLockPath, commonSeed(""))
+
+	if _, err := shed.Step(context.Background()); err != nil {
+		t.Fatalf("Step(...) = _, %v; want nil error", err)
+	}
+
+	if duringCall.CurrentProducer != "A" || duringCall.State != StateRunning || len(duringCall.History) != 0 {
+		t.Errorf("status during A's call = producer %q, state %q, history %v; want A, running, none", duringCall.CurrentProducer, duringCall.State, duringCall.History)
+	}
+	want := []commitStatusCall{
+		{producer: "A", state: string(StateRunning)},
+		{producer: "B", state: string(StateRunning)},
+	}
+	if len(calls) != len(want) || calls[0] != want[0] || calls[1] != want[1] {
+		t.Errorf("CommitStatus calls = %+v; want %+v", calls, want)
+	}
+}
+
+// TestStep_StartWriteWithAnEntryGatedFirstRow pins the start write over a first row that is entry-gated.
+// A holding gate keeps the first row, and the start write names it once before its call.
+// A skipping gate routes to the second row, whose call sees its own name, and the first row is never told to CommitStatus.
+func TestStep_StartWriteWithAnEntryGatedFirstRow(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		holds bool
+		// wantCalled is the one row whose producer is called by the step.
+		wantCalled string
+		wantCalls  []commitStatusCall
+	}{
+		{
+			name: "HoldingGateNamesTheFirstRowOnce", holds: true, wantCalled: "A",
+			wantCalls: []commitStatusCall{{producer: "A", state: string(StateRunning)}, {producer: "B", state: string(StateRunning)}},
+		},
+		{
+			name: "SkippingGateNamesTheSecondRowOnly", holds: false, wantCalled: "B",
+			wantCalls: []commitStatusCall{{producer: "B", state: string(StateRunning)}, {producer: "C", state: string(StateRunning)}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			shed, statusPath, _, statusLockPath := newTestShed(t)
+			var calls []commitStatusCall
+			shed.CommitStatus = recordingCommitStatus(&calls)
+			during := map[string]Status{}
+			recording := func(name string) *funcProducer {
+				return &funcProducer{fn: func(ctx context.Context) (Outcome, OutputPointer, error) {
+					during[name] = readStatus(t, statusPath, statusLockPath)
+					return Done, OutputPointer{}, nil
+				}}
+			}
+			gate := &fakeGate{holds: tt.holds, reason: "gate is off"}
+			shed.Producers = []ProducerDef{
+				{Name: "A", Producer: recording("A"), OnDone: "B", EntryGate: gate.evaluate},
+				{Name: "B", Producer: recording("B"), OnDone: "C"},
+				{Name: "C", Producer: fixedOutcomeProducer(Done, "")},
+			}
+			seedStatus(t, statusPath, statusLockPath, commonSeed(""))
+
+			if _, err := shed.Step(context.Background()); err != nil {
+				t.Fatalf("Step(...) = _, %v; want nil error", err)
+			}
+
+			if len(during) != 1 {
+				t.Fatalf("producers called = %v; want only %q", during, tt.wantCalled)
+			}
+			called, ok := during[tt.wantCalled]
+			if !ok || called.CurrentProducer != tt.wantCalled || called.State != StateRunning {
+				t.Errorf("status during %s's call = producer %q, state %q; want %s, running", tt.wantCalled, called.CurrentProducer, called.State, tt.wantCalled)
+			}
+			if !slices.Equal(calls, tt.wantCalls) {
+				t.Errorf("CommitStatus calls = %+v; want %+v", calls, tt.wantCalls)
+			}
+		})
 	}
 }
 

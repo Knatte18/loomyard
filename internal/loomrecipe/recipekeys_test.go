@@ -51,32 +51,29 @@ func TestRecipeKeys(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name              string
-		recipe            string
-		wantLoom          bool
-		wantRecord        string
-		wantVerify        string
-		wantProfileRecipe string
-		wantEngines       map[string]bool
-		wantEngineRow     map[string]string
-		wantRetired       map[string]string
-		wantRefusals      bool
+		name          string
+		recipe        string
+		wantLoom      bool
+		wantRecord    string
+		wantVerify    string
+		wantEngines   map[string]bool
+		wantEngineRow map[string]string
+		wantRetired   map[string]string
+		wantRefusals  bool
 	}{
 		{
-			name:              "MotifRunsAloneTakingTapestrysProfile",
-			recipe:            shedrun.RecipeMotif,
-			wantLoom:          true,
-			wantRecord:        "DiscussionWrite",
-			wantProfileRecipe: shedrun.RecipeTapestry,
-			wantEngines:       map[string]bool{"DiscussionWrite": true, "Block": false, "Implementer": false, "Finalize": false},
+			name:        "MotifRunsAlone",
+			recipe:      shedrun.RecipeMotif,
+			wantLoom:    true,
+			wantRecord:  "DiscussionWrite",
+			wantEngines: map[string]bool{"DiscussionWrite": true, "Block": false, "Implementer": false, "Finalize": false},
 		},
 		{
-			name:              "Tapestry",
-			recipe:            shedrun.RecipeTapestry,
-			wantLoom:          true,
-			wantRecord:        "DiscussionWrite",
-			wantVerify:        "plan",
-			wantProfileRecipe: shedrun.RecipeTapestry,
+			name:       "Tapestry",
+			recipe:     shedrun.RecipeTapestry,
+			wantLoom:   true,
+			wantRecord: "DiscussionWrite",
+			wantVerify: "plan",
 			wantEngines: map[string]bool{
 				"Block":       true,
 				"Implementer": true,
@@ -91,12 +88,11 @@ func TestRecipeKeys(t *testing.T) {
 			},
 		},
 		{
-			name:              "EmptyReadsAsTapestry",
-			recipe:            "",
-			wantLoom:          true,
-			wantRecord:        "DiscussionWrite",
-			wantVerify:        "plan",
-			wantProfileRecipe: shedrun.RecipeTapestry,
+			name:       "EmptyReadsAsTapestry",
+			recipe:     "",
+			wantLoom:   true,
+			wantRecord: "DiscussionWrite",
+			wantVerify: "plan",
 			wantEngines: map[string]bool{
 				"Implementer": true,
 			},
@@ -107,38 +103,34 @@ func TestRecipeKeys(t *testing.T) {
 			},
 		},
 		{
-			name:              "Darn",
-			recipe:            shedrun.RecipeDarn,
-			wantLoom:          true,
-			wantRecord:        "RecordWrite",
-			wantVerify:        "tree_scope",
-			wantProfileRecipe: shedrun.RecipeDarn,
-			wantEngines:       map[string]bool{"DarnWrite": true, "RecordWrite": true, "PlanWrite": false},
-			wantRetired:       map[string]string{"Darn": "Darn-Write"},
+			name:        "Darn",
+			recipe:      shedrun.RecipeDarn,
+			wantLoom:    true,
+			wantRecord:  "RecordWrite",
+			wantVerify:  "tree_scope",
+			wantEngines: map[string]bool{"DarnWrite": true, "RecordWrite": true, "PlanWrite": false},
+			wantRetired: map[string]string{"Darn": "Darn-Write"},
 		},
 		{
-			name:              "Pawl",
-			recipe:            shedrun.RecipePawl,
-			wantLoom:          true,
-			wantRecord:        "RecordWrite",
-			wantVerify:        "plan",
-			wantProfileRecipe: shedrun.RecipePawl,
-			wantEngines:       map[string]bool{"BeamAwait": true, "RecordWrite": true, "Bouncer": false, "Implementer": false},
+			name:        "Pawl",
+			recipe:      shedrun.RecipePawl,
+			wantLoom:    true,
+			wantRecord:  "RecordWrite",
+			wantVerify:  "plan",
+			wantEngines: map[string]bool{"BeamAwait": true, "RecordWrite": true, "Bouncer": false, "Implementer": false},
 		},
 		{
-			name:              "Sampler",
-			recipe:            shedrun.RecipeSampler,
-			wantLoom:          true,
-			wantRecord:        "RecordWrite",
-			wantVerify:        "tree_scope",
-			wantProfileRecipe: shedrun.RecipeSampler,
-			wantEngines:       map[string]bool{"SamplerSession": true, "RecordWrite": true, "DarnWrite": false},
+			name:        "Sampler",
+			recipe:      shedrun.RecipeSampler,
+			wantLoom:    true,
+			wantRecord:  "RecordWrite",
+			wantVerify:  "tree_scope",
+			wantEngines: map[string]bool{"SamplerSession": true, "RecordWrite": true, "DarnWrite": false},
 		},
 		{
-			name:              "BattenIsNeither",
-			recipe:            shedrun.RecipeBatten,
-			wantProfileRecipe: shedrun.RecipeBatten,
-			wantEngines:       map[string]bool{"Implementer": false},
+			name:        "BattenIsNeither",
+			recipe:      shedrun.RecipeBatten,
+			wantEngines: map[string]bool{"Implementer": false},
 		},
 		{name: "Beam", recipe: "beam", wantRefusals: true},
 		{name: "Unknown", recipe: "nope", wantRefusals: true},
@@ -163,10 +155,6 @@ func TestRecipeKeys(t *testing.T) {
 			gotVerify, err := VerifySource(tt.recipe)
 			if err != nil || gotVerify != tt.wantVerify {
 				t.Errorf("VerifySource(%q) = %q, %v; want %q, nil", tt.recipe, gotVerify, err, tt.wantVerify)
-			}
-			gotProfile, err := ProfileRecipe(tt.recipe)
-			if err != nil || gotProfile != tt.wantProfileRecipe {
-				t.Errorf("ProfileRecipe(%q) = %q, %v; want %q, nil", tt.recipe, gotProfile, err, tt.wantProfileRecipe)
 			}
 			for engine, want := range tt.wantEngines {
 				got, err := HasEngine(tt.recipe, engine)
@@ -194,9 +182,8 @@ func assertRefusedByEveryAccessor(t *testing.T, recipe string) {
 	_, errHas := HasEngine(recipe, "Implementer")
 	_, errRecord := RecordEngine(recipe)
 	_, errVerify := VerifySource(recipe)
-	_, errProfile := ProfileRecipe(recipe)
 	for accessor, err := range map[string]error{
-		"IsLoom": errLoom, "HasEngine": errHas, "RecordEngine": errRecord, "VerifySource": errVerify, "ProfileRecipe": errProfile,
+		"IsLoom": errLoom, "HasEngine": errHas, "RecordEngine": errRecord, "VerifySource": errVerify,
 	} {
 		if err == nil || !strings.Contains(err.Error(), recipe) {
 			t.Errorf("%s(%q) error = %v; want a refusal naming the recipe", accessor, recipe, err)

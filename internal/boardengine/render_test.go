@@ -1076,6 +1076,36 @@ func TestRenderSlugCellLinksTheDecisionRecord(t *testing.T) {
 	}
 }
 
+// TestRenderDiscussedSection pins how a task a Discussion-only run finished renders: under a Discussed subsection before Draft, its title led by a `discussed` code span.
+func TestRenderDiscussedSection(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tasks := []boardengine.Task{
+		{ID: 1, Handle: "T1", Slug: "sketched", Title: "Sketched", Kind: boardengine.KindTask, Labels: []string{"bug"}, Status: stringPtr(boardengine.StatusDiscussed), Discussed: true},
+		{ID: 2, Handle: "T2", Slug: "unreleased", Title: "Unreleased", Kind: boardengine.KindTask, Labels: []string{"bug"}, Status: stringPtr(boardengine.StatusDraft)},
+	}
+	result, err := boardengine.Render(tasks, "", boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-", Types: readmeTypes, DefaultRecipe: "darn"}, renderTime)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	readme := result["README.md"]
+	discussed := strings.Index(readme, " Discussed (1)\n\nDiscussion approved and its decision record stored; nothing starts it until its status is cleared.\n")
+	draft := strings.Index(readme, " Draft (1)\n")
+	if discussed < 0 || draft < 0 || discussed > draft {
+		t.Errorf("README Discussed section at %d, Draft at %d; want both, Discussed first:\n%s", discussed, draft, readme)
+	}
+	if want := "| T1 | `discussed` **Sketched** |"; !strings.Contains(readme, want) {
+		t.Errorf("README lacks row opening %q:\n%s", want, readme)
+	}
+	if discussed >= 0 && draft > discussed {
+		for _, column := range []string{"Recipe", "After"} {
+			if !strings.Contains(readme[discussed:draft], column) {
+				t.Errorf("README Discussed section lacks the %s column:\n%s", column, readme[discussed:draft])
+			}
+		}
+	}
+}
+
 // emptyProjectEntries is the rendered own entries of a project holding none, its Tasks and Notes at heading level level and Ready one level down.
 func emptyProjectEntries(level int) string {
 	return strings.Repeat("#", level) + " Tasks (0)\n" +

@@ -40,8 +40,9 @@ type startGuard struct {
 	Project func() (project, beam bool, err error)
 	// PairMark reads the origin record of the slug's local pair: found is false when the pair has no readable record, and marked says whether it carries the beam mark.
 	PairMark func() (marked, found bool, err error)
-	// Draft reports whether the slug is a task whose board status is draft.
-	Draft func() (bool, error)
+	// Unreleased reads the board status of the slug when it is a task no run starts, boardengine.StatusDraft or boardengine.StatusDiscussed, and "" for any other entry.
+	// A nil Unreleased reads every entry as released.
+	Unreleased func() (string, error)
 }
 
 // hubStartGuard builds the startGuard over the hub of location: the cancel marker, the prime's tracked dirty paths, the slug's pair parts and its beam, all local reads with no network call.
@@ -86,17 +87,20 @@ func hubStartGuard(location *lymcwd.Location, slug string) startGuard {
 			return origin.Beam, found, nil
 		},
 		ReachedParent: hubChildReachedParent(location, slug),
-		Draft: func() (bool, error) {
+		Unreleased: func() (string, error) {
 			tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(location.HubPath))
 			if err != nil {
-				return false, err
+				return "", err
 			}
 			for _, task := range tasks {
-				if task.Slug == slug {
-					return task.Status != nil && *task.Status == boardengine.StatusDraft, nil
+				if task.Slug != slug || task.Status == nil {
+					continue
+				}
+				if *task.Status == boardengine.StatusDraft || *task.Status == boardengine.StatusDiscussed {
+					return *task.Status, nil
 				}
 			}
-			return false, nil
+			return "", nil
 		},
 		PairParts: func() (fabricengine.PairParts, error) {
 			cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(location))
@@ -114,7 +118,7 @@ func hubStartGuard(location *lymcwd.Location, slug string) startGuard {
 // a run whose work reached its parent passes that check, since a cancel refuses it and only the run finishes it.
 // A run or step with no status file, or one whose status is at Worktree-Create while the task worktree is absent, refuses on tracked dirty paths of the source worktree, unless the task forks from a beam, whose pair forks from the beam's last commit and not from the source worktree.
 // A run or step of a project entry is judged by refuseProject, which refuses a grouping project, passes a marked beam pair over the dirty-source and left-pair checks and a resume past Worktree-Create over all of them, and leaves a beam project with no marked pair here to the checks of a task.
-// A run or step with no status file of a task whose board status is draft refuses, naming the release that makes it startable; a beam project skips that check, since a beam's cancel leaves its entry draft and `lym beam create` starts its run again from there.
+// A run or step with no status file of a task whose board status is draft or discussed refuses, naming that status and the release that makes it startable; a beam project skips that check, since a beam's cancel leaves its entry draft and `lym beam create` starts its run again from there.
 // A run or step with no status file refuses when a task worktree, records worktree or local records branch is left from an earlier run.
 // A probe error refuses naming the probe and the verb's re-run.
 // found and status describe the run's status file, and taskWorktreePresent whether the task worktree is there, which only a status at Worktree-Create reads.
@@ -161,13 +165,13 @@ func (g startGuard) refuse(slug, verb string, status shedengine.Status, found, t
 		}
 	}
 
-	if !found && !beamProject && g.Draft != nil {
-		draft, err := g.Draft()
+	if !found && !beamProject && g.Unreleased != nil {
+		unreleased, err := g.Unreleased()
 		if err != nil {
 			return probeRefusal("the board entry's status", slug, rerun, err)
 		}
-		if draft {
-			return fmt.Errorf("%s is a draft task, which no run starts; way forward: run `%s` to release it, then `lym batten %s %s`", slug, releaseCommandText(slug), verb, slug)
+		if unreleased != "" {
+			return fmt.Errorf("%s is a %s task, which no run starts; way forward: run `%s` to release it, then `lym batten %s %s`", slug, unreleased, releaseCommandText(slug), verb, slug)
 		}
 	}
 
@@ -266,7 +270,7 @@ func leftPartNames(parts fabricengine.PairParts) []string {
 	return names
 }
 
-// releaseCommandText words the command that releases the draft task slug, with the slug filled in so a way forward naming it runs as typed.
+// releaseCommandText words the command that releases the draft or discussed task slug, with the slug filled in so a way forward naming it runs as typed.
 func releaseCommandText(slug string) string {
 	return fmt.Sprintf(`lym board set-status '{"slug":"%s","status":null}'`, slug)
 }

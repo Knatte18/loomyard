@@ -23,7 +23,7 @@
 // Its Code-Review rows are the darn recipe's, each gated by `sampler.code_review`, so with that key false they are recorded skipped and Code-Bouncer routes on to Describe, which carries no entry gate.
 //
 // The motif recipe is the recipe that makes a sketch, the decision record, from a task: `Discussion-Write → Discussion-Review`, the one definition of those rows.
-// Run alone it takes the loom contract's record-only form and tapestry's run-profile block through its profile_recipe key, and its run ends at the Discussion-Review approval with no landing.
+// Run alone it takes the loom contract's record-only form and its own run-profile block, and its run ends at the Discussion-Review approval with no landing.
 // The tapestry recipe runs it as its Motif block, whose expansion reads none of motif's top-level keys.
 // The block's gate is the `undiscussed` check, so a run whose board entry is flagged discussed seeds the stored record and goes on at Drift-Baseline.
 //
@@ -54,8 +54,6 @@
 // DiscussionApprovalRow answers the row that approves a recipe's discussion: the Bouncer row the DiscussionWrite row hands to, and none for a recipe without one.
 // PastDiscussionApproval answers whether a run standing at a row, mapped through RetiredRows, is past that approval: its row follows every row of the approval row's segment.
 // Both read the recipe's expanded rows and never its name, so darn, sampler and pawl answer no approval row, and tapestry's approval row is the one inside its Motif block.
-//
-// ProfileRecipe answers which recipe's run-profile block and default profile a task running the named recipe takes: the recipe's `profile_recipe`, or its own name when it sets none, so every reader of a task's profile block resolves the recipe name through it.
 //
 // GateFixerSetting answers which setting a writer row's gate element names for its cold fixer's model-spec, so a caller reads whether a row's fixer is on from the recipe's own `fixer` key rather than from a row name.
 //

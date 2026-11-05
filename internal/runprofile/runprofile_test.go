@@ -43,7 +43,7 @@ func TestLoad(t *testing.T) {
 		{
 			name:         "no file reads the template's ladder, docs and defaults",
 			wantNames:    []string{"docs", "light", "solid", "speed", "wide"},
-			wantDefaults: map[string]string{"tapestry": "solid", "darn": "light", "pawl": "light"},
+			wantDefaults: map[string]string{"tapestry": "solid", "motif": "solid", "darn": "light", "pawl": "light"},
 		},
 		{
 			name:         "a removed starting profile stays removed",
@@ -94,6 +94,7 @@ func TestLoad(t *testing.T) {
 
 // TestTemplateLadder pins the template's ladder: each profile's review rounds and hard caps per perch for loom, and the Code perch's for darn, every hard cap its rounds plus one.
 // It also pins that each profile's sampler block carries its darn block's loom values, with sampler.code_review on from light up, and that sampler has no default profile.
+// Each profile's motif block holds its tapestry block's Discussion perch and nothing else.
 func TestTemplateLadder(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -106,6 +107,9 @@ func TestTemplateLadder(t *testing.T) {
 	}
 	if got, err := profiles.Default("pawl"); got != "light" || err != nil {
 		t.Errorf("Default(pawl) = %q, %v; want light", got, err)
+	}
+	if got, err := profiles.Default("motif"); got != "solid" || err != nil {
+		t.Errorf("Default(motif) = %q, %v; want solid", got, err)
 	}
 	if got, err := profiles.Default("sampler"); got != "" || err != nil {
 		t.Errorf("Default(sampler) = %q, %v; want none, so a sampler task naming no profile runs on the hub's config", got, err)
@@ -149,6 +153,14 @@ func TestTemplateLadder(t *testing.T) {
 			want["pawl code"] = perch(tt.darnCode)
 			if !reflect.DeepEqual(got, want) {
 				t.Errorf("Settings(%s) rounds = %v; want %v", tt.profile, got, want)
+			}
+			motif, err := profiles.Settings(tt.profile, "motif")
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantMotif := map[string]any{"loom": map[string]any{"discussion_max_bounces": tt.discussion, "discussion_hard_max_bounces": tt.discussion + 1}}
+			if !reflect.DeepEqual(motif, wantMotif) {
+				t.Errorf("Settings(%s, motif) = %v; want %v", tt.profile, motif, wantMotif)
 			}
 			sampler, err := profiles.Settings(tt.profile, "sampler")
 			if err != nil {

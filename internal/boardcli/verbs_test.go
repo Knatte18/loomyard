@@ -323,6 +323,36 @@ func stepListAndFindText(t *testing.T, f *cliFixture) {
 	}
 }
 
+// stepListShowsADiscussedEntry asserts a task carrying the discussed status lists under the Discussed layer, and its --text line ends with the status.
+func stepListShowsADiscussedEntry(t *testing.T, f *cliFixture) {
+	mustUpsert(t, `{"slug":"sketched","title":"Sketched thing","kind":"task","labels":["bug"]}`)
+	runJSON(t, 0, "set-status", `{"slug":"sketched","status":"discussed"}`)
+
+	var layer any
+	for _, entry := range runJSON(t, 0, "list")["tasks"].([]any) {
+		if row := entry.(map[string]any); row["slug"] == "sketched" {
+			layer = row["layer"]
+		}
+	}
+	if layer != "Discussed" {
+		t.Errorf("list: layer of the discussed entry = %v; want Discussed", layer)
+	}
+
+	exitCode, stdout := runCLI(t, "list", "--text")
+	if exitCode != 0 {
+		t.Fatalf("list --text: exit %d, stdout %q", exitCode, stdout)
+	}
+	var line string
+	for _, candidate := range strings.Split(stdout, "\n") {
+		if strings.Contains(candidate, "sketched") {
+			line = candidate
+		}
+	}
+	if !strings.HasSuffix(line, "[discussed]") {
+		t.Errorf("list --text line of the discussed entry = %q; want it to end with [discussed]", line)
+	}
+}
+
 func stepRetireLegacy(t *testing.T, f *cliFixture) {
 	cwd := f.cwd
 	boardDir := fabricengine.BoardDir(filepath.Dir(cwd))
@@ -824,7 +854,7 @@ func stepProfiles(t *testing.T, f *cliFixture) {
 	if want := []string{"docs", "light", "solid", "speed", "wide"}; !slices.Equal(names, want) {
 		t.Errorf("profile names = %v, want %v", names, want)
 	}
-	if want := map[string]any{"tapestry": "solid", "darn": "light", "pawl": "light"}; !reflect.DeepEqual(result["defaults"], want) {
+	if want := map[string]any{"tapestry": "solid", "motif": "solid", "darn": "light", "pawl": "light"}; !reflect.DeepEqual(result["defaults"], want) {
 		t.Errorf("defaults = %v, want %v", result["defaults"], want)
 	}
 

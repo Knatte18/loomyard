@@ -370,7 +370,7 @@ func TestConfigOverRealHub(t *testing.T) {
 			t.Fatalf("seed the machine file: %v", err)
 		}
 
-		// A starting profile seeded before sampler existed lacks its sampler block, which the dry run lists under lacking.
+		// A starting profile seeded before motif and sampler existed lacks their blocks, which the dry run lists under lacking.
 		profilesFile := configengine.ConfigFile(boardDir, "profiles")
 		profilesOriginal, err := os.ReadFile(profilesFile)
 		if err != nil {
@@ -392,8 +392,8 @@ func TestConfigOverRealHub(t *testing.T) {
 			t.Fatalf("reconcile --layer default = %d; want 0; result: %v", code, result)
 		}
 		restoreProfiles()
-		if lacking := fmt.Sprint(reconcileModule(t, result, "profiles")["lacking"]); lacking != "[light.sampler]" {
-			t.Errorf("dry-run profiles lacking = %s; want [light.sampler]", lacking)
+		if lacking := fmt.Sprint(reconcileModule(t, result, "profiles")["lacking"]); lacking != "[light.motif light.sampler]" {
+			t.Errorf("dry-run profiles lacking = %s; want [light.motif light.sampler]", lacking)
 		}
 		loom := reconcileBaseEntry(t, result, "loom")
 		if _, has := loom["lacking"]; has {

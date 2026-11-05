@@ -755,7 +755,7 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			wantContains: []string{"# operator note", "defaults: {tapestry: solid}", "  tapestry:\n    loom: {plan_max_bounces: 7}"},
 			wantAbsent:   []string{"loom: solid", "  loom:\n    loom:", "sampler:", "darn:"},
 			wantMigrated: []string{"defaults.loom: renamed to defaults.tapestry", "solid.loom: renamed to solid.tapestry"},
-			wantLacking:  []string{"defaults.darn", "defaults.pawl", "solid.darn", "solid.pawl", "solid.sampler"},
+			wantLacking:  []string{"defaults.darn", "defaults.motif", "defaults.pawl", "solid.darn", "solid.motif", "solid.pawl", "solid.sampler"},
 		},
 		{
 			name:         "profiles present with a former block differing from the current one keep both and list the pair",
@@ -764,7 +764,7 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			wantSeed:     SeedHub,
 			wantContains: []string{"  loom:\n    loom: {plan_max_bounces: 7}", "  tapestry:\n    loom: {plan_max_bounces: 1}"},
 			wantMigrated: []string{},
-			wantLacking:  []string{"light.darn", "light.loom: differs from light.tapestry", "light.pawl", "light.sampler"},
+			wantLacking:  []string{"light.darn", "light.loom: differs from light.tapestry", "light.motif", "light.pawl", "light.sampler"},
 		},
 		{
 			name:          "profiles present that fails to parse is refused and left untouched",

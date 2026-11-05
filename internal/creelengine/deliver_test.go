@@ -1488,6 +1488,8 @@ func TestSweep_RemovedHolders(t *testing.T) {
 			for range 4 {
 				e.sweepStep()
 			}
+			// A busy pane keeps the orch's worker, which the last sweep step's clock advance may have woken, from typing the notice and marking it read before the read below.
+			e.del.SetIdle(absentOrch, false)
 			e.del.SetStrands(creelfake.LiveStrand(alpha), creelfake.LiveStrand(beta), creelfake.LiveStrand(absentOrch))
 			wantBodies(t, e.readBodies(t, strand(absentOrch), ""), line)
 		}},

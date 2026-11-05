@@ -16,14 +16,12 @@ import (
 // AmendmentTarget is optional graph metadata of the same kind: it names the row a plan amendment routes to, empty when the recipe sets none.
 // Contract is empty or `loom`, and `loom` declares the recipe a loom, which Build checks against the loom contract.
 // VerifySource is empty, `plan` or `tree_scope`, and a loom recipe must set it.
-// ProfileRecipe names the recipe whose run-profile block a task takes, empty meaning the recipe's own name.
 type Recipe struct {
 	Version         int      `yaml:"version"`
 	Entry           string   `yaml:"entry"`
 	AmendmentTarget string   `yaml:"amendment_target"`
 	Contract        string   `yaml:"contract"`
 	VerifySource    string   `yaml:"verify_source"`
-	ProfileRecipe   string   `yaml:"profile_recipe"`
 	Terminals       []string `yaml:"terminals"`
 	Producers       []Row    `yaml:"producers"`
 }
