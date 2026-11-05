@@ -86,7 +86,7 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 		"batten":   {"open_ide_command", "open_window_command", "seed_ide_command"},
 		"beam":     {"pull_request"},
 		"claude":   {"binary", "deny_ask_user_question"},
-		"codex":    {"binary"},
+		"codex":    {"binary", "writable_roots"},
 		"reed":     {"buttons", "debug_log", "mouse", "shell", "tmux", "tmux_conf"},
 		"shuttle":  {"deny_python", "run_dir"},
 		"loom":     {"code_auto_accept", "code_fixer_fan", "discussion_advisors", "discussion_auto_accept", "discussion_fixer_fan", "discussion_lenses", "discussion_reviewer_fan"},

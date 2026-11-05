@@ -4,6 +4,7 @@ package codexengine
 
 import (
 	_ "embed"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,7 +24,7 @@ func ConfigTemplate() string {
 	return configTemplate
 }
 
-// Config is the resolved codex.yaml: the Codex binary, the shared lym Codex home and the operator's own, the efforts a launch may take and the skill roots.
+// Config is the resolved codex.yaml: the Codex binary, the shared lym Codex home and the operator's own, the efforts a launch may take, the skill roots and the extra writable roots.
 type Config struct {
 	// Binary is the path to the codex executable; empty falls back to "codex" on PATH.
 	Binary string `yaml:"binary"`
@@ -35,19 +36,22 @@ type Config struct {
 	Efforts []string `yaml:"efforts"`
 	// SkillRoots are the directories a skill is looked up under when a session loads skills.
 	SkillRoots []string `yaml:"skill_roots"`
+	// WritableRoots are folders outside the workspace every launch's sandbox lets the session write, such as a build cache; a leading "~/" names the user's home directory.
+	WritableRoots []string `yaml:"writable_roots"`
 }
 
-// ConfigSpec returns codex.yaml's layered-load spec: a per-worktree module whose binary a local override may not set.
+// ConfigSpec returns codex.yaml's layered-load spec: a per-worktree module whose binary and writable roots a local override may not set, since a writable root widens the sandbox.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     "codex",
 		Template: []byte(ConfigTemplate()),
 		Categories: map[string]configengine.Category{
-			"binary":        configengine.CategoryExecutable,
-			"home":          configengine.CategoryNone,
-			"operator_home": configengine.CategoryNone,
-			"efforts":       configengine.CategoryNone,
-			"skill_roots":   configengine.CategoryNone,
+			"binary":         configengine.CategoryExecutable,
+			"home":           configengine.CategoryNone,
+			"operator_home":  configengine.CategoryNone,
+			"efforts":        configengine.CategoryNone,
+			"skill_roots":    configengine.CategoryNone,
+			"writable_roots": configengine.CategoryGuard,
 		},
 	}
 }
@@ -119,6 +123,27 @@ func expandHomePath(key, value string) (string, error) {
 		return "", fmt.Errorf("codexengine: codex.yaml's %s %q is not an absolute path or one under ~/; way forward: set it with lym config codex", key, value)
 	}
 	return filepath.Clean(value), nil
+}
+
+// configuredWritableRoots returns codex.yaml's writable_roots as absolute, symlink-resolved folders, refusing an empty or relative value by its key.
+// A folder that does not exist is left out, so a root the machine has not made, such as a cache of a toolchain it lacks, adds nothing to the launch.
+func configuredWritableRoots(codex Config) ([]string, error) {
+	var roots []string
+	for _, root := range codex.WritableRoots {
+		expanded, err := expandHomePath("writable_roots", root)
+		if err != nil {
+			return nil, err
+		}
+		resolved, err := filepath.EvalSymlinks(expanded)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("codexengine: resolve codex.yaml's writable_roots %q: %w", root, err)
+		}
+		roots = append(roots, resolved)
+	}
+	return roots, nil
 }
 
 // validateEffort refuses a non-empty effort that codex.yaml's efforts does not list, naming the key.

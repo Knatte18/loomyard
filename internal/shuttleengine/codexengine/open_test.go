@@ -16,7 +16,7 @@ import (
 )
 
 // TestOpenLaunch pins the launch an opened session gets and what it refuses.
-// A valid spec gets the Codex command with the told records as its writable root, the model and the effort, no hooks, no first turn, an empty resume line, no creel hooks and no session id,
+// A valid spec gets the Codex command with the told records and the worktree's git dirs as its writable roots, the model and the effort, no hooks, no first turn, an empty resume line, no creel hooks and no session id,
 // and the lym home trusts the checkout's roots while the session directory stays unmade.
 // A permission mode other than bypass, an effort codex.yaml does not list and Codex rules in the worktree are refused before the lym home is made.
 func TestOpenLaunch(t *testing.T) {
@@ -77,7 +77,7 @@ func TestOpenLaunch(t *testing.T) {
 			want := shuttleengine.Launch{Cmd: codexCommand(shell.ForGOOS(), launchLine{
 				bin:           "codex",
 				home:          repo.lymHome,
-				writableRoots: []string{records},
+				writableRoots: append([]string{records}, repo.wantGitDirs(anchor)...),
 				model:         tt.spec.Model,
 				effort:        tt.spec.Effort,
 			})}

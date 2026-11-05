@@ -36,7 +36,8 @@ func readRecord(t *testing.T, home string) trustRecord {
 }
 
 // TestPrepare_Launch pins the launch a valid spec gets.
-// The line is built from the lym home, the told records writable root (none when the engine is told none), and the model and effort.
+// The line is built from the lym home, the model and effort, and the writable roots:
+// the told records checkout (none when the engine is told none), the git dirs of a linked worktree or a plain clone, then the configured roots that exist.
 // It carries the run's hooks with a guard per row the python switch and the publish guard install, and the prompt pointer.
 // It also pins the resume line that exits, recorded session starts, no creel hooks and no session id.
 // The prompt file holds the deny notice and the spec's prompt.
@@ -50,16 +51,33 @@ func TestPrepare_Launch(t *testing.T) {
 		toldRecords bool
 		// toldThroughLink reports whether the told records checkout is a symlink to the real one.
 		toldThroughLink bool
+		// plainClone reports whether the launch starts in a plain clone instead of a linked worktree.
+		plainClone bool
+		// configuredRoots reports whether codex.yaml names an existing writable root and a missing one.
+		configuredRoots bool
+		// gitDirsThroughLink reports whether the linked worktree reaches its git dir and common dir through a symlink.
+		gitDirsThroughLink bool
 	}{
 		{name: "RecordsTold", toldRecords: true},
 		{name: "RecordsToldThroughLink", toldRecords: true, toldThroughLink: true},
 		{name: "RecordsNotTold"},
+		{name: "PlainClone", plainClone: true},
+		{name: "ConfiguredRoots", toldRecords: true, configuredRoots: true},
+		{name: "GitDirsThroughLink", gitDirsThroughLink: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			repo := newRepoFixture(t)
-			anchor, records := repo.addWorktree(t, "wt")
+			var anchor, records string
+			if tt.plainClone {
+				anchor = repo.addClone(t, "clone")
+			} else {
+				anchor, records = repo.addWorktree(t, "wt")
+			}
+			if tt.gitDirsThroughLink {
+				repo.routeGitDirsThroughLink(t, anchor)
+			}
 			engine, warnings := newEngine(anchor)
 			var wantRoots []string
 			if tt.toldRecords {
@@ -72,6 +90,13 @@ func TestPrepare_Launch(t *testing.T) {
 					t.Fatalf("symlink: %v", err)
 				}
 				engine.dirs.Records = link
+			}
+			wantRoots = append(wantRoots, repo.wantGitDirs(anchor)...)
+			if tt.configuredRoots {
+				cache := filepath.Join(repo.base, "cache")
+				mkdirAll(t, cache)
+				writeWritableRoots(t, anchor, cache+", "+filepath.Join(repo.base, "missing"))
+				wantRoots = append(wantRoots, cache)
 			}
 			runDir := t.TempDir()
 
@@ -100,9 +125,6 @@ func TestPrepare_Launch(t *testing.T) {
 			if !reflect.DeepEqual(launch, want) {
 				t.Errorf("Prepare() launch = %+v; want %+v", launch, want)
 			}
-			if tt.toldRecords != strings.Contains(launch.Cmd, "sandbox_workspace_write.writable_roots") {
-				t.Errorf("Prepare() launch line = %q; want the writable-roots setting only when the records checkout is told", launch.Cmd)
-			}
 			if got, err := os.ReadFile(promptPath); err != nil || string(got) != denyNotice(guards)+"\n\nreview the plan" {
 				t.Errorf("prompt.md = %q, %v; want the deny notice and the spec's prompt", got, err)
 			}
@@ -110,6 +132,41 @@ func TestPrepare_Launch(t *testing.T) {
 				t.Errorf("warnings = %q; want none", warnings)
 			}
 		})
+	}
+}
+
+// TestPrepare_ExpandsHomeInWritableRoots pins that a leading ~/ in codex.yaml's writable_roots, the form the template default uses, names a folder under the user's home directory.
+// It sets the home environment variables, so it does not run in parallel.
+func TestPrepare_ExpandsHomeInWritableRoots(t *testing.T) {
+	tiergate.Require(t, 0)
+
+	repo := newRepoFixture(t)
+	anchor, _ := repo.addWorktree(t, "wt")
+	userHome := filepath.Join(repo.base, "user-home")
+	cache := filepath.Join(userHome, "cache")
+	mkdirAll(t, cache)
+	t.Setenv("HOME", userHome)
+	t.Setenv("USERPROFILE", userHome)
+	writeWritableRoots(t, anchor, "~/cache")
+	engine, _ := newEngine(anchor)
+	runDir := t.TempDir()
+
+	launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "p"}, shuttleengine.Config{})
+	if err != nil {
+		t.Fatalf("Prepare() error: %v", err)
+	}
+
+	promptPath := filepath.Join(runDir, "prompt.md")
+	want := buildLaunchCmd(shell.ForGOOS(), launchLine{
+		bin:           "codex",
+		home:          repo.lymHome,
+		writableRoots: append(repo.wantGitDirs(anchor), cache),
+		hooks:         hookSettings(filepath.Join(runDir, "events.jsonl"), installedGuards(nil, guardInputs{})),
+		firstTurn:     launchPointer(promptPath),
+		eventsPath:    filepath.Join(runDir, "events.jsonl"),
+	})
+	if launch.Cmd != want {
+		t.Errorf("Prepare() launch line = %q; want %q", launch.Cmd, want)
 	}
 }
 
@@ -164,11 +221,12 @@ func TestPrepare_InstallsGuardsFromItsInputs(t *testing.T) {
 			}
 			guards := installedGuards(tt.wantRefuse, tt.wantInputs)
 			wantCmd := buildLaunchCmd(shell.ForGOOS(), launchLine{
-				bin:        "codex",
-				home:       repo.lymHome,
-				hooks:      hookSettings(filepath.Join(runDir, "events.jsonl"), guards),
-				firstTurn:  launchPointer(promptPath),
-				eventsPath: filepath.Join(runDir, "events.jsonl"),
+				bin:           "codex",
+				home:          repo.lymHome,
+				writableRoots: repo.wantGitDirs(anchor),
+				hooks:         hookSettings(filepath.Join(runDir, "events.jsonl"), guards),
+				firstTurn:     launchPointer(promptPath),
+				eventsPath:    filepath.Join(runDir, "events.jsonl"),
 			})
 			if launch.Cmd != wantCmd {
 				t.Errorf("Prepare() launch line = %q; want %q", launch.Cmd, wantCmd)
@@ -355,6 +413,13 @@ func TestPrepare_RefusesBeforeWriting(t *testing.T) {
 		{name: "ResumedSession", spec: shuttleengine.Spec{ResumeSessionID: "abc"}, wantErr: []string{"cannot be resumed", "way forward"}},
 		{name: "EffortOutsideEfforts", spec: shuttleengine.Spec{ModelChoice: shuttleengine.ModelChoice{Effort: "xhigh"}}, wantErr: []string{`effort "xhigh"`, "codex.yaml's efforts", "way forward"}},
 		{
+			name: "RelativeWritableRoot",
+			setup: func(t *testing.T, anchor string) {
+				writeWritableRoots(t, anchor, "cache")
+			},
+			wantErr: []string{`codex.yaml's writable_roots "cache"`, "way forward"},
+		},
+		{
 			name: "RulesInWorktree",
 			setup: func(t *testing.T, anchor string) {
 				mkdirAll(t, filepath.Join(anchor, codexFolderName, rulesDirName))
@@ -505,7 +570,7 @@ func TestCheckAfterStartup(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_Template pins codex.yaml's template: the codex binary on PATH, the homes under ~/, the efforts low to high and the Claude plugin cache as the skill root.
+// TestLoadConfig_Template pins codex.yaml's template: the codex binary on PATH, the homes under ~/, the efforts low to high, the Claude plugin cache as the skill root and the Go build cache as the writable root.
 func TestLoadConfig_Template(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -514,7 +579,7 @@ func TestLoadConfig_Template(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig() error: %v", err)
 	}
-	want := Config{Home: "~/.lym/codex", OperatorHome: "~/.codex", Efforts: []string{"low", "medium", "high"}, SkillRoots: []string{"~/.claude/plugins/cache"}}
+	want := Config{Home: "~/.lym/codex", OperatorHome: "~/.codex", Efforts: []string{"low", "medium", "high"}, SkillRoots: []string{"~/.claude/plugins/cache"}, WritableRoots: []string{"~/.cache/go-build"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("LoadConfig() = %+v; want %+v", got, want)
 	}

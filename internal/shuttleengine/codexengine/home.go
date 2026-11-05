@@ -41,6 +41,18 @@ type checkout struct {
 	root string
 	// mainRoot is the repository's main checkout root for a linked worktree, symlinks resolved; empty for a plain clone.
 	mainRoot string
+	// gitDir is the checkout's own git dir, symlinks resolved: under the main checkout's `.git/worktrees` for a linked worktree, the `.git` directory for a plain clone.
+	gitDir string
+	// commonDir is the git dir holding the repository's objects and refs, symlinks resolved; the same as gitDir for a plain clone.
+	commonDir string
+}
+
+// gitDirs returns the git dirs a commit in c writes: the git dir, then the common dir when it differs.
+func (c checkout) gitDirs() []string {
+	if c.commonDir == c.gitDir {
+		return []string{c.gitDir}
+	}
+	return []string{c.gitDir, c.commonDir}
 }
 
 // trustRoots returns the roots Codex keys folder trust on for a session in c: the worktree root, then the main checkout root of a linked worktree.
@@ -53,6 +65,7 @@ func (c checkout) trustRoots() []string {
 
 // readCheckout reads the checkout the directory anchor sits in from its `.git` entries, without running git.
 // A linked worktree's main checkout root is the directory holding its common git dir.
+// The checkout's git dirs are read from the same entries.
 func readCheckout(anchor string) (checkout, error) {
 	root, geometry, err := dotgit.FindRoot(anchor)
 	if err != nil {
@@ -62,7 +75,15 @@ func readCheckout(anchor string) (checkout, error) {
 	if err != nil {
 		return checkout{}, fmt.Errorf("codexengine: resolve the worktree root %s: %w", root, err)
 	}
-	found := checkout{root: resolvedRoot}
+	gitDir, err := filepath.EvalSymlinks(geometry.GitDir)
+	if err != nil {
+		return checkout{}, fmt.Errorf("codexengine: resolve the git dir of %s: %w", root, err)
+	}
+	commonDir, err := filepath.EvalSymlinks(geometry.CommonDir)
+	if err != nil {
+		return checkout{}, fmt.Errorf("codexengine: resolve the common git dir of %s: %w", root, err)
+	}
+	found := checkout{root: resolvedRoot, gitDir: gitDir, commonDir: commonDir}
 	if geometry.GitDir != geometry.CommonDir && filepath.Base(geometry.CommonDir) == ".git" {
 		mainRoot, err := filepath.EvalSymlinks(filepath.Dir(geometry.CommonDir))
 		if err != nil {

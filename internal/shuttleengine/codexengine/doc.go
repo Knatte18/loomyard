@@ -8,8 +8,10 @@
 // A login made in the lym home leaves a regular auth.json, which Prepare names in a Warn rather than replaces.
 // After startup the engine reads config.toml back and warns about a root Codex's own write dropped; the trust prompt's accept is the backstop.
 //
-// The launch line runs `-a never -s workspace-write`, so no approval prompt shows, and adds the records checkout it is told through its Dirs as a writable root, symlink-resolved as the trusted roots are and kept as told, with a Warn, when it cannot be resolved,
-// so the session writes under the anchor's `.lym` as a Claude seat does; outside a hub it is told none and adds none.
+// The launch line runs `-a never -s workspace-write`, so no approval prompt shows, and adds writable roots, each symlink-resolved as the trusted roots are.
+// The records checkout it is told through its Dirs, kept as told with a Warn when it cannot be resolved, lets the session write under the anchor's `.lym` as a Claude seat does; outside a hub it is told none and adds none.
+// The checkout's git dir and the common git dir it links to, read from the `.git` entries, let the session commit: a linked worktree's git dirs lie under the main checkout's `.git`, outside the workspace.
+// codex.yaml's writable_roots that exist, the Go build cache in the template, let the session's tools fill a cache the sandbox would leave read-only; a local override may not set the key.
 // The line also sets `sandbox_workspace_write.network_access`, the one opening the sandbox gets beyond writes:
 // Codex's Linux sandbox refuses every socket connect without it, a Unix socket's included, so a session could not run `lym creel read` or `post --reply` against the creel daemon.
 // Codex has no setting that opens Unix sockets alone; its network proxy forwards a Unix socket only for HTTP requests, which creel's protocol is not.

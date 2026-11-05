@@ -82,7 +82,10 @@ func validateChoice(choice shuttleengine.ModelChoice, permissionMode string, cod
 // It reads the checkout the anchor sits in and refuses under Codex rules there, all before anything is written.
 // It then readies the lym home, trusting the worktree root and a linked worktree's main checkout root, and writes prompt.md into runDir.
 // The prompt file opens with the deny notice announcing each installed shell guard row and the standing passages heddle holds for engine codex and the spec's role, then the spec's prompt.
-// The launch line carries a PreToolUse hook per installed row, and its writable root is the records checkout the engine is told through its Dirs, symlink-resolved and kept as told with a Warn when it cannot be resolved, so the session writes its report through the anchor's `.lym` and `_lym` links; outside a hub it is empty and the line adds none.
+// The launch line carries a PreToolUse hook per installed row, and the writable roots readyHome returns.
+// One root is the records checkout, so the session writes its report through the anchor's `.lym` and `_lym` links.
+// Another is the checkout's git dirs, so the session can commit.
+// The rest are codex.yaml's writable_roots that exist, such as a build cache the session's tools fill.
 // A spec that names skills launches with the skill-load line as its first turn and returns the prompt pointer as Launch.PromptLine, for shuttle to send after the skills load.
 // The launch line turns on the sandbox's network access, so the session reaches the creel daemon's socket, and appends the exit record to the run's events file once Codex exits.
 // The launch records session starts, carries no creel hooks and names no session id, since Codex mints its own at the first turn.
@@ -170,8 +173,11 @@ func (c *Codex) OpenLaunch(_ string, spec shuttleengine.OpenSpec, _ shuttleengin
 }
 
 // readyHome readies the lym home codex.yaml names for a launch in the checkout the engine's anchor sits in.
-// It refuses an anchor that is not absolute, a folder in no git checkout and Codex rules in the checkout before anything is written, then trusts the checkout's roots in the home.
-// It returns the home and the launch's writable roots: the records checkout the engine is told, symlink-resolved and kept as told with a Warn when it cannot be resolved, or none outside a hub.
+// It refuses an anchor that is not absolute, a folder in no git checkout, Codex rules in the checkout and an empty or relative writable_roots value before anything is written, then trusts the checkout's roots in the home.
+// It returns the home and the launch's writable roots, each symlink-resolved, in this order:
+// the records checkout the engine is told, kept as told with a Warn when it cannot be resolved, or none outside a hub;
+// the checkout's git dir and the common git dir it links to, since a linked worktree's git dirs lie under the main checkout, outside the workspace, and a commit writes its index lock, objects and refs there;
+// then codex.yaml's writable_roots that exist.
 func (c *Codex) readyHome(codex Config) (home string, writableRoots []string, err error) {
 	homes, err := resolveHomes(codex)
 	if err != nil {
@@ -188,6 +194,10 @@ func (c *Codex) readyHome(codex Config) (home string, writableRoots []string, er
 	if err := c.checkCodexFolders(found, anchor); err != nil {
 		return "", nil, err
 	}
+	configured, err := configuredWritableRoots(codex)
+	if err != nil {
+		return "", nil, err
+	}
 	if err := c.prepareHome(homes, found.trustRoots()); err != nil {
 		return "", nil, err
 	}
@@ -200,7 +210,8 @@ func (c *Codex) readyHome(codex Config) (home string, writableRoots []string, er
 		}
 		writableRoots = []string{records}
 	}
-	return homes.lym, writableRoots, nil
+	writableRoots = append(writableRoots, found.gitDirs()...)
+	return homes.lym, append(writableRoots, configured...), nil
 }
 
 // promptText returns the prompt file's text: the deny notice, each passage, then prompt, separated by blank lines, with an empty notice left out.
