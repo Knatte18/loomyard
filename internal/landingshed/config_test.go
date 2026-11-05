@@ -75,7 +75,7 @@ func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	if want := "LoomYard https://github.com/Knatte18/loomyard"; cfg.CreditLoomYard != want {
 		t.Errorf("cfg.CreditLoomYard = %q; want %q", cfg.CreditLoomYard, want)
 	}
-	if want := map[string]string{"claude": "Claude <noreply@anthropic.com>"}; !maps.Equal(cfg.CreditEngines, want) {
+	if want := map[string]string{"claude": "Claude <noreply@anthropic.com>", "codex": "Codex https://github.com/openai/codex"}; !maps.Equal(cfg.CreditEngines, want) {
 		t.Errorf("cfg.CreditEngines = %v; want %v", cfg.CreditEngines, want)
 	}
 	if cfg.Deploy != "" {

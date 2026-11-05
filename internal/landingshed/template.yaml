@@ -10,6 +10,7 @@ credit_heading: "Created using"  # first line of the credit block; empty leaves 
 credit_loomyard: "LoomYard https://github.com/Knatte18/loomyard"  # credit block item listed whatever engines ran; empty adds none
 credit_engines:  # engine name to the credit block item listed when that engine ran a session in the task; an engine left out or set to "" adds nothing
   claude: "Claude <noreply@anthropic.com>"
+  codex: "Codex https://github.com/openai/codex"
 deploy: ""  # shell command batten's Land row runs in the prime after a landing into a branch listed in deploy_branches; empty runs nothing
 fixer: opus[high]  # model-spec for the merge fixer session that Parent-Align and Finalize run to fix a merge or test failure, and for the fix review Finalize runs over a fixer change past the caps (see contracts/specs/llm-model-spec.md)
 fixer_timeout_min: 60  # minutes one fixer turn, or the fix review session, may run
