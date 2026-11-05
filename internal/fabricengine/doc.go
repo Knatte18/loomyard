@@ -535,7 +535,7 @@
 //
 // `Unwire` (unwire.go) is the per-worktree full deactivation that replaced the deleted `lym init
 // --undo`:
-// with its `apply` parameter set it removes every fabric junction actually present on disk (not just the ones the current wired name-set names), the root scratch link excepted, and their warp `.git/info/exclude` entries;
+// with its `apply` parameter set it removes every fabric junction actually present on disk (not just the ones the current wired name-set names), the scratch link excepted, and their warp `.git/info/exclude` entries;
 // without it nothing is removed and the result reports what an applied run would remove.
 // Either way it never deletes weft-side
 // content — `_lym` and `.lym` are both preserved — and never touches the repo-wide
@@ -544,28 +544,36 @@
 //
 // # The scratch link
 //
-// Wiring ends with the scratch step (scratchlink.go): the warp worktree's root `.scratch` becomes a directory link to `<weft worktree>/<anchor>/.lym/scratch`.
+// Wiring ends with the scratch step (scratchlink.go): the `.scratch` at the warp worktree's anchor becomes a directory link to `<weft worktree>/<anchor>/.lym/scratch`.
+// Agents work from the anchor, so `.scratch` lives there; at the default `.` anchor that is the worktree root.
 // A real directory would change its own modification time with every file an agent creates or removes beneath it, and every source-scan test that opens the module root hashes that time into its `go test` cache key; a link's own `Lstat` stays fixed while files change under its target.
-// The warp `.git/info/exclude` carries `/.scratch` with no trailing slash, since git matches a link as a file and a directory-only pattern would not exclude it; a legacy `/.scratch/` line is replaced.
+// The warp `.git/info/exclude` carries `/<anchor>/.scratch`, `/.scratch` at anchor `.`, with no trailing slash, since git matches a link as a file and a directory-only pattern would not exclude it; a legacy line with the trailing slash is replaced.
 //
-// The step runs in order: seed the exclude, refuse to link over paths git tracks, then classify the root entry.
-// An absent root is linked, creating the target when absent.
+// At a subpath anchor nothing of lym's lands at the repository root, so the step first retires what an earlier binary wired there:
+// a root `.scratch` link resolving into the pair's weft worktree is removed through the destruction chokepoint, and the root `/.scratch` exclude line goes once no other warp worktree of the repository still has an entry at its root `.scratch`.
+// Any other root `.scratch` is left as found with its exclude line kept and reported with its way forward.
+// `lym fabric reconcile` runs the step on every managed pair, so one pass moves an anchored hub's worktrees and prime over.
+//
+// The step then runs in order: seed the exclude, refuse to link over paths git tracks, then classify the anchor's entry.
+// An absent entry is linked, creating the target when absent.
 // A correct link has an absent target recreated, and is otherwise untouched.
 // A real directory with an absent target is moved into the target and linked, recorded as `path_renamed`.
 // A link to another target, a real directory while the target exists, a regular file and a tracked `.scratch` are left as found, each reported with its way forward.
 // The step creates nothing when the pair's weft worktree is absent, so a weft torn down mid-repair does not get its `.lym/scratch` recreated as a plain directory.
-// It never fails wiring and removes nothing; a leave or a failure reaches the log as a warning.
+// It never fails wiring and removes nothing but a retired root link; a leave or a failure reaches the log as a warning.
 // `lym fabric unwire` keeps the link and its exclude.
+// `lym fabric remove` unlinks the link, and a retired root link still standing, ahead of the warp worktree removal.
+// An anchor change unlinks the link at the old anchor and drops its exclude line unless another worktree still has an entry at that path.
 //
 // `lym fabric reconcile` runs the step on every managed pair after the junction repair, on a healthy and a re-wired pair alike and whether or not the repair failed.
 // It reports what the step changed or left in the pair's Detail and changes neither the pair's Action nor its Error, since scratch is agent convenience and never downgrades a verdict about the pair.
 // A pair that never reaches the repair, such as a raw-adopted one, an unmanaged one or one whose weft worktree is still missing, gets no link and no target.
 // A weft worktree torn down mid-repair gets nothing created either, because the step checks the weft root itself first.
-// The stale-junction sweep never claims the root link and never strips its exclude line.
+// The stale-junction sweep never claims the scratch link and never strips its exclude line.
 // After this lands, the operator runs `lym fabric reconcile` once to convert the prime and every pair an older binary wired.
 //
-// `lym fabric remove` unlinks the root link through the destructive gate before it removes the warp worktree directory, at a root and at a subpath anchor alike, and records one `link_removed` at the root.
-// It claims only a link that resolves into the pair's weft worktree; any other entry at the root is left to the worktree removal.
+// `lym fabric remove` unlinks the `.scratch` link at the anchor through the destructive gate before it removes the warp worktree directory, and at a subpath anchor also a root `.scratch` link an earlier binary wired, recording a `link_removed` at each.
+// It claims only a link that resolves into the pair's weft worktree; any other entry is left to the worktree removal.
 // The link's target lives in the pair's weft `.lym` and goes with the weft worktree teardown.
 //
 // `Remove` (remove.go) is the paired teardown, and it never deletes a directory git itself declined
@@ -1323,7 +1331,7 @@
 // Any other holds the move lock until `Close` and writes the record, a standing record keeping its other fields.
 // `Close` before `Apply` removes a record this `BeginAnchorChange` wrote, and keeps one it found standing.
 //
-// **Apply.** `Apply` unwires the pair's junctions, exclude entries and root scratch link at A through the destruction chokepoint, holds the weft write lock, and moves the weft.
+// **Apply.** `Apply` unwires the pair's junctions, exclude entries, scratch link and its exclude line at A through the destruction chokepoint, holds the weft write lock, and moves the weft.
 // A move runs `moveWeftContent` (anchormove.go): it moves each wired name's tracked content with `git mv`, renames `A/.lym` to `B/.lym`, writes the marker B last through an `os.Root` at the weft, and commits those paths, the marker among them, in one weft commit.
 // An integration writes U into the record, runs `integrateWeft`, which replays the weft's local commits onto U and re-roots the result to B, and then renames `A/.lym` to `B/.lym`.
 // `Apply` then wires the junctions and scratch link at B, writes the launchers under `_launchers/<B>/<slug>` and removes `_launchers/<A>/<slug>`, and regenerates the hub and beam workspace files.

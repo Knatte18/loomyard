@@ -460,7 +460,7 @@ func (c *AnchorChange) integrate(rec *Mutations) (committed bool, err error) {
 	return true, c.settleLymDirAfterLanding(rec)
 }
 
-// unwireAtSource removes the pair's junctions, their exclude entries and the root scratch link at the old anchor.
+// unwireAtSource removes the pair's junctions, their exclude entries, the scratch link and its exclude line at the old anchor.
 func (c *AnchorChange) unwireAtSource(rec *Mutations) error {
 	source, slug := c.locationAt(c.from), c.pair.WorktreeName
 	if _, err := unseedLymJunction(rec, source, slug, c.names); err != nil {
@@ -469,7 +469,10 @@ func (c *AnchorChange) unwireAtSource(rec *Mutations) error {
 	if _, err := unseedGitExclude(rec, source, slug, c.names, false); err != nil {
 		return err
 	}
-	return unlinkScratchLink(rec, source, slug)
+	if err := unlinkScratchLink(rec, source, slug); err != nil {
+		return err
+	}
+	return unseedScratchExclude(rec, source, slug, source.AnchorRel)
 }
 
 // rollback undoes a failure before the weft was committed: it puts the weft's paths and `.lym` back, rewires the old anchor and removes the record.

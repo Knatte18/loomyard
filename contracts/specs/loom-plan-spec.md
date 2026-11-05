@@ -125,7 +125,7 @@ A card with several labels runs every group's mechanical check against that grou
 Assert-no-callers is necessary, not sufficient: interface satisfaction, dispatch-table registration, reflection and prose references survive a delete or a rename without failing the build.
 A rename also rewrites the symbol's own doc-comment opening to the new name, and the same grep pass verifies it.
 
-A `Create` target under the repository root's git-ignored `.scratch/` is a transient draft: the card may remove it once read, and Webster's `create-not-done` check skips it.
+A `Create` target under the worktree root's git-ignored `.scratch/` is a transient draft: the card may remove it once read, and Webster's `create-not-done` check skips it.
 A target no glyph spells, such as a path whose directory holds a space, stays a plain path, and Webster's done-checks judge it by whether the path exists.
 A card that renames or deletes what an earlier card targets never shares that card's batch.
 

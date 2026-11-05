@@ -128,7 +128,7 @@ func requireWiredOnlyAt(t *testing.T, h *hubforge.Hub, slug, anchor string, othe
 			}
 		}
 	}
-	scratch := filepath.Join(h.PairCodeWorktree(slug), ".scratch")
+	scratch := filepath.Join(h.PairCodeWorktree(slug), anchor, ".scratch")
 	want := filepath.Join(h.PairRecordsSibling(slug), anchor, lymdirs.DotLymDirName, "scratch")
 	if target, err := fslink.RawTarget(scratch); err != nil || filepath.Clean(target) != filepath.Clean(want) {
 		t.Errorf("scratch link of %s = (%q, %v); want it to point at %s", slug, target, err, want)
@@ -201,12 +201,36 @@ func TestAnchorChange(t *testing.T) {
 			t.Errorf("hub workspace file = (%q, %v); want it to name %s/sub", workspace, err, mover)
 		}
 		excludes := gitkit.ExcludeLines(t, h.PairCodeWorktree(mover))
-		for _, want := range []string{"/" + lymdirs.LymDirName, "/" + lymdirs.DotLymDirName, "/sub/" + lymdirs.LymDirName} {
+		// The stayer and the prime still link the old anchor's .scratch, so its line stays beside the new anchor's.
+		for _, want := range []string{"/" + lymdirs.LymDirName, "/" + lymdirs.DotLymDirName, "/sub/" + lymdirs.LymDirName, "/sub/.scratch", "/.scratch"} {
 			if !slices.Contains(excludes, want) {
 				t.Errorf("exclude lines = %v; want %q among them", excludes, want)
 			}
 		}
 		requireWiredOnlyAt(t, h, "stayer", ".", "sub")
+	})
+
+	t.Run("A move drops the old anchor's scratch exclude line once no worktree still has an entry there", func(t *testing.T) {
+		t.Parallel()
+		h := newAnchorHub(t)
+		hubforge.AddPair(t, h, mover)
+		hubforge.ReanchorPair(t, h, h.Location.WorktreeName, "sub")
+
+		c, err := beginAnchorChange(t, h, mover, "other")
+		if err != nil {
+			t.Fatalf("BeginAnchorChange() error = %v; want nil", err)
+		}
+		completeAnchorChange(t, c)
+
+		excludes := gitkit.ExcludeLines(t, h.PairCodeWorktree(mover))
+		if slices.Contains(excludes, "/.scratch") {
+			t.Errorf("exclude lines = %v; want the old anchor's /.scratch dropped", excludes)
+		}
+		for _, want := range []string{"/other/.scratch", "/sub/.scratch"} {
+			if !slices.Contains(excludes, want) {
+				t.Errorf("exclude lines = %v; want %q among them", excludes, want)
+			}
+		}
 	})
 
 	t.Run("A target equal to the pair's own anchor is a no-op that takes no lock", func(t *testing.T) {

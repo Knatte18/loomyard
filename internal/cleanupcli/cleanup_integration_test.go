@@ -103,8 +103,8 @@ func TestCleanupVerb_RefusesOutsideThePrimeThenListsAndThenRemovesEverySeededLef
 	writeAged(t, keptHandoff, "note", 0)
 	writeAged(t, oldHandoff, "note", 0)
 
-	// scratch: an old child of the prime's .scratch directory, which fabric wires as a link into the pair's records.
-	scratchRoot := filepath.Join(h.PrimeWorktree(), scratchDirName)
+	// scratch: an old child of the .scratch directory at the prime's anchor, which fabric wires as a link into the pair's records.
+	scratchRoot := filepath.Join(h.PrimeWorktree(), h.Location.AnchorRel, scratchDirName)
 	assertScratchLink := func(t *testing.T, step, wantTarget string) string {
 		t.Helper()
 		isLink, err := fslink.IsLink(scratchRoot)
@@ -391,6 +391,46 @@ func TestCleanupVerb_RefusesOutsideThePrimeThenListsAndThenRemovesEverySeededLef
 	failedSegment, code := run(h.PrimeWorktree(), "--apply")
 	if failedSegment.OK || code == 0 || failedSegment.Partial == nil || !*failedSegment.Partial || len(mutationsOf(t, failedSegment)) == 0 {
 		t.Errorf("--apply with a failing segment after a move: ok=%v code=%d partial=%v mutations=%v; want a partial failure carrying the move", failedSegment.OK, code, failedSegment.Partial, mutationsOf(t, failedSegment))
+	}
+}
+
+// TestCleanupVerb_ScratchSegmentSweepsTheAnchorOfASubpathHub pins the scratch segment reading `.scratch` at the prime's anchor rather than at the worktree root.
+func TestCleanupVerb_ScratchSegmentSweepsTheAnchorOfASubpathHub(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+	boardkit.InstallReplay(t)
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "backend", Pairs: []string{hubforge.TemplatePairSlug}})
+	scratchRoot := filepath.Join(h.PrimeWorktree(), h.Location.AnchorRel, scratchDirName)
+	if isLink, err := fslink.IsLink(scratchRoot); err != nil || !isLink {
+		t.Fatalf("%s is not a link: isLink=%v err=%v", scratchRoot, isLink, err)
+	}
+	scratchTarget, err := fslink.RawTarget(scratchRoot)
+	if err != nil {
+		t.Fatalf("RawTarget(%s): %v", scratchRoot, err)
+	}
+	scratchChild := filepath.Join(scratchRoot, "old-thing")
+	writeAged(t, filepath.Join(scratchChild, "file.txt"), "x", 30*24*time.Hour)
+	oldScratch := time.Now().Add(-30 * 24 * time.Hour)
+	if err := os.Chtimes(scratchChild, oldScratch, oldScratch); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+
+	var out bytes.Buffer
+	code := RunCLIIn(h.Location.AnchorPath(), &out, []string{"--apply"})
+	applied := envelope.Decode(t, out.String())
+
+	if !applied.OK || code != 0 {
+		t.Fatalf("--apply: ok=%v code=%d error=%q", applied.OK, code, applied.Error)
+	}
+	if exists(scratchChild) {
+		t.Errorf("--apply left %s, an old child of the anchor's .scratch", scratchChild)
+	}
+	if isLink, err := fslink.IsLink(scratchRoot); err != nil || !isLink {
+		t.Fatalf("after --apply %s is not a link: isLink=%v err=%v", scratchRoot, isLink, err)
+	}
+	if got, err := fslink.RawTarget(scratchRoot); err != nil || got != scratchTarget {
+		t.Errorf("after --apply %s points at %q, %v; want it unchanged at %q", scratchRoot, got, err, scratchTarget)
 	}
 }
 

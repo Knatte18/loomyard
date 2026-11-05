@@ -180,6 +180,9 @@ This produces the two concrete junctions this repo ships with today, both placed
 - `<anchor>/_lym` → `<hub>/<slug>-<records>/<anchor>/_lym` (config junction, structural)
 - `<anchor>/.lym` → `<hub>/<slug>-<records>/<anchor>/.lym` (machine-local scratch junction, structural)
 
+Wiring also links agents' scratch directory, `<anchor>/.scratch` → `<hub>/<slug>-<records>/<anchor>/.lym/scratch`, excluded as `/<anchor>/.scratch`; it is no junction of the wired set.
+At a subpath anchor nothing is wired or excluded at the repository root, and `lym fabric reconcile` retires a root `.scratch` link and its `/.scratch` line an earlier binary wired.
+
 [PATTERN-cwd-resolution](../pattern/PATTERN-cwd-resolution.md) holds the rule that forbids re-adding a junction into the Bolt checkout (`<hub>/_bolt`): no hub-level container is ever junctioned into a worktree.
 
 The optional `pathspec` default is empty today.
@@ -452,7 +455,7 @@ User-facing modules each get one `lym <module>` namespace:
 - **shortcuts** — `lym a` (`lym reed attach`), `lym s` (`lym beam start`, then `lym reed attach`), `lym p` (`lym tender pause`) and `lym r` (`lym tender resume`) are top-level operator shortcuts declared in `internal/shortcutcli/shortcuts.yaml`, embedded in the binary and added only by a commit to that file; global verbosity flags reach every expanded command and other words the last; they are not modules. See the `internal/shortcutcli` package documentation.
 - **cleanup** — the routine cleanups of the hub prime's leftover state, as one verb (`internal/cleanupcli`; `lym cleanup [--apply]`, from the prime and from any beam).
   Without `--apply` it is a dry run that lists, per segment, what `--apply` would remove.
-  The segments run in order and each calls its owner's own cleanup in-process: `lym batten cleanup`, `lym board prune`, the orch's handoff cleanup, the prime's `.scratch/` children older than 14 days that no open board entry cites, logger's trace retention sweep, and the temp root's sweep of dead owners' run directories.
+  The segments run in order and each calls its owner's own cleanup in-process: `lym batten cleanup`, `lym board prune`, the orch's handoff cleanup, the `.scratch/` children at the prime's anchor older than 14 days that no open board entry cites, logger's trace retention sweep, and the temp root's sweep of dead owners' run directories.
   A failing segment never stops the later ones.
   ✅ Implemented. See the `internal/cleanupcli` package documentation.
 - **adopt** — the takeover of beam projects, or of root, and of the runs under them from another machine of the operator, as one verb (`internal/adoptcli`; `lym adopt <beam>...`, `lym adopt root` and `lym adopt --all`, with `--keep-local` and `--drop-local`, from the prime and from any beam).

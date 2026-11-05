@@ -842,7 +842,7 @@ func appendPrDetail(pr *ReconcilePairResult, text string) {
 // applyStaleRemoval converges warpLayout's on-disk junctions to the repo-wide pathspec
 // by removing any junction present on disk but absent from RepoWiredNames. Fail-closed:
 // if repo-wide fabric.yaml cannot be loaded or the on-disk scan fails, nothing is removed.
-// The root scratch link is excepted: it is never a stale junction, so the sweep neither removes it nor strips its exclude line.
+// The scratch link is excepted: it is never a stale junction, so the sweep neither removes it nor strips its exclude line.
 // rec is the calling verb's own recorder, threaded through to removeWarpJunction.
 func applyStaleRemoval(rec *Mutations, warpLayout *lymcwd.Location, slug string, pr *ReconcilePairResult) {
 	desired, err := RepoWiredNames(warpLayout)
@@ -856,7 +856,7 @@ func applyStaleRemoval(rec *Mutations, warpLayout *lymcwd.Location, slug string,
 		appendPrDetail(pr, fmt.Sprintf("stale-removal skipped: cannot scan on-disk junctions: %v", err))
 		return
 	}
-	onDisk = withoutRootScratchLink(warpLayout, onDisk)
+	onDisk = withoutScratchLink(onDisk)
 
 	desiredSet := make(map[string]bool, len(desired))
 	for _, name := range desired {

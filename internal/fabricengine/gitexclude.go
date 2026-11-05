@@ -123,8 +123,8 @@ func ExcludeAnchoredDir(worktreeDir, anchorRel, dirName string) (excludePath str
 	})
 }
 
-// scratchDirName is the directory name agents keep scratch files under, at a warp repo's root.
-// The root entry is a fabric-wired link into the weft-side `.lym` that agents write through.
+// scratchDirName is the directory name agents keep scratch files under, at a warp worktree's anchor.
+// The entry is a fabric-wired link into the weft-side `.lym` that agents write through.
 // It is agent scratch, not lym state, so it is declared here and not in `internal/lymdirs`.
 const scratchDirName = ".scratch"
 

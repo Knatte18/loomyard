@@ -1,4 +1,4 @@
-// scratch.go implements the cleanup module's own segment: the removal of old, uncited children of the prime's .scratch directory.
+// scratch.go implements the cleanup module's own segment: the removal of old, uncited children of the .scratch directory at the prime's anchor.
 
 package cleanupcli
 
@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fsx"
 )
 
-// scratchDirName is the name of the prime worktree's scratch directory, which no other module owns.
+// scratchDirName is the name of the scratch directory at the prime worktree's anchor, which no other module owns.
 const scratchDirName = ".scratch"
 
 // scratchMaxAge is how long a scratch child must go unmodified before the segment removes it; it matches the default retention age of the logger's trace sweep.

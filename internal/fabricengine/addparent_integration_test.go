@@ -253,7 +253,7 @@ func TestAdd_FromParentPair(t *testing.T) {
 					}
 				}
 				wantScratch := filepath.Join(weftPath, anchor, lymdirs.DotLymDirName, "scratch")
-				if got, err := fslink.PointsTo(filepath.Join(pairPath, ".scratch")); err != nil || filepath.Clean(got) != wantScratch {
+				if got, err := fslink.PointsTo(filepath.Join(pairPath, anchor, ".scratch")); err != nil || filepath.Clean(got) != wantScratch {
 					t.Errorf("scratch link of %s = (%q, %v); want it to point at %s", slug, got, err, wantScratch)
 				}
 

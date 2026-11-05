@@ -117,7 +117,7 @@ func segmentsOver(location *lymcwd.Location, hubOrchs func(*lymcwd.Location) ([]
 				}
 				return board.ListTasksFull()
 			}
-			removed, err := scratchSegment(filepath.Join(location.WorktreePath(), scratchDirName), readBoard, time.Now(), apply)
+			removed, err := scratchSegment(filepath.Join(location.WorktreePath(), location.AnchorRel, scratchDirName), readBoard, time.Now(), apply)
 			if err != nil {
 				return nil, err
 			}

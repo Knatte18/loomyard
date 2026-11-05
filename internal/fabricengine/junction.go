@@ -4,7 +4,7 @@
 // atomically, keyed by the current worktree's slug.
 // It is idempotent, guarding against re-entry and enforcing the warp-pristine invariant by refusing
 // to wire when the warp contains a pre-existing real directory predating weft.
-// Wiring ends with the scratch step (scratchlink.go), which links the root `.scratch` into the weft-side `.lym`.
+// Wiring ends with the scratch step (scratchlink.go), which links the anchor's `.scratch` into the weft-side `.lym`.
 
 package fabricengine
 
@@ -407,7 +407,7 @@ type UnwireResult struct {
 // shared .git/info/exclude entries, undoing what WireJunctions seeded for those names — nothing more (the
 // worktree pairing and weft content are untouched; see Remove for the larger paired-teardown
 // operation).
-// The root scratch link and its `/.scratch` exclude stay.
+// The anchor's scratch link and its exclude line stay.
 // Like WireJunctions, it loads no config itself.
 //
 // The junctions are unwired before the exclude entries, mirroring WireJunctions' creation order in
