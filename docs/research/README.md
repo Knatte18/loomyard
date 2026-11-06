@@ -130,6 +130,7 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [token-usage-by-role.md](tokens/token-usage-by-role.md) — token usage and time per role.
 - [haiku-judge.md](tokens/haiku-judge.md) — Haiku as the Bouncer judge, per row.
 - [startup-context-2026-11-05](tokens/startup-context-2026-11-05/report.md) — what the orch and a spawned role load at start, by source, and how to leave out what they do not need.
+- [session-scope-launch-2026-11-06](tokens/session-scope-launch-2026-11-06/report.md) — which session-scope settings work in a real Claude Code launch, and the start load with and without them.
 
 ### model-downgrade — cheaper models per role
 
