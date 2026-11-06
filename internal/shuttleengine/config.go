@@ -48,7 +48,7 @@ type Config struct {
 	// Engine names the engine of a spec that names none; it must be a registered engine name, checked where the registry builds the set.
 	Engine string `yaml:"engine"`
 
-	// DenyPython switches the python guard of the shell-guard table for every engine; off in a Python target repo.
+	// DenyPython switches the python guard of the shell-guard table for every engine, its hook and its system-prompt sentence together; off for a hub whose work needs Python.
 	DenyPython bool `yaml:"deny_python"`
 
 	// RefuseRaw lists the command prefixes the shell guard refuses to run raw, from the hub's gate config.

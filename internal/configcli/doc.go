@@ -5,6 +5,7 @@
 // An editor edit works on a staging copy under the worktree's `.lym`, so the editor never holds the lock;
 // only the copy into the Bolt checkout, its validation and its commit run under it, and the copy is refused when the hub file changed while the editor was open.
 // `--print` and `lym config menu` read a hub-wide module in the Bolt checkout too.
+// The help names shuttle's python guard switch, its effect on both the hook and the system-prompt sentence, and the default-layer write that sets it for a whole hub, since the refusal sends an agent's operator here.
 //
 // # Layers
 //

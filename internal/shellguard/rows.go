@@ -74,11 +74,12 @@ const editToolsRule = "change a file by reading it with Read, whole or a span th
 // The Codex steers and notice carry it where the plain ones carry editToolsRule.
 const codexEditToolsRule = "change a file with the apply_patch tool, and read or search files with cat, sed -n, rg or grep"
 
-// pythonRefusal states the python deny and names the version check, which agents otherwise run as a probe before choosing how to edit or parse.
-const pythonRefusal = "python and python3 are refused in every lym session, a version check included, so never probe for Python"
+// pythonRefusal states the python deny, why it stands and the way forward for work that needs Python itself.
+// It names the version check, which agents otherwise run as a probe before choosing how to edit or parse.
+const pythonRefusal = "python and python3 are refused in every lym session, a version check included, so never probe for Python: what it runs differs from machine to machine with the installed packages, venvs and installations, and it is often very slow; when the work itself needs Python, as OCR does, say so to the operator or your parent, who can set " + string(SwitchDenyPython) + ": false for the hub, and never work round the guard"
 
 // pythonRoutes opens every python steer: the refusal and the parse routes in Python's place.
-const pythonRoutes = pythonRefusal + "; parse JSON with jq and text with grep or awk; "
+const pythonRoutes = pythonRefusal + "; for work that does not need Python itself, parse JSON with jq and text with grep or awk; "
 
 // steerPythonDeny refuses a Bash python invocation and names the parse and edit routes in its place; it must contain no single/double quote or backslash (checked at init).
 const steerPythonDeny = pythonRoutes + editToolsRule

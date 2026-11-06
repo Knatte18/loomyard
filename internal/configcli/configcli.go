@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/shellguard"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
@@ -469,21 +470,22 @@ func buildConfigLong() string {
 		"name it edits that module directly; `lym config menu` is the interactive\n" +
 		"picker. The editor is $VISUAL, then $EDITOR, then `code --wait` when code is\n" +
 		"on PATH, then notepad on Windows or nano and vi elsewhere.\n\n" +
-		"Use --print to print the on-disk YAML without launching the editor.\n\n" +
+		"--print prints the on-disk YAML, with no editor.\n\n" +
 		"Use --set key=value (repeatable) to write config values with no editor, e.g.\n" +
 		"  lym config board --set design_prefix=foo- --set readme=Home.md\n" +
-		"A list-valued key takes a YAML flow list and is replaced whole, e.g.\n" +
+		"A list key takes a YAML flow list, replaced whole, e.g.\n" +
 		"  lym config landing --set 'deploy_branches=[]'\n" +
-		"A module may declare an open map, whose keys are the repo's own; --set\n" +
-		"adds or rewrites one entry of it, or one key inside it, e.g.\n" +
+		"An open map's keys are the repo's own; --set adds or rewrites one entry\n" +
+		"or a key inside it, e.g.\n" +
 		"  lym config gate --set tiers.tier0.env.LYM_TEST_TIER=0\n" +
-		"A value the module's loader refuses is refused, naming the key.\n" +
-		"Keys the template lacks are\n" +
-		"preserved and reported in the JSON output's \"preserved\" field;\n" +
-		"run \"lym config reconcile --layer default --apply\" from the prime to remove them from the\n" +
-		"board dir's files, and \"lym config reconcile --apply\" to remove them from a worktree file.\n\n" +
+		"A value the loader refuses is refused, naming the key.\n" +
+		"Keys the template lacks are preserved (JSON \"preserved\" field);\n" +
+		"\"lym config reconcile --layer default --apply\" from the prime removes them from the\n" +
+		"board dir's files, and \"lym config reconcile --apply\" from a worktree file.\n\n" +
 		"--layer default|worktree|machine|local picks the file to print or write: default is the board's\n" +
 		"repo default, committed from the prime; local is an untracked override.\n\n" +
+		"Python guard off for a hub (hook and notice), from the prime:\n" +
+		"  lym config shuttle --layer default --set " + string(shellguard.SwitchDenyPython) + "=false\n\n" +
 		"--resolved <module> prints the merged result, each unit annotated with its\n" +
 		"layer: template, default, worktree, machine or local.\n\n" +
 		"Known modules: " + strings.Join(configreg.Names(), ", ") + "."

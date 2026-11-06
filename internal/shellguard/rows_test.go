@@ -24,7 +24,7 @@ func TestLeafInvariant_AllowlistOnly(t *testing.T) {
 }
 
 // TestCheckTexts plants each forbidden character in a row's steer and notice and asserts checkTexts refuses it naming the row;
-// it also asserts the shipped rows, rendered over a sample refuse list, pass checkTexts and state the gate rule and the edit rule in one notice each, that the refuse-raw steer carries the full gate rule while its notice names only the refusal and the tier and card scopes, that the python and shell-edit steers carry the full edit rule, and that the raw-go steer names the done: false retry of lym gate card-verify.
+// it also asserts the shipped rows, rendered over a sample refuse list, pass checkTexts and state the gate rule and the edit rule in one notice each, that the refuse-raw steer carries the full gate rule while its notice names only the refusal and the tier and card scopes, that the python and shell-edit steers carry the full edit rule, that the Codex python steer opens with the shared refusal, and that the raw-go steer names the done: false retry of lym gate card-verify.
 func TestCheckTexts(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -44,6 +44,9 @@ func TestCheckTexts(t *testing.T) {
 			}
 			if (row.Name == "python" || row.Name == "shell-edit") && !strings.Contains(row.Steer, editToolsRule) {
 				t.Errorf("%s steer %q: want it to carry the edit rule %q", row.Name, row.Steer, editToolsRule)
+			}
+			if row.Name == "python" && !strings.HasPrefix(row.SteerFor(engineCodex), pythonRefusal) {
+				t.Errorf("python Codex steer %q: want it to open with the refusal %q", row.SteerFor(engineCodex), pythonRefusal)
 			}
 			if row.Name == "raw-go" {
 				for _, want := range []string{"done: false", "lym gate card-verify"} {
