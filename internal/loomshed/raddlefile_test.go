@@ -215,6 +215,35 @@ func TestRaddleFile(t *testing.T) {
 
 	moved := []raddleparser.Finding{{Check: raddleparser.CheckRevisedMoved, Detail: `the entry "other" was revised`}}
 
+	t.Run("MappedPatternChangeIsFiledUnderItsLiveEntry", func(t *testing.T) {
+		t.Parallel()
+		for _, shape := range []string{raddleparser.ShapeTapestry, raddleparser.ShapeTasks, raddleparser.ShapeProject} {
+			t.Run(shape, func(t *testing.T) {
+				t.Parallel()
+				proposal := raddleFileProposal(shape)
+				proposal.Parts[0].PatternClusters = []raddleparser.PatternCluster{{SketchID: "PATTERN-a", Entry: "PATTERN-live", Text: "Live rule."}}
+				f := newRaddleFileFixture(t, proposal, loomshed.RaddleModeAuto, false)
+
+				outcome, _, err := f.call()
+				requireDone(t, outcome, err)
+
+				recordSlugs := []string{"part-a"}
+				if proposal.Project != nil {
+					recordSlugs = append(recordSlugs, proposal.Project.Slug)
+				}
+				for _, slug := range recordSlugs {
+					record := f.read(f.deps.PartRecordPath(slug))
+					if !strings.Contains(record, "- `PATTERN-live` — changes: Live rule.\n") || strings.Contains(record, "PATTERN-a") {
+						t.Errorf("record of %s =\n%s\nwant the live entry's bullet in place of PATTERN-a", slug, record)
+					}
+				}
+				if got := string(f.filings[0].SketchRecord); got != raddleFileRecord {
+					t.Errorf("stored Sketch record =\n%s\nwant the Sketch's own record", got)
+				}
+			})
+		}
+	})
+
 	t.Run("EachShapeFilesOnceWithItsStepsInOrder", func(t *testing.T) {
 		t.Parallel()
 		inOrder := []string{"commit", "file", "notify", "end_entry"}

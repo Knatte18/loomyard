@@ -22,6 +22,9 @@ const (
 	CheckPatternUncarried       = "pattern-uncarried"
 	CheckPatternShared          = "pattern-shared"
 	CheckPatternUnknown         = "pattern-unknown"
+	CheckPatternClusterInvalid  = "pattern-cluster-invalid"
+	CheckPatternClusterUnknown  = "pattern-cluster-unknown"
+	CheckPatternClusterShared   = "pattern-cluster-shared"
 	CheckCriteriaMissDecision   = "criteria-miss-decision"
 	CheckCarriedDecisionUnbuilt = "carried-decision-unbuilt"
 	CheckBoardUnchecked         = "board-unchecked"
@@ -74,6 +77,7 @@ type BoardEntry struct {
 // Store holds the slugs the raddle store keeps, as Sketch slug or filed slug, and TypeLabels the board's type labels.
 // Profiles maps each part recipe to the profiles of `profiles.yaml` that hold a block for it.
 // Filing is true at Raddle-File's run, where a dependency on an entry gone from the board is dropped.
+// LivePattern reports whether the run's PATTERN.md holds the entry id.
 type BoardContext struct {
 	Sketch       string
 	Entry        string
@@ -83,6 +87,7 @@ type BoardContext struct {
 	TypeLabels   []string
 	Profiles     map[string][]string
 	Filing       bool
+	LivePattern  func(id string) bool
 }
 
 // decisionIDPattern matches a decision id as a whole word; a longer id such as D10 is matched whole.
@@ -181,6 +186,44 @@ func (c *checker) coverage() []Finding {
 			if !slices.ContainsFunc(changes, func(change discussionparser.PatternChange) bool { return change.ID == id }) {
 				findings = append(findings, Finding{Check: CheckPatternUnknown, Part: part.Slug, Detail: fmt.Sprintf("carries %s, which the decision record's PATTERN changes do not hold", id)})
 			}
+		}
+	}
+	return append(findings, c.patternClusters(changes)...)
+}
+
+// patternClusters reports a pattern_clusters mapping the filing could not write: one of a change its part does not carry, a change mapped twice or a text that is no one-line entry text within the cap, one onto an entry PATTERN.md does not hold, and one onto an entry another declared change or mapping already claims.
+func (c *checker) patternClusters(changes []discussionparser.PatternChange) []Finding {
+	claimedBy := make(map[string]string, len(changes))
+	for _, change := range changes {
+		claimedBy[change.ID] = change.ID
+	}
+	mapped := map[string]bool{}
+	var findings []Finding
+	for _, part := range c.proposal.Parts {
+		for _, cluster := range part.PatternClusters {
+			invalid := func(problem string) {
+				findings = append(findings, Finding{Check: CheckPatternClusterInvalid, Part: part.Slug, Detail: fmt.Sprintf("the mapping of %s %s", cluster.SketchID, problem)})
+			}
+			text := strings.TrimSpace(cluster.Text)
+			switch {
+			case !slices.Contains(part.PatternChanges, cluster.SketchID):
+				invalid("names a change this part does not carry; way forward: list the id in the part's pattern_changes, or drop the mapping")
+			case mapped[cluster.SketchID]:
+				invalid("is written twice; way forward: keep one mapping per id")
+			case text == "" || strings.Contains(text, "\n"):
+				invalid("needs its entry's whole new text on one line; way forward: write it in text")
+			case discussionparser.PatternTextOverCap(text):
+				invalid("carries a rule text over the cap of a PATTERN.md entry; way forward: shorten the text and move its detail to the entry's background file")
+			}
+			mapped[cluster.SketchID] = true
+
+			if !c.board.LivePattern(cluster.Entry) {
+				findings = append(findings, Finding{Check: CheckPatternClusterUnknown, Part: part.Slug, Detail: fmt.Sprintf("maps %s onto %s, which PATTERN.md does not hold; way forward: name a live entry, or keep the change under its own id", cluster.SketchID, cluster.Entry)})
+			}
+			if claimant, claimed := claimedBy[cluster.Entry]; claimed && claimant != cluster.SketchID {
+				findings = append(findings, Finding{Check: CheckPatternClusterShared, Part: part.Slug, Detail: fmt.Sprintf("maps %s onto %s, which %s already claims; way forward: fold both changes into one mapping's text, since a record declares an entry once", cluster.SketchID, cluster.Entry, claimant)})
+			}
+			claimedBy[cluster.Entry] = cluster.SketchID
 		}
 	}
 	return findings

@@ -233,7 +233,7 @@ The mechanics of reading and writing the board are in the `ly:board` skill, and 
   - A decision on a task a run holds is recorded with `lym loom decision add <slug> --by parent`.
     A change of a beam project's scope, from its run's Record-Write on, is recorded the same way on the beam, `lym loom decision add <beam-slug> --by parent`, run by the beam's own orch, to which any other orch passes the call: the board refuses an edit of the project's body once its project record exists, and the verb's notice reaches the live agents of every member run under the beam.
     The project record holds only what binds the whole project, its goal, bounds and constraints every member follows; it is no log of what landed, so a member landing never touches it.
-    A decision that adds, changes or removes a PATTERN entry also passes `--pattern-entry`, `--pattern-action` and, for `adds` or `changes`, `--pattern-text`, as `lym loom decision add --help` says.
+    A decision that adds, changes or removes a PATTERN entry, or `withdraws` a declared change, also passes `--pattern-entry`, `--pattern-action` and, for `adds` or `changes`, `--pattern-text`, as `lym loom decision add --help` says.
     Several decisions taken together go in one call with `--from <file>`, a JSON array of entries, so they land in one commit and one notice.
     Once the plan is approved, the parent also passes `--amends-plan`.
   - When that verb refuses because the run has no decision record (batten's pre-loom rows such as `running · Worktree-Create` and `Preflight`, or a halt before Discussion-Write), the decision becomes a board note of its own through `lym board upsert` with kind note, titled `{{.decision_note_title}} <the decision>`, with the held task's slug in place of `<slug>`.

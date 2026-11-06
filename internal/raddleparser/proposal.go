@@ -60,20 +60,41 @@ type BoardCheck struct {
 // Part is one entry the proposal files.
 // ExpectedCostUSD is nil when a cell the figure rests on reads "too few runs".
 type Part struct {
-	Slug            string    `json:"slug"`
-	Title           string    `json:"title"`
-	Type            string    `json:"type"`
-	Recipe          string    `json:"recipe"`
-	Profile         string    `json:"profile"`
-	Decisions       []string  `json:"decisions"`
-	Packages        []Package `json:"packages"`
-	Contract        Contract  `json:"contract"`
-	DependsOn       []string  `json:"depends_on"`
-	OpenRisks       []string  `json:"open_risks"`
-	Criteria        []string  `json:"criteria"`
-	PatternChanges  []string  `json:"pattern_changes"`
-	ExpectedCostUSD *float64  `json:"expected_cost_usd"`
-	CostLine        string    `json:"cost_line"`
+	Slug           string    `json:"slug"`
+	Title          string    `json:"title"`
+	Type           string    `json:"type"`
+	Recipe         string    `json:"recipe"`
+	Profile        string    `json:"profile"`
+	Decisions      []string  `json:"decisions"`
+	Packages       []Package `json:"packages"`
+	Contract       Contract  `json:"contract"`
+	DependsOn      []string  `json:"depends_on"`
+	OpenRisks      []string  `json:"open_risks"`
+	Criteria       []string  `json:"criteria"`
+	PatternChanges []string  `json:"pattern_changes"`
+	// PatternClusters maps the carried PATTERN changes a live entry absorbs onto that entry.
+	PatternClusters []PatternCluster `json:"pattern_clusters,omitempty"`
+	ExpectedCostUSD *float64         `json:"expected_cost_usd"`
+	CostLine        string           `json:"cost_line"`
+}
+
+// PatternCluster moves one PATTERN change of the Sketch onto the live PATTERN.md entry that absorbs it, so the part's record declares that entry.
+// Text is the live entry's whole new text.
+type PatternCluster struct {
+	SketchID string `json:"sketch_id"`
+	Entry    string `json:"entry"`
+	Text     string `json:"text"`
+}
+
+// PatternEntryIDs returns the entry ids the part's record declares: its PatternChanges in order, each one a cluster maps replaced by that cluster's entry.
+func (p Part) PatternEntryIDs() []string {
+	ids := slices.Clone(p.PatternChanges)
+	for _, cluster := range p.PatternClusters {
+		if i := slices.Index(ids, cluster.SketchID); i >= 0 {
+			ids[i] = cluster.Entry
+		}
+	}
+	return ids
 }
 
 // Package is a package a part changes and the rough number of changed lines.

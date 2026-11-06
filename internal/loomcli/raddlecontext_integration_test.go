@@ -12,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/raddleparser"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -42,6 +43,9 @@ func TestRaddleBoardContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveWorktree() error = %v; want nil", err)
 	}
+	if err := os.WriteFile(pattern.File(location.WorktreePath()), []byte("# PATTERN\n\n- `PATTERN-live` — A rule.\n"), 0o644); err != nil {
+		t.Fatalf("write PATTERN.md: %v", err)
+	}
 
 	got, err := raddleBoardContext(location, true)
 	if err != nil {
@@ -51,6 +55,20 @@ func TestRaddleBoardContext(t *testing.T) {
 	if got.Sketch != "the-sketch" || got.Entry != "the-sketch" || !got.Filing {
 		t.Errorf("context = sketch %q, entry %q, filing %v; want the run's own entry and filing", got.Sketch, got.Entry, got.Filing)
 	}
+	if !got.LivePattern("PATTERN-live") || got.LivePattern("PATTERN-gone") {
+		t.Errorf("LivePattern(PATTERN-live), LivePattern(PATTERN-gone) = %v, %v; want true, false", got.LivePattern("PATTERN-live"), got.LivePattern("PATTERN-gone"))
+	}
+	if err := os.Remove(pattern.File(location.WorktreePath())); err != nil {
+		t.Fatalf("remove PATTERN.md: %v", err)
+	}
+	withoutPattern, err := raddleBoardContext(location, true)
+	if err != nil {
+		t.Fatalf("raddleBoardContext() without PATTERN.md error = %v; want nil", err)
+	}
+	if withoutPattern.LivePattern("PATTERN-live") {
+		t.Error("LivePattern(PATTERN-live) = true without a PATTERN.md; want false")
+	}
+
 	if want := []string{"mod-a"}; !slices.Equal(got.ModuleLabels, want) {
 		t.Errorf("ModuleLabels = %v; want %v, the Sketch's labels that are not type labels", got.ModuleLabels, want)
 	}

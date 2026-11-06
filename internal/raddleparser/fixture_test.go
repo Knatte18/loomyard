@@ -68,8 +68,9 @@ func validBoard() BoardContext {
 			{Slug: "sketch-x", Kind: KindTask, Labels: []string{"mod-a", "sketch"}, Open: true, Revised: "2026-11-01T09:00:00Z"},
 			{Slug: "other-open", Kind: KindTask, Labels: []string{"mod-z"}, Open: true, Revised: "2026-11-01T10:00:00Z"},
 		},
-		TypeLabels: []string{"feature", "fix", "sketch"},
-		Profiles:   map[string][]string{RecipeTapestry: {"standard"}, RecipeDarn: {"quick"}},
+		TypeLabels:  []string{"feature", "fix", "sketch"},
+		Profiles:    map[string][]string{RecipeTapestry: {"standard"}, RecipeDarn: {"quick"}},
+		LivePattern: func(id string) bool { return id == "PATTERN-live" },
 	}
 }
 

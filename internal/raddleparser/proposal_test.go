@@ -28,6 +28,7 @@ func TestParse(t *testing.T) {
 		{"ValidProposal", string(valid), nil},
 		{"UnknownTopLevelKey", `{"sketch":"s","colour":"red"}`, []string{`"colour"`, "way forward"}},
 		{"UnknownKeyInAPart", `{"parts":[{"slug":"a","priority":1}]}`, []string{`"priority"`, "parts[0]", "way forward"}},
+		{"UnknownKeyInAPatternCluster", `{"parts":[{"slug":"a","pattern_clusters":[{"sketch_id":"PATTERN-a","colour":"red"}]}]}`, []string{`"colour"`, "parts[0].pattern_clusters[0]", "way forward"}},
 		{"MalformedFile", `{"sketch":`, []string{"not valid JSON", "way forward"}},
 		{"ValueOfTheWrongType", `{"sketch":3}`, []string{"does not fit", "way forward"}},
 		{"NotAnObject", `[]`, []string{"does not fit", "way forward"}},
@@ -54,6 +55,22 @@ func TestParse(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestParse_PatternClusters pins the JSON form of a part's pattern_clusters, which the other tests build as Go literals.
+func TestParse_PatternClusters(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const data = `{"parts":[{"slug":"a","pattern_clusters":[{"sketch_id":"PATTERN-a","entry":"PATTERN-live","text":"Live rule."}]}]}`
+	got, err := Parse([]byte(data))
+	if err != nil {
+		t.Fatalf("Parse() error = %v; want nil", err)
+	}
+	want := []PatternCluster{{SketchID: "PATTERN-a", Entry: "PATTERN-live", Text: "Live rule."}}
+	if len(got.Parts) != 1 || !reflect.DeepEqual(got.Parts[0].PatternClusters, want) {
+		t.Errorf("Parse() parts = %+v; want one part with the clusters %+v", got.Parts, want)
 	}
 }
 

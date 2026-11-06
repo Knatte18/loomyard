@@ -7,5 +7,6 @@
 // Hash is the approval hash, the hex SHA-256 of the file's bytes.
 //
 // Check is pure: it judges a Proposal against the decision record's bytes and a BoardContext the caller builds, and returns one Finding per broken rule of the spec.
+// A part's `pattern_clusters` map a PATTERN change of the Sketch onto the live entry that absorbs it: Check refuses a mapping the filing could not write, and Part.PatternEntryIDs names the ids the part's record declares.
 // RecheckBoard is the second look at the board at approval and at filing, which fails a moved or incomplete board and names the weighed entries that have landed.
 package raddleparser

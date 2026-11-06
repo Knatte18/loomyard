@@ -267,9 +267,14 @@ func (p *raddleFile) stage(data, record []byte, hash string, entry RaddleRunEntr
 }
 
 // writeRecords writes step 2's part records: the Sketch's record whole for the project and for the tapestry shape's one part, and a record cut by SplicePart for every other part.
+// Every record declares a mapped PATTERN change under its live entry, so the Sketch's id never reaches the plan gate; the store keeps the Sketch's own record.
 // A record whose hash file already holds the proposal's hash is left as it is.
 // A SplicePart error is returned naming the part.
 func (p *raddleFile) writeRecords(proposal raddleparser.Proposal, record []byte, hash string) error {
+	record, err := discussionparser.MapPatternChanges(record, raddlePatternMappings(proposal))
+	if err != nil {
+		return fmt.Errorf("map the PATTERN changes onto their live entries: %w", err)
+	}
 	if proposal.Project != nil {
 		if err := p.writeRecord(proposal.Project.Slug, record, hash); err != nil {
 			return err
@@ -284,7 +289,7 @@ func (p *raddleFile) writeRecords(proposal raddleparser.Proposal, record []byte,
 				Decisions:      part.Decisions,
 				OpenRisks:      part.OpenRisks,
 				Criteria:       part.Criteria,
-				PatternChanges: part.PatternChanges,
+				PatternChanges: part.PatternEntryIDs(),
 			})
 			if err != nil {
 				return fmt.Errorf("cut the decision record of the part %s: %w", part.Slug, err)
@@ -296,6 +301,17 @@ func (p *raddleFile) writeRecords(proposal raddleparser.Proposal, record []byte,
 		}
 	}
 	return nil
+}
+
+// raddlePatternMappings returns every part's pattern_clusters mapping, in the proposal's order.
+func raddlePatternMappings(proposal raddleparser.Proposal) []discussionparser.PatternClusterMapping {
+	var mappings []discussionparser.PatternClusterMapping
+	for _, part := range proposal.Parts {
+		for _, cluster := range part.PatternClusters {
+			mappings = append(mappings, discussionparser.PatternClusterMapping{SketchID: cluster.SketchID, Entry: cluster.Entry, Text: cluster.Text})
+		}
+	}
+	return mappings
 }
 
 // writeRecord writes the record of the entry slug and the hash file beside it, the hash last, unless the hash file already holds hash and the record exists.

@@ -10,6 +10,7 @@
 // A sampler run adds a third: the strand its Sampler-Session row has recorded as its session, while the run stands at that row, which passes only `--by operator`, since it records only what the operator settled in its pane.
 // The check reads only the exported strand name, the parent orch's name and the recorded sampler strand, so it guards a mistaken call, not a session that clears or forges the variable, and `--by` stays an unverified label.
 // That is bounded by each entry being append-only, under an `Added after Discussion` heading with the claimed label and the date, in the call's one committed diff.
+// The one strike is a withdrawal, `--pattern-action withdraws`, which removes a declared `## PATTERN changes` bullet in the commit whose entry names it.
 //
 // On a run whose recipe has a Record-Write row the verb works once that row has written and committed the record.
 // The caller rule and the append-only, labelled, committed entry are unchanged.
@@ -94,7 +95,8 @@ const (
 	decisionWayFindings  = `way forward: the record is restored; fix the named section and re-run the verb`
 	decisionWayArbiter   = `way forward: the "arbiter" label is the run's own arbiter's; pass --by parent from the run's parent, or --by operator from the operator's own shell`
 	decisionWaySampler   = `way forward: pass --by operator for a call the operator settled in the pane, or ask the run's parent to record its own call`
-	decisionWayPattern   = `way forward: pass --pattern-entry and --pattern-action together, and --pattern-text for adds or changes`
+	decisionWayPattern   = `way forward: pass --pattern-entry and --pattern-action together, and --pattern-text for adds or changes, never for withdraws`
+	decisionWayWithdraw  = `way forward: read the record's "## PATTERN changes" section, then re-run the verb naming an entry it declares, or without the withdrawal when the entry was never declared`
 
 	decisionWayRecordStart     = `the record exists once Record-Write has run; way forward: run "lym loom start", then re-run the verb once the run passed Record-Write`
 	decisionWayRecordResume    = `the record exists once Record-Write has run; way forward: run "lym loom resume", then re-run the verb`
@@ -105,7 +107,7 @@ const (
 
 	decisionWayFromAlone = `way forward: put every entry's fields in the --from file and drop --title, --decision, --rationale and the --pattern-* flags`
 	decisionWayFromFile  = `way forward: write the --from file as a non-empty JSON array of objects with the keys title, decision, rationale and, for a PATTERN change, pattern_entry, pattern_action and pattern_text, then re-run the verb`
-	decisionWayFromKeys  = `way forward: set pattern_entry and pattern_action together, and pattern_text for adds or changes, then re-run the verb`
+	decisionWayFromKeys  = `way forward: set pattern_entry and pattern_action together, and pattern_text for adds or changes, never for withdraws, then re-run the verb`
 	decisionWayFromTwice = `way forward: give each entry of the --from file its own title and its own PATTERN entry, or record the second in a later call`
 
 	decisionWayFabricCommit    = `way forward: run "lym fabric commit" to commit the record; a session lym refuses the verb from reports status: FAILED and the orch runs it`
@@ -154,6 +156,12 @@ type decisionEntry struct {
 	PatternText   string `json:"pattern_text"`
 }
 
+// patternFormBroken reports whether the PATTERN-change fields of one entry are partial, or carry text beside a withdrawal.
+func patternFormBroken(entry, action, text string) bool {
+	return (entry != "") != (action != "") || (entry == "" && text != "") ||
+		(strings.TrimSpace(action) == discussionparser.PatternActionWithdraws && text != "")
+}
+
 // decisionEntries returns the entries input carries, or the refusal text when they are not a well-formed set.
 // A one-entry call refuses an empty field or a partial PATTERN-change form.
 // A --from call refuses any per-entry flag beside it and a file that is unreadable, not one JSON array of objects, followed by more data, empty, or carrying a key no entry has.
@@ -165,7 +173,7 @@ func decisionEntries(input decisionInput) ([]decisionEntry, string) {
 				return nil, fmt.Sprintf("--%s is empty; way forward: pass --%s with the text to record", flag.name, flag.name)
 			}
 		}
-		if (input.patternEntry != "") != (input.patternAction != "") || (input.patternEntry == "" && input.patternText != "") {
+		if patternFormBroken(input.patternEntry, input.patternAction, input.patternText) {
 			return nil, "--pattern-entry, --pattern-action and --pattern-text are one form; " + decisionWayPattern
 		}
 		return []decisionEntry{{
@@ -210,7 +218,7 @@ func decisionEntries(input decisionInput) ([]decisionEntry, string) {
 				return nil, fmt.Sprintf("entry %d of the --from file has an empty %s; %s", n, field.name, decisionWayFromFile)
 			}
 		}
-		if (entry.PatternEntry != "") != (entry.PatternAction != "") || (entry.PatternEntry == "" && entry.PatternText != "") {
+		if patternFormBroken(entry.PatternEntry, entry.PatternAction, entry.PatternText) {
 			return nil, fmt.Sprintf("entry %d of the --from file: pattern_entry, pattern_action and pattern_text are one form; %s", n, decisionWayFromKeys)
 		}
 		title := strings.TrimSpace(entry.Title)
@@ -672,7 +680,8 @@ func planApprovedReader(anchorPath string) func() (bool, error) {
 // It is refused on a recipe with no Plan-Write row and for a plan that is not approved, and a failed append or commit puts both records back.
 // The optional PATTERN-change form appends one bullet of the record's PATTERN-change shape beside its entry, in the same write.
 // It passes through the verb's existing checks and its --by parent|operator|arbiter caller guards, so only the run's parent, the operator's own shell or the run's own arbiter declares a change after Discussion.
-// The form rewrites only the record's bullet for the same entry ID, which its new bullet replaces, and removes nothing.
+// The form rewrites only the record's bullet for the same entry ID, which its new bullet replaces.
+// Its `withdraws` action strikes that bullet instead, and is refused when the record declares none.
 func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionInput) int {
 	refuse := func(format string, args ...any) int {
 		return output.Err(out, fmt.Sprintf("loom: %s add: ", decisionGroup)+fmt.Sprintf(format, args...))
@@ -774,6 +783,7 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 	titles := make([]string, 0, len(entries))
 	headings := make([]string, 0, len(entries))
 	patternBullets := []string{}
+	withdrawn := []string{}
 	for _, entry := range entries {
 		d := discussionparser.AddedDecision{
 			By:        input.by,
@@ -782,12 +792,12 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 			Rationale: entry.Rationale,
 			Date:      date,
 		}
-		if entry.PatternEntry != "" {
-			change := discussionparser.PatternChange{
-				ID:     strings.TrimSpace(entry.PatternEntry),
-				Action: strings.TrimSpace(entry.PatternAction),
-				Text:   strings.TrimSpace(entry.PatternText),
-			}
+		switch id, action := strings.TrimSpace(entry.PatternEntry), strings.TrimSpace(entry.PatternAction); {
+		case action == discussionparser.PatternActionWithdraws:
+			d.WithdrawnPattern = id
+			withdrawn = append(withdrawn, id)
+		case id != "":
+			change := discussionparser.PatternChange{ID: id, Action: action, Text: strings.TrimSpace(entry.PatternText)}
 			d.PatternChange = &change
 			patternBullets = append(patternBullets, change.Bullet())
 		}
@@ -822,6 +832,8 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 		return refuse("the run has no decision record at %s; %s", deps.recordPath, decisionWayNoRecord)
 	case errors.Is(err, discussionparser.ErrNoDecisionsHeading):
 		return refuse("%s; %s", err, decisionWayNoHeading)
+	case errors.Is(err, discussionparser.ErrPatternBulletAbsent):
+		return refuse("%s; %s", err, decisionWayWithdraw)
 	case err != nil:
 		return refuse("%s; %s", err, decisionWayRetry)
 	case len(findings) > 0:
@@ -860,6 +872,9 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 	}
 	if len(patternBullets) > 0 {
 		result["pattern_changes"] = patternBullets
+	}
+	if len(withdrawn) > 0 {
+		result["pattern_withdrawn"] = withdrawn
 	}
 	if len(added) == 1 {
 		result["heading"] = headings[0]
@@ -1243,38 +1258,37 @@ Example:
 		Short:       "append decisions to the decision record and commit them",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `add appends an entry under an "Added after Discussion" heading, carrying the
---by label and today's date, to the decision record's Decisions section,
-re-runs the discussion check (restoring the record on a finding) and commits.
-It changes neither the support log nor the plan. On a run
-past its Discussion approval it also copies the committed record onto the run's
-board entry; a failed copy never fails the verb and is reported as
-"record_store_error". It then notifies the run's other live agents
-("notified", "notice_errors").
+--by label and today's date, to the record's Decisions section, re-runs the
+discussion check (restoring the record on a finding) and commits.
+It changes neither the support log nor the plan. Past Discussion approval it
+also copies the record onto the run's board entry; a failed copy is reported
+as "record_store_error", never fails the verb. It then notifies the run's other
+live agents ("notified", "notice_errors").
 
---by is parent, operator or arbiter, the last only from the run's own arbiter
-strand. --title, --decision and --rationale are required unless --from is
-passed. A named session other than the run's parent orch, arbiter or, on a
-sampler run, its sampler session (--by operator only) is refused. It is refused while Discussion-Write runs, and, on a Record-Write recipe,
-until it has committed the record.
+--by is parent, operator or arbiter (the last only from the run's arbiter
+strand). --title, --decision and --rationale are required without --from. A named session other than the run's parent orch, arbiter or sampler
+session (--by operator only) is refused, as is any call while Discussion-Write
+runs or, on a Record-Write recipe, before it has committed the record.
 
 --amends-plan marks a decision that amends the approved plan: the call also
 appends the title to the plan amendment record in the same commit. It is
 refused on a recipe with no Plan-Write row and with no approved plan.
-Afterwards the parent runs
-"lym loom goto --to Plan-Burler-Review" and "lym loom resume".
+Afterwards the parent runs "lym loom goto --to Plan-Burler-Review" and
+"lym loom resume".
 
 A decision on a PATTERN entry also passes --pattern-entry <PATTERN-id>,
 --pattern-action adds|changes|removes and, for adds or changes, --pattern-text
 <new entry text>, which writes its bullet to the "## PATTERN changes" section.
+--pattern-action withdraws strikes the entry's declared bullet in the same
+commit, takes no --pattern-text and is refused when the record declares none.
 
---from <file> records several decisions in place of the per-entry flags: a
-JSON array of objects with the keys title, decision, rationale and optional
-pattern_entry, pattern_action, pattern_text. --by and --amends-plan apply to
-every entry. All land in one commit or none does, the notice names the
-headings, and two entries may not share a title or a PATTERN entry.
+--from <file> records several decisions from a JSON array of objects with the
+keys title, decision, rationale and optional pattern_entry, pattern_action,
+pattern_text. --by and --amends-plan apply to every entry. All land in one
+commit or none does; no two share a title or a PATTERN entry.
 
 Example:
-  lym loom decision add <slug> --by parent --title "Keep the cache" --decision "Keep the cache per run." --rationale "A shared cache races."`,
+  lym loom decision add <slug> --by parent --title "Keep cache" --decision "Per run." --rationale "Shared races."`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -1288,8 +1302,8 @@ Example:
 	add.Flags().StringVar(&st.input.title, "title", "", "the decision's heading title")
 	add.Flags().StringVar(&st.input.decision, "decision", "", "what was decided")
 	add.Flags().StringVar(&st.input.rationale, "rationale", "", "why it was decided")
-	add.Flags().StringVar(&st.input.patternEntry, "pattern-entry", "", "the PATTERN entry the decision adds, changes or removes, as PATTERN-<id>")
-	add.Flags().StringVar(&st.input.patternAction, "pattern-action", "", "what the decision does to the entry: adds, changes or removes")
+	add.Flags().StringVar(&st.input.patternEntry, "pattern-entry", "", "the PATTERN entry the decision adds, changes, removes or withdraws, as PATTERN-<id>")
+	add.Flags().StringVar(&st.input.patternAction, "pattern-action", "", "what the decision does to the entry: adds, changes, removes or withdraws")
 	add.Flags().StringVar(&st.input.patternText, "pattern-text", "", "the entry's new text, for adds or changes")
 	add.Flags().StringVar(&st.input.from, "from", "", "a JSON file of several decisions to record in one call, in place of the per-entry flags")
 	add.Flags().BoolVar(&st.input.amendsPlan, "amends-plan", false, "the decision amends the approved plan: also record it in the plan amendment record")

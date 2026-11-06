@@ -22,12 +22,23 @@ const checkPatternChangeMalformed = "pattern-change-malformed"
 // The caller can refuse with its own way forward.
 var ErrPatternChangesInvalid = errors.New("decision record's PATTERN changes section is malformed")
 
+// ErrPatternBulletAbsent reports a withdrawal of an entry the record's `## PATTERN changes` section holds no bullet for.
+// The caller can refuse with its own way forward.
+var ErrPatternBulletAbsent = errors.New("decision record's \"## PATTERN changes\" section holds no bullet to withdraw")
+
 // The actions a PATTERN change bullet declares.
 const (
 	patternActionAdds    = "adds"
 	patternActionChanges = "changes"
 	patternActionRemoves = "removes"
 )
+
+// PatternActionWithdraws is the action a `lym loom decision add` call names to strike a declared bullet.
+// It is no bullet action, since a withdrawal leaves no bullet behind.
+const PatternActionWithdraws = "withdraws"
+
+// patternWithdrawalLine matches the line closing an added-decision entry that withdrew a bullet, capturing the entry ID.
+var patternWithdrawalLine = regexp.MustCompile("^Withdraws: `(PATTERN-[a-z0-9-]+)`$")
 
 // patternBulletHead matches the start of a bullet: the backticked entry ID and the em dash, capturing the ID and the rest of the line.
 var patternBulletHead = regexp.MustCompile("^- `(PATTERN-[a-z0-9-]+)` — (.+)$")
@@ -184,6 +195,36 @@ func patternOverCapFindings(changes []PatternChange) []Finding {
 		})
 	}
 	return findings
+}
+
+// PatternTextOverCap reports whether the rule text of the entry text is longer than a PATTERN.md entry's rule text may be.
+func PatternTextOverCap(text string) bool {
+	return len([]rune(patternRuleText(text))) > patternEntryTextCap
+}
+
+// PatternClusterMapping moves one declared PATTERN change onto the live entry that absorbs it.
+type PatternClusterMapping struct {
+	// SketchID is the entry ID the record's bullet names.
+	SketchID string
+	// Entry is the live entry's ID, and Text its whole new text.
+	Entry string
+	Text  string
+}
+
+// MapPatternChanges returns record with each mapping's bullet rewritten in place as a `changes` bullet of its live entry, so a record cut for a part declares the entry the plan gate and PATTERN.md know.
+// Every other byte stays, and no mappings return record unchanged.
+// A SketchID the `## PATTERN changes` section holds no bullet for is an error naming it.
+func MapPatternChanges(record []byte, mappings []PatternClusterMapping) ([]byte, error) {
+	content := string(record)
+	for _, mapping := range mappings {
+		start, end, found := patternBulletRange(content, mapping.SketchID)
+		if !found {
+			return nil, fmt.Errorf("the decision record's %q section holds no bullet for %s", patternChangesHeading, mapping.SketchID)
+		}
+		change := PatternChange{ID: mapping.Entry, Action: patternActionChanges, Text: strings.TrimSpace(mapping.Text)}
+		content = content[:start] + change.Bullet() + content[end:]
+	}
+	return []byte(content), nil
 }
 
 // notesHeading is the optional H2 heading a new PATTERN changes section is placed before.

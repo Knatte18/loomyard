@@ -342,6 +342,7 @@
 // `lym loom decision add --from <file>` reads a JSON array of objects with the keys `title`, `decision`, `rationale` and optionally `pattern_entry`, `pattern_action` and `pattern_text`.
 // `--by` and `--amends-plan` apply to every entry, and all entries land in one write and one commit, or none does.
 // Each live agent gets one notice naming the headings (`headings`), and two entries may not share a title or a PATTERN entry.
+// `pattern_action` `withdraws`, like `--pattern-action withdraws`, strikes a declared `## PATTERN changes` bullet in the entry's commit, and the envelope names the ID under `pattern_withdrawn`.
 //
 // # Decision amends-plan
 //

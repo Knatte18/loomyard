@@ -33,6 +33,9 @@ type AddedDecision struct {
 	// PatternChange, when set, is a PATTERN entry the decision adds, changes or removes.
 	// AppendDecision declares it as a bullet of the record's `## PATTERN changes` section in the same write as the decision's entry.
 	PatternChange *PatternChange
+	// WithdrawnPattern, when set, is the entry ID of a declared PATTERN change the decision takes back.
+	// AppendDecision strikes its bullet in the same write as the decision's entry, which names the ID, and it is never set beside PatternChange.
+	WithdrawnPattern string
 }
 
 // AppendDecision adds d as the last entry of the decision record's `## Decisions` section and then
@@ -41,6 +44,8 @@ type AddedDecision struct {
 // A bullet the section already holds for the change's entry ID is replaced in place, since the section holds one bullet per ID.
 // Otherwise the bullet goes after the section's last bullet, and the section is created when the record has none.
 // The bullet carries the suffix ` — added after Discussion (<by>, <date>)`, and a bullet of the wrong shape comes back as a finding like any other.
+// With d.WithdrawnPattern set it instead strikes that entry's bullet, leaving the section's heading, and closes the entry with a `Withdraws:` line naming the ID, which keeps the strike from reading as a dropped bullet.
+// A record with no bullet for that ID is an error wrapping ErrPatternBulletAbsent, and nothing is written.
 //
 // It reads decisionRecordPath first; a missing file comes back as an error wrapping os.ErrNotExist,
 // so the caller can refuse with its own way forward.
@@ -100,8 +105,8 @@ func AppendDecisions(decisionRecordPath, supportLogPath string, ds []AddedDecisi
 	return findings, err
 }
 
-// insertDecision returns content with d's entry added at the end of its `## Decisions` section and, when d.PatternChange is set, d's bullet written to its `## PATTERN changes` section.
-// An empty field of d after trimming and content with no `## Decisions` heading are errors.
+// insertDecision returns content with d's entry added at the end of its `## Decisions` section and, when d.PatternChange or d.WithdrawnPattern is set, d's bullet written to or struck from its `## PATTERN changes` section.
+// An empty field of d after trimming, content with no `## Decisions` heading and a withdrawal of a bullet content lacks are errors.
 func insertDecision(content string, d AddedDecision) (string, error) {
 	by, title := strings.TrimSpace(d.By), strings.TrimSpace(d.Title)
 	decision, rationale := strings.TrimSpace(d.Decision), strings.TrimSpace(d.Rationale)
@@ -122,17 +127,32 @@ func insertDecision(content string, d AddedDecision) (string, error) {
 		entry = "\n" + entry
 	}
 
-	if d.PatternChange == nil {
+	var patternAt, patternEnd int
+	var insertion string
+	switch withdrawn := strings.TrimSpace(d.WithdrawnPattern); {
+	case withdrawn != "":
+		var found bool
+		patternAt, patternEnd, found = patternBulletRange(content, withdrawn)
+		if !found {
+			return "", fmt.Errorf("%w: %s", ErrPatternBulletAbsent, withdrawn)
+		}
+		if patternEnd < len(content) {
+			patternEnd++
+		}
+		entry += "\nWithdraws: `" + withdrawn + "`\n"
+	case d.PatternChange != nil:
+		bullet := patternChangeAppendedBullet(*d.PatternChange, by, d.Date)
+		var replace bool
+		patternAt, patternEnd, replace = patternBulletRange(content, strings.TrimSpace(d.PatternChange.ID))
+		insertion = bullet
+		if !replace {
+			var needHeading bool
+			patternAt, needHeading = patternChangesInsertOffset(content)
+			patternEnd = patternAt
+			insertion = patternChangesInsertion(content, patternAt, needHeading, bullet)
+		}
+	default:
 		return content[:at] + entry + content[at:], nil
-	}
-	bullet := patternChangeAppendedBullet(*d.PatternChange, by, d.Date)
-	patternAt, patternEnd, replace := patternBulletRange(content, strings.TrimSpace(d.PatternChange.ID))
-	insertion := bullet
-	if !replace {
-		var needHeading bool
-		patternAt, needHeading = patternChangesInsertOffset(content)
-		patternEnd = patternAt
-		insertion = patternChangesInsertion(content, patternAt, needHeading, bullet)
 	}
 	if patternAt >= at {
 		return content[:at] + entry + content[at:patternAt] + insertion + content[patternEnd:], nil
@@ -199,6 +219,7 @@ const checkAddedDecisionDropped = "added-decision-dropped"
 //
 // It then returns one pattern-change-dropped Finding per entry ID of an appended `## PATTERN changes` bullet some of versions holds for which record holds no appended bullet, in the same order and with a Detail that names the bullet and says to restore it.
 // The ID alone is the key, because AppendDecision replaces the bullet it finds for an ID with one carrying the new call's author and date.
+// An ID a `Withdraws:` line of an added-decision entry of record names is no finding, since that call struck the bullet; such a line exempts the ID for good, so a bullet re-added after the withdrawal is not held to the record either.
 //
 // A record whose added-decision heading does not parse is one finding carrying the parse error, because the writer can fix it.
 // A version whose heading does not parse contributes no entries: only `lym loom decision add` writes these headings, and a garbled historical copy must not block the run.
@@ -221,7 +242,7 @@ func checkDroppedPatternBullets(record []byte, versions [][]byte) []Finding {
 	if len(problems) > 0 {
 		return nil
 	}
-	seen := make(map[string]bool, len(keptBullets))
+	seen := withdrawnPatternIDs(record)
 	for _, c := range keptBullets {
 		if c.By != "" {
 			seen[c.ID] = true
@@ -247,6 +268,22 @@ func checkDroppedPatternBullets(record []byte, versions [][]byte) []Finding {
 		}
 	}
 	return findings
+}
+
+// withdrawnPatternIDs returns the entry IDs the `Withdraws:` lines of record's added-decision entries name, outside fenced blocks.
+func withdrawnPatternIDs(record []byte) map[string]bool {
+	lines := strings.Split(string(record), "\n")
+	fenced := fencedLines(lines)
+	withdrawn := map[string]bool{}
+	_, spans := addedDecisionSpans(lines, fenced)
+	for _, span := range spans {
+		for i := span.first; i <= span.last; i++ {
+			if match := patternWithdrawalLine.FindStringSubmatch(strings.TrimRight(lines[i], " \t\r")); match != nil && !fenced[i] {
+				withdrawn[match[1]] = true
+			}
+		}
+	}
+	return withdrawn
 }
 
 // checkDroppedAddedDecisions returns the added-decision-dropped findings for the entries of versions that kept lacks.

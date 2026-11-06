@@ -343,10 +343,16 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 		recordRow bool
 		// pattern sets the three PATTERN-change flags.
 		pattern bool
+		// withdraw sets the PATTERN-change flags of a withdrawal.
+		withdraw bool
+		// fromFile passes the withdrawal in a --from file of one entry instead of the flags.
+		fromFile bool
 		// programNameFails makes the LOOM program name resolver fail.
 		programNameFails bool
 	}{
+		{name: "parent label withdrawing a PATTERN change through a --from file", by: "parent", withdraw: true, fromFile: true},
 		{name: "parent label with the PATTERN-change form", by: "parent", pattern: true},
+		{name: "parent label withdrawing a PATTERN change", by: "parent", withdraw: true},
 		{name: "Record-Write record from an unnamed shell", by: "parent", recordRow: true},
 		{name: "Record-Write record from the recorded parent", by: "parent", strandName: "hub:orch", parentName: "hub:orch", recordRow: true},
 		{name: "Record-Write record with the PATTERN-change form", by: "parent", recordRow: true, pattern: true},
@@ -379,12 +385,26 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 			if tc.pattern {
 				input.patternEntry, input.patternAction, input.patternText = "PATTERN-x", "adds", "New rule."
 			}
+			if tc.withdraw && !tc.fromFile {
+				input.patternEntry, input.patternAction = "PATTERN-x", "withdraws"
+			}
+			if tc.fromFile {
+				input = decisionInput{by: by, from: writeDecisionBatch(t, `[{"title": "Keep the cache", "decision": "Keep it per run.", "rationale": "A shared cache races.", "pattern_entry": "PATTERN-x", "pattern_action": "withdraws"}]`)}
+			}
 			var out bytes.Buffer
 			if code := decisionVerb(&out, "task-a", f.deps(), input); code != 0 {
 				t.Fatalf("exit = %d, out %s; want 0", code, out.String())
 			}
 
 			data := envelope.RequireOK(t, out.String()).Raw
+			if tc.withdraw {
+				if f.lastAdded.WithdrawnPattern != "PATTERN-x" {
+					t.Errorf("appended WithdrawnPattern = %q; want PATTERN-x", f.lastAdded.WithdrawnPattern)
+				}
+				if got := fmt.Sprint(data["pattern_withdrawn"]); got != "[PATTERN-x]" {
+					t.Errorf("envelope pattern_withdrawn = %s; want the entry ID", got)
+				}
+			}
 			if tc.pattern {
 				want := discussionparser.PatternChange{ID: "PATTERN-x", Action: "adds", Text: "New rule."}
 				if got := f.lastAdded.PatternChange; got == nil || *got != want {
@@ -730,6 +750,29 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 				f.findings = []discussionparser.Finding{{Check: "pattern-change-malformed", Detail: "line 12: adds needs its new text"}}
 			},
 			want: []string{"discussion check flags the record", "pattern-change-malformed: line 12", "way forward:", "the record is restored"},
+		},
+		{
+			name: "pattern text beside a withdrawal",
+			setup: func(_ *decisionFake, in *decisionInput) {
+				in.patternEntry, in.patternAction, in.patternText = "PATTERN-x", "withdraws", "New rule."
+			},
+			inputRefusal: true,
+			want:         []string{"one form", "way forward:", "never for withdraws"},
+		},
+		{
+			name:         "from entry with text beside a withdrawal",
+			from:         `[{"title": "a", "decision": "d", "rationale": "r", "pattern_entry": "PATTERN-x", "pattern_action": "withdraws", "pattern_text": "t"}]`,
+			inputRefusal: true,
+			noDarnReads:  true,
+			want:         []string{"entry 1 of the --from file", "one form", "way forward:", "never for withdraws"},
+		},
+		{
+			name: "withdrawal of an entry the record does not declare",
+			setup: func(f *decisionFake, in *decisionInput) {
+				in.patternEntry, in.patternAction = "PATTERN-x", "withdraws"
+				f.appendErr = fmt.Errorf("%w: PATTERN-x", discussionparser.ErrPatternBulletAbsent)
+			},
+			want: []string{"holds no bullet to withdraw: PATTERN-x", "way forward:", "naming an entry it declares"},
 		},
 		{
 			name: "no Decisions heading",

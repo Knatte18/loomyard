@@ -102,6 +102,49 @@ func TestSectionBullets(t *testing.T) {
 	}
 }
 
+// TestMapPatternChanges covers a mapped bullet rewritten in place as a `changes` bullet whatever its action, no mapping leaving the record as it is, and the refusal of a Sketch id the record lacks.
+func TestMapPatternChanges(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		mappings []PatternClusterMapping
+		want     string
+		wantErr  string
+	}{
+		{
+			name:     "AddsBulletBecomesChanges",
+			mappings: []PatternClusterMapping{{SketchID: "PATTERN-one", Entry: "PATTERN-live", Text: " Live rule. "}},
+			want:     strings.Replace(spliceRecord, "- `PATTERN-one` — adds: One rule.", "- `PATTERN-live` — changes: Live rule.", 1),
+		},
+		{name: "NoMapping", want: spliceRecord},
+		{
+			name:     "SketchIDTheRecordLacks",
+			mappings: []PatternClusterMapping{{SketchID: "PATTERN-nine", Entry: "PATTERN-live", Text: "Live rule."}},
+			wantErr:  "PATTERN-nine",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := MapPatternChanges([]byte(spliceRecord), tt.mappings)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("MapPatternChanges() error = %v; want one naming %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("MapPatternChanges() error = %v; want nil", err)
+			}
+			if string(got) != tt.want {
+				t.Errorf("MapPatternChanges() =\n%s\nwant\n%s", got, tt.want)
+			}
+		})
+	}
+}
+
 // TestSplicePart covers the spliced record's content, that it passes the decision-id and heading checks, and the refusal of an id, bullet or PATTERN entry the record lacks.
 func TestSplicePart(t *testing.T) {
 	tiergate.Require(t, 0)

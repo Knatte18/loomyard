@@ -187,6 +187,88 @@ func TestAppendDecision_AppendsAtEndOfDecisionsSection(t *testing.T) {
 	}
 }
 
+// TestAppendDecision_WithdrawnPatternStrikesBullet asserts a withdrawal strikes the entry's bullet, the Discussion's or an appended one, in the write that adds its entry, and that the record then counts as keeping its history.
+// A withdrawal of an ID the section holds no bullet for is an error that writes nothing.
+func TestAppendDecision_WithdrawnPatternStrikesBullet(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const (
+		discussionBullet = "- `PATTERN-old` — removes\n"
+		appendedBullet   = "- `PATTERN-new` — adds: Rule. — added after Discussion (operator, 2026-03-01)\n"
+		notes            = "\n## Notes for the plan writer\n\nhint.\n"
+	)
+	section := func(bullets string) string {
+		return allSectionsContent() + "## PATTERN changes\n\n" + bullets + notes
+	}
+	// withEntry returns record with the entry withdrawing id placed after its Decisions section's body.
+	withEntry := func(record, id string) string {
+		return strings.Replace(record, "## Decisions\n\nbody text.\n", "## Decisions\n\nbody text.\n"+wantEntry+"\nWithdraws: `"+id+"`\n", 1)
+	}
+
+	// beforeDecisions returns the record with its PATTERN changes section, holding bullets, placed ahead of `## Decisions`.
+	beforeDecisions := func(bullets string) string {
+		return strings.Replace(allSectionsContent(), "## Decisions\n", "## PATTERN changes\n\n"+bullets+"\n## Decisions\n", 1)
+	}
+	unterminated := allSectionsContent() + "## PATTERN changes\n\n" + strings.TrimSuffix(appendedBullet, "\n")
+
+	tests := []struct {
+		name  string
+		prior string
+		id    string
+		want  string
+	}{
+		{"SectionBeforeDecisions", beforeDecisions(appendedBullet), "PATTERN-new", withEntry(beforeDecisions(""), "PATTERN-new")},
+		{"BulletOnTheLastLineWithoutANewline", unterminated, "PATTERN-new", withEntry(allSectionsContent()+"## PATTERN changes\n\n", "PATTERN-new")},
+		{"DiscussionBullet", section(discussionBullet + appendedBullet), "PATTERN-old", withEntry(section(appendedBullet), "PATTERN-old")},
+		{"AppendedBullet", section(discussionBullet + appendedBullet), "PATTERN-new", withEntry(section(discussionBullet), "PATTERN-new")},
+		{"LastBulletKeepsTheHeading", section(appendedBullet), "PATTERN-new", withEntry(section(""), "PATTERN-new")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			decisionPath, supportPath := writeFixture(t, t.TempDir(), tt.prior, "log")
+			d := addedDecision()
+			d.WithdrawnPattern = tt.id
+
+			findings, err := AppendDecision(decisionPath, supportPath, d)
+			if err != nil || len(findings) != 0 {
+				t.Fatalf("AppendDecision() = %v, %v; want no findings and nil error", findings, err)
+			}
+			got := readFile(t, decisionPath)
+			if got != tt.want {
+				t.Errorf("record =\n%q\nwant\n%q", got, tt.want)
+			}
+			if dropped := CheckAddedDecisionsKept([]byte(got), [][]byte{[]byte(tt.prior)}); len(dropped) != 0 {
+				t.Errorf("CheckAddedDecisionsKept() = %+v; want no finding for a withdrawn bullet", dropped)
+			}
+		})
+	}
+
+	absent := []struct {
+		name  string
+		prior string
+	}{
+		{"NoSection", allSectionsContent()},
+		{"NoBulletForTheID", section(discussionBullet)},
+	}
+	for _, tt := range absent {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			decisionPath, supportPath := writeFixture(t, t.TempDir(), tt.prior, "log")
+			d := addedDecision()
+			d.WithdrawnPattern = "PATTERN-new"
+
+			if _, err := AppendDecision(decisionPath, supportPath, d); !errors.Is(err, ErrPatternBulletAbsent) {
+				t.Errorf("AppendDecision() error = %v; want one wrapping ErrPatternBulletAbsent", err)
+			}
+			if got := readFile(t, decisionPath); got != tt.prior {
+				t.Errorf("record changed:\n%q", got)
+			}
+		})
+	}
+}
+
 func TestAppendDecision_EmptyFieldWritesNothing(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -472,6 +554,23 @@ func TestCheckAddedDecisionsKept(t *testing.T) {
 			name:     "an appended bullet a later call replaced for the same ID",
 			record:   withSection("- `PATTERN-a` — adds: Shorter. — added after Discussion (bob, 2026-03-05)"),
 			versions: [][]byte{withSection(appended)},
+		},
+		{
+			name:     "an appended bullet a later call withdrew",
+			record:   []byte("## Decisions\n\n### Added after Discussion (bob, 2026-03-05): Drop it\n\nDecision: d.\n\nRationale: r.\n\nWithdraws: `PATTERN-a`\n"),
+			versions: [][]byte{withSection(appended)},
+		},
+		{
+			name:        "a withdrawal line inside a fenced block of an added entry withdraws nothing",
+			record:      []byte("## Decisions\n\n### Added after Discussion (bob, 2026-03-05): Drop it\n\nDecision: d.\n\nRationale: r.\n\n```\nWithdraws: `PATTERN-a`\n```\n"),
+			versions:    [][]byte{withSection(appended)},
+			wantBullets: []string{"PATTERN-a"},
+		},
+		{
+			name:        "a withdrawal line outside an added entry withdraws nothing",
+			record:      []byte("## Decisions\n\nWithdraws: `PATTERN-a`\n"),
+			versions:    [][]byte{withSection(appended)},
+			wantBullets: []string{"PATTERN-a"},
 		},
 		{
 			name:        "a record holding the ID only as a bullet without the suffix",

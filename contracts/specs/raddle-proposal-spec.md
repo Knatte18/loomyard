@@ -38,7 +38,10 @@ A part holds:
 - `contract` — `{takes, delivers, exports}`, each a text.
 - `depends_on` — part slugs or board slugs.
 - `open_risks` and `criteria` — the Sketch's Open risks and Acceptance criteria bullets the part carries, each the bullet's whole text as the decision record holds it.
-- `pattern_changes` — the PATTERN entry ids the part carries.
+- `pattern_changes` — the PATTERN entry ids the part carries, as the Sketch's record names them.
+- `pattern_clusters` — optional, a list of `{sketch_id, entry, text}`, one per carried change a live `PATTERN.md` entry absorbs: `sketch_id` is the carried id, `entry` the live entry's id and `text` its whole new text.
+  Raddle-File writes every record it files with that change as the bullet `` - `<entry>` — changes: <text> ``, whatever the Sketch's action was, so the Sketch's id never reaches the plan gate.
+  The Sketch's own record keeps its bullets.
 - `expected_cost_usd` — a number, or null when a cell the figure rests on reads "too few runs".
 - `cost_line` — one line saying what the figure rests on.
 
@@ -64,6 +67,9 @@ The gate, `raddle-propose` and `raddle-approve` run the checks of the proposal a
 - `criterion-unknown`, `risk-unknown` — a bullet a part carries that the record does not hold.
 - `pattern-uncarried`, `pattern-shared` — a PATTERN change of the record that no part carries, or that two parts carry.
 - `pattern-unknown` — a PATTERN id a part carries that the record's PATTERN changes do not hold.
+- `pattern-cluster-invalid` — a `pattern_clusters` mapping of an id its part does not carry, a second mapping of one id, or a `text` that is empty, spans lines or runs past the PATTERN rule-text cap.
+- `pattern-cluster-unknown` — a mapping whose `entry` the worktree's `PATTERN.md` does not hold.
+- `pattern-cluster-shared` — a mapping whose `entry` another mapping or another declared change claims.
 - `criteria-miss-decision` — a part whose carried criteria do not name every decision id it builds, so its record would fail the discussion check.
 - `carried-decision-unbuilt` — a carried criterion or risk that names a decision id neither the part nor a part on its `depends_on` path builds.
 - `board-unchecked` — an open task or project, other than the run's own entry, that carries a module label the Sketch carries and is absent from `board_checked`.

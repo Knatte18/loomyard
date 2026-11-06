@@ -43,6 +43,7 @@ Put no design question to the operator before the proposal passes the spec's che
 
 - A tapestry's large fixed start cost often makes fewer, larger parts, or one tapestry, cheaper than many small tasks. Weigh that against what the cost report shows for each recipe and profile.
 - Order the parts by what each takes from the others, and keep two parts with no order between them off the same package.
+- When a live `PATTERN.md` entry absorbs a PATTERN change the Sketch declares, map the change with the part's `pattern_clusters`, so the part's record declares the live entry; a contract line that folds it in is not enough.
 - Weigh the next-best split too, since the proposal states its cost beside the chosen one.
 - Write each cost line so it says when a cell it rests on reads "too few runs", and never guess a figure for such a cell.
 

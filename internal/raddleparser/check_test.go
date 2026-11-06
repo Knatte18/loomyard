@@ -4,6 +4,7 @@ package raddleparser
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -15,12 +16,41 @@ func TestCheck(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
+	// mapped is a mapping of the first part's change onto the board's live entry.
+	mapped := PatternCluster{SketchID: "PATTERN-a", Entry: "PATTERN-live", Text: "Live rule."}
+	withText := func(text string) PatternCluster {
+		cluster := mapped
+		cluster.Text = text
+		return cluster
+	}
+
 	tests := []struct {
 		name   string
 		mutate func(p *Proposal, b *BoardContext)
 		want   []string
 	}{
 		{"ValidProposalPasses", func(*Proposal, *BoardContext) {}, nil},
+		{"ChangeMappedOntoALiveEntryPasses", func(p *Proposal, _ *BoardContext) { p.Parts[0].PatternClusters = []PatternCluster{mapped} }, nil},
+		{"ClusterOfAChangeThePartDoesNotCarry", func(p *Proposal, _ *BoardContext) { p.Parts[1].PatternClusters = []PatternCluster{mapped} }, []string{CheckPatternClusterInvalid}},
+		{"ClusterWrittenTwice", func(p *Proposal, _ *BoardContext) { p.Parts[0].PatternClusters = []PatternCluster{mapped, mapped} }, []string{CheckPatternClusterInvalid}},
+		{"ClusterWithNoText", func(p *Proposal, _ *BoardContext) { p.Parts[0].PatternClusters = []PatternCluster{withText(" ")} }, []string{CheckPatternClusterInvalid}},
+		{"ClusterTextOfTwoLines", func(p *Proposal, _ *BoardContext) {
+			p.Parts[0].PatternClusters = []PatternCluster{withText("One.\nTwo.")}
+		}, []string{CheckPatternClusterInvalid}},
+		{"ClusterTextOverTheCap", func(p *Proposal, _ *BoardContext) {
+			p.Parts[0].PatternClusters = []PatternCluster{withText(strings.Repeat("x", 300))}
+		}, []string{CheckPatternClusterInvalid}},
+		{"ClusterOntoAnEntryPatternMdLacks", func(p *Proposal, _ *BoardContext) {
+			p.Parts[0].PatternClusters = []PatternCluster{{SketchID: "PATTERN-a", Entry: "PATTERN-ghost", Text: "Rule."}}
+		}, []string{CheckPatternClusterUnknown}},
+		{"TwoPartsMapOntoOneEntry", func(p *Proposal, _ *BoardContext) {
+			p.Parts[0].PatternClusters = []PatternCluster{mapped}
+			p.Parts[1].PatternClusters = []PatternCluster{{SketchID: "PATTERN-b", Entry: "PATTERN-live", Text: "Rule."}}
+		}, []string{CheckPatternClusterShared}},
+		{"ClusterOntoAnotherDeclaredEntry", func(p *Proposal, b *BoardContext) {
+			b.LivePattern = func(string) bool { return true }
+			p.Parts[0].PatternClusters = []PatternCluster{{SketchID: "PATTERN-a", Entry: "PATTERN-b", Text: "Rule."}}
+		}, []string{CheckPatternClusterShared}},
 		{"DecisionUnbuilt", func(p *Proposal, _ *BoardContext) { p.Parts[1].Decisions = nil }, []string{CheckCarriedDecisionUnbuilt, CheckDecisionUnbuilt}},
 		{"DecisionUnknown", func(p *Proposal, _ *BoardContext) { p.Parts[0].Decisions = append(p.Parts[0].Decisions, "D9") }, []string{CheckDecisionUnknown}},
 		{"CriterionUncarried", func(p *Proposal, _ *BoardContext) { p.Parts[1].Criteria = nil }, []string{CheckCriteriaMissDecision, CheckCriterionUncarried}},
