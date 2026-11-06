@@ -77,6 +77,8 @@ type RunState struct {
 	Noticed []string `json:"noticed,omitempty"`
 	// Notice is the memory of the run notices of the run's child.
 	Notice RunNoticeState `json:"notice,omitzero"`
+	// OperatorWait is the wait of the run's child on the operator, zero while it is in none.
+	OperatorWait OperatorWaitState `json:"operator_wait,omitzero"`
 }
 
 // StartState is dobby's record of one task it tries to start.

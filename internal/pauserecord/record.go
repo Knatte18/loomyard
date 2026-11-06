@@ -158,6 +158,20 @@ func (r Record) Covering(slug string) (Entry, bool) {
 	return oldest, found
 }
 
+// LatestResumed returns the resumed entry covering slug that resumed last.
+// It lets a reader that was away learn of a pause it never saw, within Retention.
+func (r Record) LatestResumed(slug string) (Entry, bool) {
+	var latest Entry
+	found := false
+	for _, entry := range r.Resumed {
+		if entry.covers(slug) && (!found || entry.ResumedAt.After(latest.ResumedAt)) {
+			latest = entry
+			found = true
+		}
+	}
+	return latest, found
+}
+
 // Owner returns the live entry whose sessions include guid.
 func (r Record) Owner(guid string) (Entry, bool) {
 	for _, entry := range r.Live {

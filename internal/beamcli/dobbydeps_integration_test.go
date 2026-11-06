@@ -3,32 +3,42 @@
 package beamcli
 
 import (
+	"cmp"
+	"context"
 	"errors"
 	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/creelcli"
+	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hibernatecli"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/machinename"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
+	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/slackengine"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
+	"github.com/Knatte18/loomyard/internal/testkit/creelfake"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -167,6 +177,172 @@ func TestHubDobbyDeps_PrimeTickEnsuresRelay(t *testing.T) {
 	}
 	if beamDeps.Tick != nil {
 		t.Error("beam Tick is set; want nil, since no beam's dobby starts the relay")
+	}
+}
+
+// TestHubDobbyDeps_WaitReminders pins that every dobby gets the wait reminder seams, and what they read over a hub: the reminded rows, the presence, the template's interval and the pause record's latest resume.
+func TestHubDobbyDeps_WaitReminders(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hubforge.AddPair(t, h, "task1")
+	prime := h.Location
+	primeGeom, err := hubgeom.DobbyGeometry(prime, prime.WorktreeName)
+	if err != nil {
+		t.Fatalf("DobbyGeometry(prime) = %v; want nil", err)
+	}
+	primeDeps, err := hubDobbyDeps(prime, primeGeom)
+	if err != nil {
+		t.Fatalf("hubDobbyDeps(prime) = %v; want nil", err)
+	}
+	beamGeom, err := hubgeom.DobbyGeometry(prime, "task1")
+	if err != nil {
+		t.Fatalf("DobbyGeometry(task1) = %v; want nil", err)
+	}
+	beamDeps, err := hubDobbyDeps(prime, beamGeom)
+	if err != nil {
+		t.Fatalf("hubDobbyDeps(beam) = %v; want nil", err)
+	}
+	if beamDeps.WaitReminders.Post == nil || primeDeps.WaitReminders.Post == nil {
+		t.Error("WaitReminders.Post is nil on a dobby; want it set on the prime's and a beam's")
+	}
+
+	reminders := primeDeps.WaitReminders
+	if want := []string{loomshed.NamePRReview, loomshed.NameSamplerSession}; !slices.Equal(reminders.Rows, want) {
+		t.Errorf("Rows = %q; want %q", reminders.Rows, want)
+	}
+	if interval, err := reminders.Interval(); interval != 30*time.Minute || err != nil {
+		t.Errorf("Interval() = %v, %v; want the template's 30m and nil", interval, err)
+	}
+
+	if away, err := reminders.Away(); away || err != nil {
+		t.Errorf("Away() with no presence record = %v, %v; want false, nil", away, err)
+	}
+	slack, err := hubgeom.SlackGeometry(prime.HubPath)
+	if err != nil {
+		t.Fatalf("SlackGeometry = %v; want nil", err)
+	}
+	if _, err := slackengine.WritePresence(slack.PresencePath, slackengine.PresenceSlack, time.Now()); err != nil {
+		t.Fatalf("WritePresence(slack) = %v", err)
+	}
+	if away, err := reminders.Away(); !away || err != nil {
+		t.Errorf("Away() with presence slack = %v, %v; want true, nil", away, err)
+	}
+
+	if resumed, err := reminders.LatestResume("task1"); !resumed.IsZero() || err != nil {
+		t.Errorf("LatestResume() with no pause record = %v, %v; want zero, nil", resumed, err)
+	}
+	pause, err := hubgeom.PauseGeometry(prime)
+	if err != nil {
+		t.Fatalf("PauseGeometry = %v; want nil", err)
+	}
+	resumedAt := time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)
+	if _, err := pauserecord.Update(pause.RecordPath, resumedAt, func(record *pauserecord.Record) error {
+		record.Resumed = append(record.Resumed, pauserecord.Entry{Scope: "task1", PausedAt: resumedAt.Add(-time.Minute), ResumedAt: resumedAt})
+		return nil
+	}); err != nil {
+		t.Fatalf("Update() = %v; want nil", err)
+	}
+	if resumed, err := reminders.LatestResume("task1"); !resumed.Equal(resumedAt) || err != nil {
+		t.Errorf("LatestResume() = %v, %v; want %v, nil", resumed, err, resumedAt)
+	}
+}
+
+// startCreelDaemon runs creel's daemon in process for the hub over a fake delivery that holds receiver as a live strand, so a client built over the hub connects to it and spawns no daemon of its own.
+func startCreelDaemon(t *testing.T, h *hubforge.Hub, receiver string) {
+	t.Helper()
+	root, err := lymtemp.ProcessRoot()
+	if err != nil {
+		t.Fatalf("ProcessRoot() = %v; want nil", err)
+	}
+	geometry, err := hubgeom.CreelGeometry(h.Path, root.Path())
+	if err != nil {
+		t.Fatalf("CreelGeometry() = %v; want nil", err)
+	}
+	delivery := creelfake.NewDelivery()
+	delivery.SetStrands(creelfake.LiveStrand(receiver))
+	epoch := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	ready := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- creelengine.Run(ctx, creelengine.Options{
+			Geometry: geometry, Delivery: delivery, Clock: creelfake.NewClock(epoch), PollClock: creelfake.NewClock(epoch),
+			ParentPID: proc.ParentPID, Ready: func() { close(ready) },
+		})
+	}()
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
+	select {
+	case <-ready:
+	case err := <-done:
+		t.Fatalf("the creel daemon ended before it listened: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("the creel daemon did not listen")
+	}
+}
+
+// TestHubDobbyDeps_WaitReminderPostReachesTheSlackRelaySignedAsTheDobby pins that the wait reminder line of a beam's dobby and of the prime's dobby is posted to the hub's Slack relay, signed DOBBY in the dobby's own scope.
+func TestHubDobbyDeps_WaitReminderPostReachesTheSlackRelaySignedAsTheDobby(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hubforge.AddPair(t, h, "task1")
+	prime := h.Location
+	slack, err := hubgeom.SlackGeometry(prime.HubPath)
+	if err != nil {
+		t.Fatalf("SlackGeometry = %v; want nil", err)
+	}
+	relayName := slack.Shortname + ":" + slackengine.SlackProgram
+	startCreelDaemon(t, h, relayName)
+
+	tests := []struct {
+		name string
+		slug string
+		line string
+	}{
+		{"Prime", "", "prime: waiting at PR-Review for 30 minutes"},
+		{"Beam", "task1", "task1: waiting at PR-Review for 30 minutes"},
+	}
+	for _, tt := range tests {
+		geom, err := hubgeom.DobbyGeometry(prime, cmp.Or(tt.slug, prime.WorktreeName))
+		if err != nil {
+			t.Fatalf("%s: DobbyGeometry = %v; want nil", tt.name, err)
+		}
+		deps, err := hubDobbyDeps(prime, geom)
+		if err != nil {
+			t.Fatalf("%s: hubDobbyDeps = %v; want nil", tt.name, err)
+		}
+		if err := deps.WaitReminders.Post(t.Context(), tt.line); err != nil {
+			t.Fatalf("%s: WaitReminders.Post = %v; want nil", tt.name, err)
+		}
+	}
+
+	reader, err := creelcli.NewProgramClient(prime, "CHECK")
+	if err != nil {
+		t.Fatalf("NewProgramClient(CHECK) = %v; want nil", err)
+	}
+	entries, err := reader.Log(creelengine.LogFilter{})
+	if err != nil {
+		t.Fatalf("Log() = %v; want nil", err)
+	}
+	type mail struct{ from, to, body string }
+	var got []mail
+	for _, entry := range entries {
+		if entry.Event == "posted" {
+			got = append(got, mail{entry.From, entry.To, entry.Subject})
+		}
+	}
+	want := []mail{
+		{slack.Shortname + ":DOBBY", relayName, tests[0].line},
+		{slack.Shortname + ":task1:DOBBY", relayName, tests[1].line},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("the posted mails = %q; want %q", got, want)
 	}
 }
 

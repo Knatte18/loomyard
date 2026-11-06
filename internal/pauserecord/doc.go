@@ -16,6 +16,7 @@
 // `HoldCaller` is the fixed `Caller` of every pause entry that holds a run, or a released task, that `lym adopt` took over until its subject's adopt check is green.
 // `Coverage.Held` is set when a live entry of the slug's own scope carries it.
 // A dobby's owner-pause lift and the hibernate wake judge only `OwnerCaller`, so neither treats a hold-caller entry as theirs.
+// LatestResumed finds the resumed entry covering a slug that resumed last, so a reader that was away can tell a pause it never saw restarted what it measures.
 // ClaimSession records one session in the oldest live entry covering a slug, so that entry's resume gives the session its line; an uncovered slug and a session a live entry already owns record nothing.
 //
 // Excluded measures how much of a time span the covered intervals took, so overlapping pauses are subtracted once.

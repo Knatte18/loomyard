@@ -203,6 +203,7 @@
 //   - the pass spawn of `lym batten run`, started in the prime's anchor;
 //   - the owner pause and the parent lock release through `tendercli` and `battencli`;
 //   - the notice through `orchcli.NotifyFromScoped`, signed `ly:DOBBY` for the prime and `ly:<slug>:DOBBY` for a beam;
+//   - the wait reminders of every dobby through `waitReminderDeps`: the rows PR-Review and Sampler-Session of `loomshed`, the latest resume through `pauserecord`, the presence and `remind_after_min` through `slackengine`, and the post as creel mail to `<shortname>:SLACK`, signed as the notice is;
 //   - `beam.yaml` through `dobbyengine.LoadConfig`, and the binary check through `internal/selfexec`;
 //   - each log line appended to `dobby.log` in the worktree's `.lym/beam/` directory by its own open, through `dobbyengine.AppendLog`, while the process's raw standard output and error, which `dobbyengine.SpawnDetached` points at `dobby.out` there, go to that other file;
 //   - the board-tidy agent's shuttle runner from the worktree's own reed geometry, its model `sonnet[medium]` resolved through the model registry, and the stencils directory;

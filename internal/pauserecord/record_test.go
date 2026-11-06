@@ -268,6 +268,39 @@ func TestOwner(t *testing.T) {
 	}
 }
 
+func TestLatestResumed(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	own := Entry{Scope: "a", PausedAt: epoch, ResumedAt: epoch.Add(time.Minute)}
+	hub := Entry{Scope: ScopeHub, PausedAt: epoch, ResumedAt: epoch.Add(2 * time.Minute)}
+	other := Entry{Scope: "b", PausedAt: epoch, ResumedAt: epoch.Add(3 * time.Minute)}
+	live := Entry{Scope: "a", PausedAt: epoch.Add(4 * time.Minute)}
+
+	tests := []struct {
+		name      string
+		record    Record
+		slug      string
+		want      Entry
+		wantFound bool
+	}{
+		{"ALaterHubEntryCoversTheSlug", Record{Resumed: []Entry{own, hub}}, "a", hub, true},
+		{"TheOrderOfTheEntriesDoesNotMatter", Record{Resumed: []Entry{hub, own}}, "a", hub, true},
+		{"AnEntryOfAnotherSlugDoesNotCover", Record{Resumed: []Entry{own, other}}, "a", own, true},
+		{"ALiveEntryHasNotResumed", Record{Live: []Entry{live}}, "a", Entry{}, false},
+		{"AnEmptySlugIsCoveredByAHubEntryOnly", Record{Resumed: []Entry{own, hub}}, "", hub, true},
+		{"AnEmptyRecordHoldsNone", Record{}, "a", Entry{}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, found := tt.record.LatestResumed(tt.slug)
+			if found != tt.wantFound || !got.ResumedAt.Equal(tt.want.ResumedAt) || got.Scope != tt.want.Scope {
+				t.Errorf("LatestResumed(%q) = %+v, %v; want %+v, %v", tt.slug, got, found, tt.want, tt.wantFound)
+			}
+		})
+	}
+}
+
 func TestCoverageOf(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

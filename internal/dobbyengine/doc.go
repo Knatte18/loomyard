@@ -160,6 +160,20 @@
 //   - A failed read is logged once per episode and sends nothing.
 //   - Bound: while an anchor change stands no notice goes, and a machine that takes a run over dates the child's since from its own first sight, so a driver-dead notice the other machine sent can go once more, after the start grace counted from that first sight.
 //
+// The wait reminders:
+//
+//   - Every dobby, the prime's included, checks at most once a minute, riding its ticks with no wait of its own, the child of each listed run whose batten state is running with no cancel marker, through Deps.RunNotices' child and pause reads.
+//     A nil WaitReminders.Post or RunNotices.ReadChild checks nothing.
+//   - A child running at a row of WaitReminders.Rows with no pause covering it is in a wait, kept as RunState.OperatorWait, whatever the presence: its row, and as its start the first check that read it there.
+//     The hub wiring names PR-Review and Sampler-Session; Beam-Await is not among them, since it waits on the beam's members as well as the operator.
+//     WaitReminders.LatestResume moves the start to a later resume of a pause covering the child, so a pause and resume the dobby did not read, between two checks or while it was down, restarts the wait too.
+//     The wait is cleared when the child leaves the row, stops running or a pause covers it, and when its run's batten state stops being running.
+//   - While WaitReminders.Away reads true, a wait as old as WaitReminders.Interval gets one line through WaitReminders.Post, `<slug>: waiting at <row> for <n> minutes`, and another each further interval.
+//     A post that fails is logged at Warn and tried at the next check.
+//   - The last reminder's time is in memory only, and is forgotten when the wait ends and while the operator is not away, so a return to away reminds at once of a wait past the interval.
+//   - A read that fails is logged once per episode: a child's leaves its wait as recorded and gets no reminder, and the presence's or the interval's sends none.
+//   - Bound: while an anchor change stands no wait is checked, and a restarted dobby keeps the start but may remind once early; a child that leaves the row and returns between two checks with no pause keeps its wait.
+//
 // The landing notice:
 //
 //   - Each tick with no anchor change standing, after the run notices, dobby remembers in the state record every listed run ahead of its Land row, with whether its board entry carries `notify_on_land`, refreshed while the entry is on the board.

@@ -10,7 +10,7 @@
 // A directory the package creates is private to the user, and so is each file it writes.
 //
 // The package is told its `Geometry` and derives no path of its own; `hubgeom.SlackGeometry` builds it, and the package imports no `*cli` package.
-// The package also owns the hub-wide `slack` config module, whose one key, `remind_after_min`, is the minutes between the orch's reminders while presence is slack; the channel, the operator and the token are never config.
+// The package also owns the hub-wide `slack` config module, whose one key, `remind_after_min`, is the minutes between dobby's reminders of a run waiting on the operator while presence is slack; the channel, the operator and the token are never config.
 // `RequireConfigured` refuses a hub with no token or no setup file, naming the `lym slack` verb that writes it.
 //
 // `API` is the Web API client, over `net/http` alone.

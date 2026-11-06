@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fronttask"
@@ -29,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -170,7 +172,8 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 			coverage, err := pauserecord.ReadCoverage(pause.RecordPath, slug, time.Now())
 			return coverage.Covered, err
 		},
-		RunNotices: battencli.DobbyRunNotices(prime, pause.RecordPath, quiet),
+		RunNotices:    battencli.DobbyRunNotices(prime, pause.RecordPath, quiet),
+		WaitReminders: waitReminderDeps(prime, worktree, geom.Slug, pause.RecordPath, dirs),
 		ClearNotifyOnLand: func(slug string) error {
 			board, err := boardengine.OpenHub(prime.HubPath)
 			if err != nil {
@@ -231,6 +234,51 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 		deps.TidyShuttle = &runnerTidyShuttle{worktree: worktree}
 	}
 	return deps, nil
+}
+
+// waitReminderDeps fills the wait reminder seams of the dobby of worktree, whose beam slug is slug, over the hub of prime.
+// The rows are the ones of loomshed.OperatorWaitRows that wait on the operator alone: Beam-Await waits on the beam's members too.
+// The Slack geometry resolves at each read, so a hub it fails for loses its reminders and never its dobby.
+func waitReminderDeps(prime, worktree *lymcwd.Location, slug, pauseRecordPath string, dirs configengine.Dirs) dobbyengine.WaitReminderDeps {
+	return dobbyengine.WaitReminderDeps{
+		Rows: []string{loomshed.NamePRReview, loomshed.NameSamplerSession},
+		LatestResume: func(slug string) (time.Time, error) {
+			record, err := pauserecord.Read(pauseRecordPath)
+			if err != nil {
+				return time.Time{}, err
+			}
+			entry, _ := record.LatestResumed(slug)
+			return entry.ResumedAt, nil
+		},
+		Away: func() (bool, error) {
+			geometry, err := hubgeom.SlackGeometry(prime.HubPath)
+			if err != nil {
+				return false, err
+			}
+			presence, err := slackengine.ReadPresence(geometry.PresencePath)
+			return presence == slackengine.PresenceSlack, err
+		},
+		Interval: func() (time.Duration, error) {
+			config, err := slackengine.LoadConfig(dirs)
+			return time.Duration(config.RemindAfterMin) * time.Minute, err
+		},
+		Post: func(_ context.Context, line string) error {
+			geometry, err := hubgeom.SlackGeometry(prime.HubPath)
+			if err != nil {
+				return err
+			}
+			relay, err := agentname.FormatProgram(geometry.Shortname, slackengine.SlackProgram)
+			if err != nil {
+				return err
+			}
+			client, err := creelcli.NewScopedProgramClient(worktree, slug, dobbyProgram)
+			if err != nil {
+				return err
+			}
+			_, err = client.Post(relay, line)
+			return err
+		},
+	}
 }
 
 // beamLandingsSince reads the head of the beam pair at beam and the landings on its first-parent line past from.

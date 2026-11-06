@@ -119,6 +119,8 @@ type Deps struct {
 	NearestOrch func() (string, error)
 	// RunNotices are the seams the run notices of the runs this dobby drives read; a nil RunNotices.ReadChild sends none.
 	RunNotices RunNoticeDeps
+	// WaitReminders are the seams the reminders of a child waiting on the operator read; a nil WaitReminders.Post sends none.
+	WaitReminders WaitReminderDeps
 	// CanLand reads whether the beam of this dobby is flagged ready with nothing working under it, and who owns its parent.
 	// A nil CanLand takes no landing step; the prime's dobby takes none whatever it returns.
 	CanLand func() (LandReading, error)
@@ -336,6 +338,12 @@ type daemon struct {
 	deliveries map[string]*noticeDelivery
 	// noticeFailures guards each run notice read by its slug and seam: Warn at the first failure, Debug while it repeats, Info at recovery.
 	noticeFailures logger.EpisodeSet
+	// lastWaitCheck is when the waits were last checked.
+	lastWaitCheck time.Time
+	// lastReminders holds when each wait was last reminded of, by slug, in memory only.
+	lastReminders map[string]time.Time
+	// waitFailures guards the wait check's reads, by slug or by a `|`-prefixed name of the read: Warn at the first failure, Debug while it repeats, Info at recovery.
+	waitFailures logger.EpisodeSet
 }
 
 // releaseLock releases the dobby lock when it is held.
@@ -600,6 +608,7 @@ func (d *daemon) tick(ctx context.Context, now time.Time) error {
 			return err
 		}
 		d.runNotices(ctx, now)
+		d.waitReminders(ctx, now)
 		d.landNotices(ctx, now, d.listedRuns)
 		d.settleFronts(ctx)
 		if err := d.startReady(ctx, now); err != nil {

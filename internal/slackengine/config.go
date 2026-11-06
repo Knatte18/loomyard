@@ -21,12 +21,12 @@ func ConfigTemplate() string {
 // configModule is the config module name slack.yaml is loaded under.
 const configModule = "slack"
 
-// remindAfterMinKey is the key holding the minutes between the orch's reminders while presence is slack.
+// remindAfterMinKey is the key holding the minutes between dobby's reminders of a run waiting on the operator while presence is slack.
 const remindAfterMinKey = "remind_after_min"
 
 // Config represents the resolved slack.yaml configuration.
 type Config struct {
-	// RemindAfterMin is the minutes between the orch's reminders while presence is slack.
+	// RemindAfterMin is the minutes between dobby's reminders of a run waiting on the operator while presence is slack.
 	RemindAfterMin int `yaml:"remind_after_min"`
 }
 
