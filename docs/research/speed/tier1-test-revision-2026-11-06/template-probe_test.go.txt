@@ -1,0 +1,69 @@
+// probe_test.go times hubforge's template builds and copies.
+// Save it as internal/zprobe/probe_test.go and run it with
+// `lym gate test --wait --tier 1 ./internal/zprobe -- -count=1 -v -run TestProbe -parallel=1`; remove the directory afterwards.
+
+package zprobe
+
+import (
+	"os"
+	"sort"
+	"testing"
+	"time"
+
+	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
+)
+
+func TestMain(m *testing.M) {
+	gitkit.HermeticGitEnv()
+	os.Exit(tmuxkit.Main(m))
+}
+
+func median(ds []time.Duration) time.Duration {
+	sort.Slice(ds, func(i, j int) bool { return ds[i] < ds[j] })
+	return ds[len(ds)/2]
+}
+
+func TestProbe(t *testing.T) {
+	tiergate.Require(t, 1)
+	const reps = 15
+	timeIt := func(f func()) time.Duration {
+		start := time.Now()
+		f()
+		return time.Since(start)
+	}
+	plain := hubforge.Shape{Anchor: "."}
+	paired := hubforge.Shape{Anchor: ".", Pairs: []string{hubforge.TemplatePairSlug}}
+
+	coldPlain := timeIt(func() { hubforge.CopyHub(t, plain) })
+	t.Logf("PROBE cold CopyHub(. no pair), includes bare template and plain template build: %v", coldPlain)
+	coldPaired := timeIt(func() { hubforge.CopyHub(t, paired) })
+	t.Logf("PROBE cold CopyHub(. with pair), includes the pair template build: %v", coldPaired)
+	backend := hubforge.Shape{Anchor: "backend"}
+	coldBackend := timeIt(func() { hubforge.CopyHub(t, backend) })
+	t.Logf("PROBE cold CopyHub(backend no pair): %v", coldBackend)
+	backendPaired := hubforge.Shape{Anchor: "backend", Pairs: []string{hubforge.TemplatePairSlug}}
+	coldBackendPaired := timeIt(func() { hubforge.CopyHub(t, backendPaired) })
+	t.Logf("PROBE cold CopyHub(backend with pair): %v", coldBackendPaired)
+
+	var copyPlain, copyPaired, copyAddPair []time.Duration
+	for i := 0; i < reps; i++ {
+		copyPlain = append(copyPlain, timeIt(func() { hubforge.CopyHub(t, plain) }))
+		copyPaired = append(copyPaired, timeIt(func() { hubforge.CopyHub(t, paired) }))
+		copyAddPair = append(copyAddPair, timeIt(func() {
+			h := hubforge.CopyHub(t, plain)
+			hubforge.AddPair(t, h, "probe")
+		}))
+	}
+	t.Logf("PROBE warm CopyHub(. no pair) median of %d: %v", reps, median(copyPlain))
+	t.Logf("PROBE warm CopyHub(. with pair) median of %d: %v", reps, median(copyPaired))
+	t.Logf("PROBE warm CopyHub(.) + AddPair median of %d: %v", reps, median(copyAddPair))
+
+	var newHubs []time.Duration
+	for i := 0; i < 5; i++ {
+		newHubs = append(newHubs, timeIt(func() { hubforge.NewHub(t, ".") }))
+	}
+	t.Logf("PROBE warm NewHub(.) median of 5: %v", median(newHubs))
+}
