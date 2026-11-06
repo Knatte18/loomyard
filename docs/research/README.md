@@ -132,6 +132,7 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [haiku-judge.md](tokens/haiku-judge.md) — Haiku as the Bouncer judge, per row.
 - [startup-context-2026-11-05](tokens/startup-context-2026-11-05/report.md) — what the orch and a spawned role load at start, by source, and how to leave out what they do not need.
 - [session-scope-launch-2026-11-06](tokens/session-scope-launch-2026-11-06/report.md) — which session-scope settings work in a real Claude Code launch, and the start load with and without them.
+- [session-scope-fix-launch-2026-11-06](tokens/session-scope-fix-launch-2026-11-06/report.md) — the session-scope fix in a real launch: first-request tokens of a spawned role and an orch, the `Workflow` tool gone, preloaded and plugin skills kept.
 
 ### model-downgrade — cheaper models per role
 
