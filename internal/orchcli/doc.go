@@ -25,9 +25,7 @@
 // `BeamUp` records the orch session's id in orch's state and resumes it after a reboot, a `stop` or a dead strand, falling back to the last note, else the start stencil, when the resume fails; see the internal/orchengine package documentation's `Continuing after a reboot` section.
 // A context cycle asks the session for an orch note at the path it names, following `.lym/orch/note-template.md`, in place of a general handoff skill.
 // `lym orch refresh` requests a clear cycle and `lym orch distill` a compact cycle, whatever `cycle_mode` says; both write the note first.
-// The role file's `## Commands` section holds the operator command index.
-// `BeamUp` renders it from the `help index` of the binary it runs as, and `resume-context` in-process from the binary it runs as, which the pane names;
-// the watcher outlives a deploy, so it runs `help index` from the `lym` path the orch strand recorded and goes idle with a reason naming `lym orch stop` when that path is missing or gone.
+// The role's on-demand files render beside it, and the role carries no command list: it sends the session to `lym help index`.
 //
 // # The cycle request
 //

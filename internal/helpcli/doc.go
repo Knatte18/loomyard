@@ -14,7 +14,7 @@
 // A group appears only when a command under it is in the selected audience, and a runnable group prints in leaf form when its own audience is selected.
 // The index is generated from the live cobra tree on every call, reads no file and caches nothing, so it cannot drift from the binary.
 //
-// The renderer lives in `internal/clihelp` rather than here, so the orch role file's renderer can call it without importing a CLI package; this package only mounts it.
+// The renderer lives in `internal/clihelp`; this package only mounts it.
 //
 // # Wiring
 //

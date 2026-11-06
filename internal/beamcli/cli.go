@@ -474,9 +474,8 @@ func start(cmd *cobra.Command, slug string, all bool) (*startResult, error) {
 			}
 		}
 	}
-	index := func() (string, error) { return clihelp.RenderIndex(cmd.Root(), clihelp.AudienceOperator), nil }
 	result, err := startBeams(targets, func(target beamTarget, prepare bool) (orchcli.BeamUpReport, error) {
-		return orchcli.BeamUp(target.Location, orchcli.BeamUpOptions{Prepare: prepare, Index: index})
+		return orchcli.BeamUp(target.Location, orchcli.BeamUpOptions{Prepare: prepare})
 	})
 	if err != nil {
 		return &result, fmt.Errorf("lym beam start: %w; way forward: fix the cause each names, then run `lym beam start` again", err)

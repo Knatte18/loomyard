@@ -94,8 +94,6 @@ type orchCLI struct {
 	// startLockWait is how long `stop` waits for start.lock before it refuses.
 	startLockWait time.Duration
 	sleep         func(time.Duration)
-	// indexRunner returns the output of `<bin> help index`.
-	indexRunner func(bin string) (string, error)
 	// executable returns the path of the running lym binary, which the runs strand's command names.
 	executable func() (string, error)
 	// currentBuild identifies the running lym build, which tells a runs strand of this build from an older one.
@@ -244,7 +242,6 @@ func wireCLI(c *orchCLI, location *lymcwd.Location) error {
 	c.startLockWait = stopStartLockWait
 	c.sleep = time.Sleep
 	c.reapInherited = reapInheritedChildren
-	c.indexRunner = runHelpIndex
 	c.executable = os.Executable
 	c.currentBuild = statuspane.CurrentBuild
 	c.reconcile = func() (fabricengine.OriginReport, error) { return reconcileHub(location) }

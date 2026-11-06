@@ -20,6 +20,7 @@ Every producer prompt and every deployed normative spec is read at call time fro
 ### The orch role
 
 The one exception is the orch role, `contracts/orchrole`: a fixed role every repository shares, rendered from its embedded bytes and never seeded to a board copy, so no hub can edit it.
+Its on-demand files, the `role-*.md` texts the session reads only for a rarer event, share that exception and render beside the role, so no other session sees them.
 A repository's own orch rules live in heddle's `orch-prompt` target instead.
 Any other instruction text goes through the registries above.
 

@@ -518,8 +518,8 @@ func TestCompact_CycleReloadsPluginsThenPointerNamingTheNote(t *testing.T) {
 	e.tick() // the plugins typed, the pointer queued
 	e.endTurn("resumed")
 	e.assertReload("compact:", e.state().LastHandoff, false)
-	if role, err := os.ReadFile(e.paths.RolePath); err != nil || !strings.Contains(string(role), testIndex) {
-		t.Errorf("role file = %q, %v; want it rendered with the index", role, err)
+	if role, err := os.ReadFile(e.paths.RolePath); err != nil || !strings.Contains(string(role), "Decision for <slug>:") {
+		t.Errorf("role file = %q, %v; want it rendered", role, err)
 	}
 	if st := e.state(); st.Phase != PhaseIdle {
 		t.Errorf("phase = %s, want idle", st.Phase)

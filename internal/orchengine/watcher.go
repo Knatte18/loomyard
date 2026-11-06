@@ -109,9 +109,7 @@ type Watcher struct {
 	paths       Paths
 	stencilsDir string
 	skills      []string // Skills the reload sequence's skills step loads in one turn after a clear, before the pointer.
-	// index returns the operator command index each role-file render fills in; an error from it fails that render.
-	index func() (string, error)
-	clock Clock
+	clock       Clock
 
 	// compactedAt is the time of an auto-compaction boundary a turn end read confirmed fresh and not yet reloaded from;
 	// zero when none.
@@ -178,19 +176,13 @@ type phaseEvents struct {
 
 // NewWatcher builds a watcher over session and creel.
 // skills is the orch skill list the reload sequence loads after a clear.
-// index supplies the operator command index each role-file render fills in.
-func NewWatcher(session Session, creel Creel, cfg Config, paths Paths, stencilsDir string, skills []string, index func() (string, error), clock Clock) *Watcher {
-	return &Watcher{session: session, creel: creel, cfg: cfg, paths: paths, stencilsDir: stencilsDir, skills: skills, index: index, clock: clock}
+func NewWatcher(session Session, creel Creel, cfg Config, paths Paths, stencilsDir string, skills []string, clock Clock) *Watcher {
+	return &Watcher{session: session, creel: creel, cfg: cfg, paths: paths, stencilsDir: stencilsDir, skills: skills, clock: clock}
 }
 
-// renderRoleFile fetches the command index and renders the role file with it.
-// Its error is worded as an abort reason naming the failing source, the index or the role render.
+// renderRoleFile renders the role file, with its error worded as an abort reason.
 func (w *Watcher) renderRoleFile() error {
-	index, err := w.index()
-	if err != nil {
-		return fmt.Errorf("command index unavailable: %w", err)
-	}
-	if err := RenderRoleFile(w.paths.RolePath, index); err != nil {
+	if err := RenderRoleFile(w.paths.RolePath); err != nil {
 		return fmt.Errorf("role file failed to render: %w", err)
 	}
 	return nil
@@ -1254,7 +1246,7 @@ func (w *Watcher) removeSatisfiedRequest(mode string, effectAt time.Time) error 
 
 // startAutoReload reloads the plugins and the role after an auto-compaction read at a turn end, once the creel hold is taken.
 // The baseline moves to the boundary when the phase is entered, so no boundary reloads twice.
-// A role-file render failure, the command index's included, returns to idle with the reason, as a clear cycle's does.
+// A role-file render failure returns to idle with the reason, as a clear cycle's does.
 // It also forgets the boundary, so the failure is reported once and the next turn end retries it.
 // A refused hold keeps the boundary and tries again on the next tick.
 func (w *Watcher) startAutoReload(st State, now time.Time) error {

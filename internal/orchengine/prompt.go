@@ -1,8 +1,8 @@
 // prompt.go renders the orch role and the orch stencils (orch-template-note, orch-template-start, orch-template-handoff, orch-template-resume, orch-template-handoff-soft, orch-template-compact, orch-template-reload, orch-template-usage-limit-wake).
-// The role is filled from its embedded bytes, since no hub may edit it.
+// The role and its on-demand files are filled from their embedded bytes, since no hub may edit them.
 // Each stencil is read from a told stencils directory at call time via stencilstore.Read, per the Stencil Ownership Invariant.
 // Every text is filled with stencil.Fill, which drops the leading comment.
-// The role and the note stencil render to files the session reads, and the two note requests render to the mail body creel posts.
+// The role, its on-demand files and the note stencil render to files the session reads, and the two note requests render to the mail body creel posts.
 // Every other render is injected as one creel text line or handed to shuttle as its launch pointer, and a creel text inject is one line,
 // so each of those must render to one line;
 // an operator override that breaks that fails here, naming the stencil to fix.
@@ -61,20 +61,21 @@ const (
 	usageLimitWakeStencil  = "orch-template-usage-limit-wake"
 )
 
-const (
-	// commandIndexMarker is the role's marker that index fills.
-	commandIndexMarker = "command_index"
-	// decisionNoteTitleMarker is the role's marker that the decision-note title form fills.
-	decisionNoteTitleMarker = "decision_note_title"
-)
+// decisionNoteTitleMarker is the role's marker that the decision-note title form fills.
+const decisionNoteTitleMarker = "decision_note_title"
 
-// RenderRoleFile renders the orch role, the same for every orch in every repository, to path, creating its directory.
-// The role comes from the bytes built into the binary, never from a board copy, so no hub can change it.
-// The command-index marker is filled with index.
+// RenderRoleFile renders the orch role, the same for every orch in every repository, to path, and each of its on-demand files beside it, creating the directory.
+// The texts come from the bytes built into the binary, never from a board copy, so no hub can change them.
 // The decision-note title marker is filled with the title form for the placeholder slug "<slug>", since the role is hub-wide.
-// The write is a temporary file and a rename, so a reader never sees a partial file when two renders overlap.
-func RenderRoleFile(path, index string) error {
-	return writeFilled(roleName, orchrole.Role, path, map[string]string{commandIndexMarker: index, decisionNoteTitleMarker: DecisionNoteTitle("<slug>")})
+// The on-demand files are written first, so a role a session reads never names a file not yet there.
+// Each write is a temporary file and a rename, so a reader never sees a partial file when two renders overlap.
+func RenderRoleFile(path string) error {
+	for name, text := range orchrole.OnDemand {
+		if err := writeFilled(name, text, filepath.Join(filepath.Dir(path), name), nil); err != nil {
+			return err
+		}
+	}
+	return writeFilled(roleName, orchrole.Role, path, map[string]string{decisionNoteTitleMarker: DecisionNoteTitle("<slug>")})
 }
 
 // DecisionNoteTitle returns the title prefix a decision note for the held task slug starts with: "Decision for <slug>:".

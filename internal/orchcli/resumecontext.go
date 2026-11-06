@@ -44,7 +44,6 @@ does not type the same pointer again.`,
 				return nil
 			}
 			out := cmd.OutOrStdout()
-			index := clihelp.RenderIndex(cmd.Root(), clihelp.AudienceOperator)
 			// The engine is resolved before the pointer is rendered, because rendering records the delivery mark and a verb that cannot deliver must leave none.
 			engine, err := c.engines.Lookup("")
 			if err != nil {
@@ -56,7 +55,7 @@ does not type the same pointer again.`,
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("orch: the engine %q cannot render session-start hook context", c.engines.DefaultName())))
 				return nil
 			}
-			text, err := orchengine.ResumeContext(c.paths, c.stencilsDir, index, time.Now())
+			text, err := orchengine.ResumeContext(c.paths, c.stencilsDir, time.Now())
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil

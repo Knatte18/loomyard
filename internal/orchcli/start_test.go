@@ -204,22 +204,16 @@ func newStartHarness(t *testing.T, strands ...reedengine.StrandStatus) *startHar
 // harnessRunsWindowTitle is the title the harness's runsWindowTitle answers, distinct from every title the production func computes so a spec carrying it proves the func's answer reached the spec.
 const harnessRunsWindowTitle = "harness-runs-window"
 
-// startTestIndex is the operator index the harness hands the bring-up.
-const startTestIndex = "- start-test-command: from the harness\n"
-
 // run brings the beam up with Prepare, unless the test set prepareOff, and decodes the report as the envelope a verb would print.
 func (h *startHarness) run(t *testing.T) (int, map[string]any) {
 	t.Helper()
 	return h.runWith(t, BeamUpOptions{Prepare: !h.prepareOff})
 }
 
-// runWith brings the beam up with opts, filling the harness's index when opts names none, and decodes the report into a map under the report's keys.
+// runWith brings the beam up with opts and decodes the report into a map under the report's keys.
 // A refusal or failure answers exit 1 with ok false and the error text under "error", and a success exit 0 with ok true.
 func (h *startHarness) runWith(t *testing.T, opts BeamUpOptions) (int, map[string]any) {
 	t.Helper()
-	if opts.Index == nil {
-		opts.Index = func() (string, error) { return startTestIndex, nil }
-	}
 	if len(h.claims) > 0 {
 		h.cli.claimPrime = func() (string, string, error) {
 			answer := h.claims[min(h.claimCalls, len(h.claims)-1)]
@@ -459,8 +453,8 @@ func TestStart_NoStrandLaunchesAndSpawnsWatcher(t *testing.T) {
 	if err != nil {
 		t.Fatalf("role file not rendered before launch: %v", err)
 	}
-	if !strings.Contains(string(role), "## Commands") || !strings.Contains(string(role), startTestIndex) {
-		t.Errorf("role file = %q; want a Commands section carrying the operator index %q", role, startTestIndex)
+	if len(role) == 0 || !strings.Contains(string(role), "Decision for <slug>:") {
+		t.Errorf("role file = %q; want it rendered with its markers filled", role)
 	}
 	if st := h.state(t); st.Strand != "new-guid" || st.Phase != orchengine.PhaseIdle {
 		t.Errorf("state = %+v; want strand new-guid in idle", st)

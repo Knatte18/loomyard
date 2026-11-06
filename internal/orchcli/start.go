@@ -51,8 +51,6 @@ type BeamUpOptions struct {
 	// Prepare runs the hub-scope origin reconcile, the failed-push read, the prime claim and the owner pauses before the beam steps.
 	// A caller that already judged origin leaves it false.
 	Prepare bool
-	// Index renders the operator command index the orch's role file carries; nil runs `<os.Executable()> help index`.
-	Index func() (string, error)
 	// Here names this machine for the owner refusal; empty reads machinename.Name.
 	Here string
 }
@@ -494,17 +492,7 @@ func (c *orchCLI) beamUp(opts BeamUpOptions) (report BeamUpReport, err error) {
 		report.Warnings = append(report.Warnings, warning)
 	}
 
-	index := opts.Index
-	if index == nil {
-		index = func() (string, error) {
-			executable, err := os.Executable()
-			if err != nil {
-				return "", fmt.Errorf("orch: locate the lym binary to render the command index: %w", err)
-			}
-			return c.indexRunner(executable)
-		}
-	}
-	orchReport, err := c.startOrch(index, note)
+	orchReport, err := c.startOrch(note)
 	report.Action, report.Strand, report.PromptSource = orchReport.Action, orchReport.Strand, orchReport.PromptSource
 	report.SessionID, report.AbandonedSession = orchReport.SessionID, orchReport.AbandonedSession
 	report.Hint, report.WatcherStopping = orchReport.Hint, orchReport.WatcherStopping
@@ -558,7 +546,7 @@ func relayStarter(location *lymcwd.Location, beam bool) func() (slackengine.Star
 // startOrch leaves one live orchestrator strand and one watcher bound to it, and reports the orch's part of the bring-up.
 // A live strand with a live watcher is left alone, a live strand with a dead watcher gets a watcher, and a missing or dead strand is relaunched under a withdraw round on each side.
 // note joins the prompt of a fresh launch.
-func (c *orchCLI) startOrch(index func() (string, error), note string) (BeamUpReport, error) {
+func (c *orchCLI) startOrch(note string) (BeamUpReport, error) {
 	var report BeamUpReport
 	strands, err := c.strands.Strands()
 	if err != nil {
@@ -609,11 +597,7 @@ func (c *orchCLI) startOrch(index func() (string, error), note string) (BeamUpRe
 				return report, err
 			}
 		}
-		operatorIndex, err := index()
-		if err != nil {
-			return report, err
-		}
-		if err := orchengine.RenderRoleFile(c.paths.RolePath, operatorIndex); err != nil {
+		if err := orchengine.RenderRoleFile(c.paths.RolePath); err != nil {
 			return report, err
 		}
 		started, source, abandoned, err := c.launchOrch(st, note)

@@ -198,11 +198,6 @@ type watchEnv struct {
 	pausePath string
 
 	skills []string // The skill list the watcher reloads, set before newWatcher.
-
-	// indexErr, when set, makes the watcher's index source fail; otherwise it serves testIndex.
-	indexErr error
-	// indexCalls counts the watcher's calls to its index source.
-	indexCalls int
 }
 
 func stop(msg string) shuttleengine.Event {
@@ -249,16 +244,20 @@ func newWatchEnv(t *testing.T) *watchEnv {
 }
 
 func (e *watchEnv) newWatcher() *Watcher {
-	index := func() (string, error) {
-		e.indexCalls++
-		if e.indexErr != nil {
-			return "", e.indexErr
-		}
-		return testIndex, nil
-	}
-	w := NewWatcher(e.s, e.c, e.cfg, e.paths, e.stDir, e.skills, index, e.clock)
+	w := NewWatcher(e.s, e.c, e.cfg, e.paths, e.stDir, e.skills, e.clock)
 	w.WatchPause(PauseWatch{RecordPath: e.pausePath, Alive: func(int, string) bool { return true }})
 	return w
+}
+
+// breakRoleRender rebuilds the watcher with a role path under a regular file, so every role-file render fails.
+func (e *watchEnv) breakRoleRender() {
+	e.t.Helper()
+	blocker := filepath.Join(e.t.TempDir(), "blocker")
+	if err := os.WriteFile(blocker, nil, 0o644); err != nil {
+		e.t.Fatal(err)
+	}
+	e.paths.RolePath = filepath.Join(blocker, "role.md")
+	e.w = e.newWatcher()
 }
 
 func (e *watchEnv) tick() {
@@ -1630,8 +1629,8 @@ func TestWatcher_AutoCompactionReloadsPluginsThenPointer(t *testing.T) {
 	if got := e.c.count("hold:"); got != 1 {
 		t.Fatalf("holds = %d, want the hold taken when the reload started", got)
 	}
-	if role, err := os.ReadFile(e.paths.RolePath); err != nil || !strings.Contains(string(role), testIndex) {
-		t.Errorf("role file = %q, %v; want it rendered with the index", role, err)
+	if role, err := os.ReadFile(e.paths.RolePath); err != nil || !strings.Contains(string(role), "Decision for <slug>:") {
+		t.Errorf("role file = %q, %v; want it rendered", role, err)
 	}
 	e.tick() // the color typed, the plugins reload queued
 	e.tick() // the plugins typed, the pointer queued with no skills step in between
@@ -1680,22 +1679,22 @@ func freshBoundary(at time.Time) shuttleengine.CompactionBoundary {
 	return shuttleengine.CompactionBoundary{At: at, TurnEndsAfter: 1, ReadTurnEndAfter: true}
 }
 
-func TestWatcher_AutoCompactionReloadGoesIdleWhenTheIndexSourceFails(t *testing.T) {
+func TestWatcher_AutoCompactionReloadGoesIdleWhenTheRoleRenderFails(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
 	e := newWatchEnv(t)
-	e.indexErr = errBoom
+	e.breakRoleRender()
 	e.s.autoCompact = map[string]shuttleengine.CompactionBoundary{"a": freshBoundary(e.clock.now.Add(time.Second))}
 	e.s.usage["a"] = 100
 	e.endTurn("a")
 	st := e.state()
-	if want := "command index unavailable: " + errBoom.Error(); st.Phase != PhaseIdle || st.LastAbortReason != want {
+	if want := "role file failed to render"; st.Phase != PhaseIdle || !strings.HasPrefix(st.LastAbortReason, want) {
 		t.Fatalf("state = %+v, want idle with the reason %q", st, want)
 	}
 	e.tick()
-	if e.indexCalls != 1 {
-		t.Errorf("index source called %d times, want once: a later tick without a new turn end must not retry the reload", e.indexCalls)
+	if got := e.state(); got.Phase != PhaseIdle {
+		t.Errorf("phase = %s, want idle: a later tick without a new turn end must not retry the reload", got.Phase)
 	}
 	e.assertNoCalls()
 }
@@ -1790,8 +1789,8 @@ func TestWatcher_ClearRendersRoleFileBeforeResume(t *testing.T) {
 	if e.s.count("clear") != 1 {
 		t.Fatalf("calls = %v; want the clear sent", e.s.calls)
 	}
-	if role, err := os.ReadFile(e.paths.RolePath); err != nil || !strings.Contains(string(role), testIndex) {
-		t.Errorf("role file = %q, %v; want it rendered with the index before the resume pointer", role, err)
+	if role, err := os.ReadFile(e.paths.RolePath); err != nil || !strings.Contains(string(role), "Decision for <slug>:") {
+		t.Errorf("role file = %q, %v; want it rendered before the resume pointer", role, err)
 	}
 	if !strings.Contains(e.state().PendingResume, e.paths.RolePath) {
 		t.Errorf("resume pointer %q must name the role file", e.state().PendingResume)
@@ -1806,23 +1805,26 @@ func TestWatcher_FailingRenderAbortsWithoutClear(t *testing.T) {
 		name    string
 		stencil string
 		content string
-		// indexErr makes the index source fail instead of the stencil, which stays as shipped.
-		indexErr error
+		// breakRole fails the role render instead of the stencil, which stays as shipped.
+		breakRole bool
 		// wantReason is the abort reason's prefix, which names the failing source.
 		wantReason string
 	}{
 		{name: "resume", stencil: resumeStencilName, content: "line one\nline two\n", wantReason: "resume stencil " + resumeStencilName},
-		{name: "index source", indexErr: errBoom, wantReason: "command index unavailable: " + errBoom.Error()},
+		{name: "role file", breakRole: true, wantReason: "role file failed to render"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			e := newWatchEnv(t)
+			if c.breakRole {
+				e.breakRoleRender()
+			}
 			e.injectHandoff()
-			if c.indexErr != nil {
-				e.indexErr = c.indexErr
-			} else if err := os.WriteFile(stencilstore.Path(e.stDir, c.stencil), []byte(c.content), 0o644); err != nil {
-				t.Fatal(err)
+			if !c.breakRole {
+				if err := os.WriteFile(stencilstore.Path(e.stDir, c.stencil), []byte(c.content), 0o644); err != nil {
+					t.Fatal(err)
+				}
 			}
 			e.finishNote()
 			st := e.state()

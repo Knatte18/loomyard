@@ -17,7 +17,16 @@ import (
 
 // fixedStencils holds the instruction texts lym renders from embedded bytes alone and never seeds to a board copy, keyed by name.
 // They live outside this package's tree, so the registry never lists them, and every scan over the shipped stencils reads them through shippedStencils.
-var fixedStencils = map[string][]byte{"orch-role": orchrole.Role}
+var fixedStencils = fixedStencilTexts()
+
+// fixedStencilTexts returns the orch role's text and each of its on-demand files' texts, the latter named `orch-` and the file's name without its extension.
+func fixedStencilTexts() map[string][]byte {
+	texts := map[string][]byte{"orch-role": orchrole.Role}
+	for file, text := range orchrole.OnDemand {
+		texts["orch-"+strings.TrimSuffix(file, ".md")] = text
+	}
+	return texts
+}
 
 // shippedStencils returns every registered stencil's shipped default and every fixed stencil's text, keyed by name.
 func shippedStencils(t *testing.T) map[string][]byte {

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/contracts/orchrole"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -15,7 +16,6 @@ import (
 const (
 	testRolePath         = "/orch/role.md"
 	testNoteTemplatePath = "/orch/note-template.md"
-	testIndex            = "- board\n  - list: show the board\n"
 )
 
 func seedStencils(t *testing.T) string {
@@ -33,8 +33,8 @@ func TestRenderFiles_WriteWithoutLeadingComment(t *testing.T) {
 		// gone lists text the render must not carry.
 		gone []string
 	}{
-		{name: "role", file: "role.md", render: func(_, path string) error { return RenderRoleFile(path, testIndex) },
-			want: []string{"## Commands\n", testIndex, "Decision for <slug>:"},
+		{name: "role", file: "role.md", render: func(_, path string) error { return RenderRoleFile(path) },
+			want: []string{"Decision for <slug>:"},
 			gone: []string{"## Hub-wide rules", "## This orch's rules"}},
 		{name: "note template", file: "note-template.md", render: RenderNoteTemplateFile},
 	}
@@ -66,6 +66,27 @@ func TestRenderFiles_WriteWithoutLeadingComment(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestRenderRoleFile_WritesEachOnDemandFileBesideTheRoleThatNamesIt pins that every on-demand file reaches the session: rendered beside the role and free of its comment.
+func TestRenderRoleFile_WritesEachOnDemandFileBesideTheRoleThatNamesIt(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "orch", "role.md")
+	if err := RenderRoleFile(path); err != nil {
+		t.Fatal(err)
+	}
+	for name := range orchrole.OnDemand {
+		data, err := os.ReadFile(filepath.Join(filepath.Dir(path), name))
+		if err != nil {
+			t.Errorf("on-demand file %s: %v", name, err)
+			continue
+		}
+		if !strings.HasPrefix(strings.TrimSpace(string(data)), "# ") {
+			t.Errorf("on-demand file %s = %q; want it to open with its heading", name, data)
+		}
 	}
 }
 

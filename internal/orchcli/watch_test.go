@@ -5,7 +5,6 @@ package orchcli
 import (
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -44,53 +43,6 @@ func TestRunnerSession_StrandAlive(t *testing.T) {
 	}
 	if got, err := s.StrandName("absent"); err == nil || !strings.Contains(err.Error(), `"absent"`) {
 		t.Errorf("StrandName(absent) = %q, %v; want an error naming the guid", got, err)
-	}
-}
-
-// TestWatcherIndexSource pins which binary the watch verb's watcher reads its index from: the one the orch strand recorded, through the CLI's index runner, and a refusal naming the way forward when none usable is recorded.
-func TestWatcherIndexSource(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	recorded := filepath.Join(t.TempDir(), "lym")
-	if err := os.WriteFile(recorded, []byte("binary"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	cases := []struct {
-		name    string
-		strands []reedengine.StrandStatus
-		// wantRunBin is the path the runner is called with, empty when the source must refuse before running it.
-		wantRunBin string
-		wantErr    string
-	}{
-		{"runs the recorded binary", []reedengine.StrandStatus{{GUID: "g1", Name: "ly:orch", LymBin: recorded}}, recorded, ""},
-		{"ignores a task strand's binary", []reedengine.StrandStatus{{GUID: "g0", Name: "ly:task:driver", LymBin: "/elsewhere/lym"}, {GUID: "g1", Name: "ly:orch", LymBin: recorded}}, recorded, ""},
-		{"refuses without an orch strand", []reedengine.StrandStatus{{GUID: "g0", Name: "ly:task:driver", LymBin: recorded}}, "", "lym orch stop"},
-		{"refuses a strand recorded before the field existed", []reedengine.StrandStatus{{GUID: "g1", Name: "ly:orch"}}, "", "lym orch stop"},
-		{"refuses a recorded path that is gone", []reedengine.StrandStatus{{GUID: "g1", Name: "ly:orch", LymBin: filepath.Join(t.TempDir(), "gone")}}, "", "lym orch stop"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			var ranWith []string
-			c := newTestCLI(t, &fakeStrands{strands: tc.strands})
-			c.indexRunner = func(bin string) (string, error) {
-				ranWith = append(ranWith, bin)
-				return fakeRunnerIndex, nil
-			}
-			got, err := c.watcherIndexSource()()
-			if tc.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tc.wantErr) || !strings.Contains(err.Error(), "lym beam start") {
-					t.Fatalf("source() = %q, %v; want an error naming %q and `lym beam start`", got, err, tc.wantErr)
-				}
-			} else if err != nil || got != fakeRunnerIndex {
-				t.Fatalf("source() = %q, %v; want the runner's output", got, err)
-			}
-			if want := []string{tc.wantRunBin}; tc.wantRunBin == "" && len(ranWith) != 0 || tc.wantRunBin != "" && !slices.Equal(ranWith, want) {
-				t.Errorf("runner called with %v, want %v", ranWith, tc.wantRunBin)
-			}
-		})
 	}
 }
 

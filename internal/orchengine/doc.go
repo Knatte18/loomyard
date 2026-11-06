@@ -44,6 +44,7 @@
 //
 // Every launch prompt is a one-line pointer: the orch's whole procedure lives in the orch role, which RenderRoleFile renders to Paths.RolePath, and the pointer names that file.
 // The role is one fixed text for every orch in every repository, rendered from the bytes built into the binary (`contracts/orchrole`), and no board copy of it exists, so no hub can edit it.
+// Every role render also writes the role's on-demand files beside it, the `role-*.md` files the session reads only for a rarer event such as a beam's landing or a landing halt.
 // The resume pointer also names the orch note to resume from.
 // A note request names the note path and Paths.NoteTemplatePath, the file RenderNoteTemplateFile renders from the note stencil: what the orch is doing, the agreed next step and the questions waiting on the operator.
 // Every delivery re-renders its file first, so a stencil edit, or a new binary's role, applies from the next delivery:
@@ -51,9 +52,9 @@
 // and renders the role file before it injects `/clear`.
 // A render failure is handled where a stencil render failure is: a start refuses, a note request changes nothing, and a clear that cannot render aborts the cycle.
 //
-// The role file's `## Commands` section carries the operator command index, which every role-file render is handed as a string.
+// The role file carries no command list: it sends the session to `lym help index`.
 // The role file carries no repository rules: a repository's orch rules reach the session appended to its system prompt, through heddle's `orch-prompt` target.
-// The watcher is told an index source through NewWatcher, calls it before each of its three role-file renders, and returns to idle with the reason when the source or the render fails.
+// The watcher returns to idle with the reason when one of its three role-file renders fails.
 //
 // DecideStart maps the strand and watcher liveness pair onto the branch `start` takes:
 // already running, spawn a watcher, or relaunch.

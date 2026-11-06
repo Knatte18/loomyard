@@ -51,8 +51,7 @@ func smokeRun(t *testing.T, exe, dir string, timeout time.Duration, args ...stri
 // BeamUp spawns no watcher under `go test`, since re-executing the test binary would run the suite, so the built binary's `orch watch` is started detached here, as the production spawn does.
 func smokeBeamUp(t *testing.T, exe string, location *lymcwd.Location) {
 	t.Helper()
-	opts := BeamUpOptions{Index: func() (string, error) { return runHelpIndex(exe) }}
-	if _, err := BeamUp(location, opts); err != nil {
+	if _, err := BeamUp(location, BeamUpOptions{}); err != nil {
 		t.Fatalf("BeamUp: %v", err)
 	}
 	logFile, err := os.OpenFile(orchPaths(location).WatchLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
