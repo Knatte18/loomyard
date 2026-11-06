@@ -9,12 +9,14 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -177,7 +179,7 @@ func ReadJudgeSnapshot(d Deps) (JudgeSnapshot, bool, error) {
 
 // Changes compares both checkouts and the scratch directory with the snapshot and names each change the judge session made, sorted within each part.
 // It names a moved code HEAD, and each changed, added or deleted tracked or untracked path of either checkout outside the exempt ones, and each changed, added or deleted scratch file; a scratch directory that is gone is left out.
-// The exempt paths are judgement.yaml, which the judge writes, and, on the records checkout, every path under a Deps.LoomRecordsDirs directory or starting with one of its prefixes, which loom writes itself during a row.
+// The exempt paths are judgement.yaml, which the judge writes, its timestamped siblings, which keep an earlier judge's file when the next judge starts, and, on the records checkout, every path under a Deps.LoomRecordsDirs directory or starting with one of its prefixes, which loom writes itself during a row.
 // A path is judged by content: one the snapshot recorded is a change only when its content now differs from the recorded one, so a later commit of content that was already there, and a deletion that was already uncommitted and is still absent, are no change.
 // A moved records HEAD is a change only through the paths Deps.RecordsChangedSince names since the snapshot's head, minus the exempt and the unchanged.
 func (s JudgeSnapshot) Changes(d Deps) ([]string, error) {
@@ -202,7 +204,7 @@ func (s JudgeSnapshot) Changes(d Deps) ([]string, error) {
 	if code.Head != s.Code.Head {
 		changes = append(changes, fmt.Sprintf("code: HEAD moved from %q to %q", s.Code.Head, code.Head))
 	}
-	codeChanges, err := checkoutChanges("code", s.Code, code, nil, func(rel string) bool { return rel == judgementRel })
+	codeChanges, err := checkoutChanges("code", s.Code, code, nil, func(rel string) bool { return isJudgementPath(judgementRel, rel) })
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +216,9 @@ func (s JudgeSnapshot) Changes(d Deps) ([]string, error) {
 			return nil, fmt.Errorf("drift: list the records paths changed since the snapshot: %w", err)
 		}
 	}
-	recordsExempt := func(rel string) bool { return rel == judgementRel || isLoomRecordsPath(d.LoomRecordsDirs, rel) }
+	recordsExempt := func(rel string) bool {
+		return isJudgementPath(judgementRel, rel) || isLoomRecordsPath(d.LoomRecordsDirs, rel)
+	}
 	recordsChanges, err := checkoutChanges("records", s.Records, records, committed, recordsExempt)
 	if err != nil {
 		return nil, err
@@ -226,6 +230,19 @@ func (s JudgeSnapshot) Changes(d Deps) ([]string, error) {
 		return nil, err
 	}
 	return append(changes, scratchChanges...), nil
+}
+
+// isJudgementPath reports whether rel is the judgement file at judgementRel or a timestamped sibling of it, in the same directory with the same extension.
+func isJudgementPath(judgementRel, rel string) bool {
+	if rel == judgementRel {
+		return true
+	}
+	extension := path.Ext(judgementRel)
+	if path.Dir(rel) != path.Dir(judgementRel) || path.Ext(rel) != extension {
+		return false
+	}
+	archivedFrom, archived := shedadapters.ArchivedRunDirSegment(strings.TrimSuffix(path.Base(rel), extension))
+	return archived && archivedFrom == strings.TrimSuffix(path.Base(judgementRel), extension)
 }
 
 // isLoomRecordsPath reports whether rel lies under a directory of loomRecordsDirs or starts with one of its entries that ends in `-`.

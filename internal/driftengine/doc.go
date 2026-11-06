@@ -92,7 +92,7 @@
 // the spawn id, the mode, the cells with their exact old and new value and covering why, the open ranges covering a judged cell or, under `command`, the compare's log, and the expectation and amendments as text.
 // TakeJudgeSnapshot records under Deps.JudgeSnapshotDir both checkouts' HEAD, a content hash of every changed tracked path and every untracked path with a copy of each untracked file, and the hash of every file of the current capture's scratch directory; ReadJudgeSnapshot reads it back, found false when it is gone.
 // JudgeSnapshot.Changes names what the judge session changed since: a moved code HEAD, each changed, added or deleted path of either checkout and each changed scratch file, judged by content so a later commit of content that was already there is no change.
-// judgement.yaml is exempt, and so, on the records checkout, is every path under a Deps.LoomRecordsDirs directory or starting with one of its prefixes, which are the records paths loom writes during a row.
+// judgement.yaml and its timestamped siblings, which keep an earlier judge's file when the next judge starts, are exempt, and so, on the records checkout, is every path under a Deps.LoomRecordsDirs directory or starting with one of its prefixes, which are the records paths loom writes during a row, the usage records of its sessions among them.
 // A moved records HEAD counts only through the paths Deps.RecordsChangedSince names since the snapshot's head, so loom's own commits are never read as the judge's edits.
 // Bound: an edit the judge session makes under the exempt loom paths goes unseen; they are loom's own run bookkeeping and hold no code, no expectation and neither record.
 //

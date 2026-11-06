@@ -276,11 +276,11 @@ func strandRoleStopper(
 }
 
 // loomRecordsDirs returns the records paths loom itself writes during a row, relative to the records checkout's root and slash-separated:
-// the run's shed directory, loom's friction directory and the prefix of its timestamped archive siblings, each under the location's anchor.
+// the run's shed directory, the usage directory every session of the run records into, loom's friction directory and the prefix of its timestamped archive siblings, each under the location's anchor.
 func loomRecordsDirs(location *lymcwd.Location, runID string) []string {
 	underAnchor := func(rel string) string { return filepath.ToSlash(filepath.Join(location.AnchorRel, rel)) }
 	friction := underAnchor(loomengine.LoomFrictionDirRel())
-	return []string{underAnchor(shedrun.RunDirRel(location, runID)), friction, friction + "-"}
+	return []string{underAnchor(shedrun.RunDirRel(location, runID)), underAnchor(shedrun.UsageDirRel()), friction, friction + "-"}
 }
 
 // driftCaptureRequest describes a capture of step over location's worktree, which the caller completes with its precondition and lock bound.

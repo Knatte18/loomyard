@@ -12,6 +12,9 @@ func DriftDepsAt(location *lymcwd.Location, statusPath, statusLockPath string) d
 	return driftDeps(location, statusPath, statusLockPath, driftTables{})
 }
 
+// LoomRecordsDirs re-exports the records paths the judge snapshot leaves out.
+var LoomRecordsDirs = loomRecordsDirs
+
 // CaptureSpawnRequest re-exports the request that starts the detached capture child.
 var CaptureSpawnRequest = captureSpawnRequest
 

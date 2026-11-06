@@ -163,6 +163,45 @@ func TestJudgeSnapshot(t *testing.T) {
 			nil,
 		},
 		{
+			"ArchivedJudgementIsNoChange",
+			func(*testing.T, *judgeFixture) {},
+			func(t *testing.T, f *judgeFixture) {
+				archived := []string{"_lym/drift/judgement-20261106T083132Z.yaml", "_lym/drift/judgement-20261106T083132Z-1.yaml"}
+				for _, rel := range archived {
+					writeTestFile(t, f.records.Root, rel, "spawn_id: s")
+				}
+				f.records.Untracked = archived
+			},
+			nil,
+		},
+		{
+			"ArchivedJudgementOnTheCodeCheckoutIsNoChange",
+			func(*testing.T, *judgeFixture) {},
+			func(t *testing.T, f *judgeFixture) {
+				archived := "_lym/drift/judgement-20261106T083132Z.yaml"
+				writeTestFile(t, f.code.Root, archived, "spawn_id: s")
+				f.code.Untracked = []string{archived}
+			},
+			nil,
+		},
+		{
+			"OtherFileBesideTheJudgementIsNamed",
+			func(*testing.T, *judgeFixture) {},
+			func(t *testing.T, f *judgeFixture) {
+				others := []string{"_lym/drift/judgement-notes.yaml", "_lym/drift/judgement-20261106T083132Z.txt", "_lym/drift/old/judgement-20261106T083132Z.yaml", "_lym/drift/other-20261106T083132Z.yaml"}
+				for _, rel := range others {
+					writeTestFile(t, f.records.Root, rel, "spawn_id: s")
+				}
+				f.records.Untracked = others
+			},
+			[]string{
+				"records: _lym/drift/judgement-20261106T083132Z.txt was added",
+				"records: _lym/drift/judgement-notes.yaml was added",
+				"records: _lym/drift/old/judgement-20261106T083132Z.yaml was added",
+				"records: _lym/drift/other-20261106T083132Z.yaml was added",
+			},
+		},
+		{
 			"StatusCommitIsNoChange",
 			func(*testing.T, *judgeFixture) {},
 			func(t *testing.T, f *judgeFixture) {

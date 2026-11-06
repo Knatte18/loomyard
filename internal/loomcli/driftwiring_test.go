@@ -1,4 +1,4 @@
-// driftwiring_test.go checks the request the loomcli Drift seams hand the detached capture child's start and the seam that ends the removed drift agents' chairs.
+// driftwiring_test.go checks the request the loomcli Drift seams hand the detached capture child's start, the records paths the judge snapshot leaves out and the seam that ends the removed drift agents' chairs.
 
 package loomcli_test
 
@@ -6,6 +6,7 @@ import (
 	"errors"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/driftengine"
@@ -28,6 +29,32 @@ func TestCaptureSpawnRequest_StartsInTheAnchoredDirectory(t *testing.T) {
 	}
 	if request.Owner != "pair" || request.Executable != "lym" {
 		t.Errorf("CaptureSpawnRequest() = %+v; want owner pair and executable lym", request)
+	}
+}
+
+// TestLoomRecordsDirs_HoldTheUsageDirectoryUnderTheAnchor covers the usage records of a run's sessions, which the judge snapshot must leave out at the path they have on the records checkout.
+func TestLoomRecordsDirs_HoldTheUsageDirectoryUnderTheAnchor(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		anchorRel string
+		want      string
+	}{
+		{"AnchoredAtTheRoot", ".", "_lym/usage"},
+		{"AnchoredAtASubdirectory", "src/backend", "src/backend/_lym/usage"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			location := &lymcwd.Location{HubPath: filepath.Join(t.TempDir(), "hub"), WorktreeName: "pair", AnchorRel: tt.anchorRel}
+
+			if got := loomcli.LoomRecordsDirs(location, "run1"); !slices.Contains(got, tt.want) {
+				t.Errorf("LoomRecordsDirs() = %v; want it to hold %q", got, tt.want)
+			}
+		})
 	}
 }
 
