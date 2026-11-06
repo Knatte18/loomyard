@@ -35,6 +35,7 @@ const setAsideTagPrefix = "set-aside/"
 // The loom and batten rows whose status marks how far a run's landing got on this machine.
 const (
 	finalizeRow         = "Finalize"
+	raddleFileRow       = "Raddle-File"
 	landRow             = "Land"
 	worktreeTeardownRow = "Worktree-Teardown"
 )
@@ -60,7 +61,7 @@ func (e *replayConflict) Is(target error) bool { return target == ErrReplayConfl
 
 func (e *replayConflict) Unwrap() error { return e.cause }
 
-// EndedSet maps the slug of each run origin has ended to how: "done" or "removed".
+// EndedSet maps the slug of each run origin has ended to how: "done" for a run the ledger marks ended, a pruned one included whose last held state was ended, and "removed" for one pruned or deleted before it ended.
 type EndedSet map[string]string
 
 // SetAsideCommit is a local commit a replay did not re-apply, kept under a local tag.
@@ -93,6 +94,7 @@ func ledgerRunsAt(repo *gitrepo.Repo, ledger RunLedger, rev string) ([]LedgerRun
 
 // readEndedSet reads which of slugs origin has ended, from the records repository at recordsRoot and its ref boltRef, origin's Bolt tip as last fetched.
 // A slug is ended when the run ledger marks its run ended on that tip, or when its run is absent from the tip and present in a commit of the tip's history: a pruned run.
+// A pruned run is ended as done when the newest commit holding it marks it ended, and as removed otherwise.
 // Where localCreated holds a created stamp for the slug, the run on the tip or in the history must carry the same stamp,
 // so a pruned slug reused by a run only the local ledger holds is never ended.
 // A slug only the local ledger ever held matches nothing.
@@ -153,6 +155,9 @@ func readEndedSet(recordsRoot, boltRef string, slugs []string, localCreated map[
 				return false
 			}
 			ended[slug] = endedRemoved
+			if run.Ended {
+				ended[slug] = endedDone
+			}
 			return true
 		})
 	}
@@ -223,9 +228,12 @@ func readRunStatusRows(path string) (runStatusRows, bool, error) {
 // It reads the task pair's loom status, the pair's local parent branch and the prime's batten status of the slug:
 // a Finalize history row, a current producer Finalize while the local parent branch already holds the task's work, or a batten status at Land or a later row or done.
 // A current producer Finalize alone never counts, since it reads Finalize at every Finalize entry, before the merge.
+// A pair status standing at Raddle-File counts as well when how is endedDone: a raddle run has no Finalize and that row ends the run's own entry, so an entry origin shows done is the run's own finish, with Land and Worktree-Teardown still to come.
+// An entry origin removed from its board before it ended done is a real end, so it reconciles as ended at Raddle-File.
+// A Raddle-File history row alone never counts, since a return sends the run back to Raddle-Write.
 // A read failure counts as entered, logged at Warn, so a doubt never sets aside this machine's own landing.
-func finalizeEntered(l *lymcwd.Location, slug string) bool {
-	entered, err := finalizeEnteredRead(l, slug)
+func finalizeEntered(l *lymcwd.Location, slug, how string) bool {
+	entered, err := finalizeEnteredRead(l, slug, how)
 	if err != nil {
 		logger.Warn("fabricengine: the run's Finalize state could not be read, so its landing counts as entered", "slug", slug, "error", err)
 		return true
@@ -233,7 +241,7 @@ func finalizeEntered(l *lymcwd.Location, slug string) bool {
 	return entered
 }
 
-func finalizeEnteredRead(l *lymcwd.Location, slug string) (bool, error) {
+func finalizeEnteredRead(l *lymcwd.Location, slug, how string) (bool, error) {
 	pairPath := filepath.Join(l.HubPath, slug)
 	if _, err := os.Stat(pairPath); err == nil {
 		pairLocation, err := lymcwd.ResolveWorktree(pairPath)
@@ -244,7 +252,7 @@ func finalizeEnteredRead(l *lymcwd.Location, slug string) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		if found && status.historyNames(finalizeRow) {
+		if found && (status.historyNames(finalizeRow) || (how == endedDone && status.CurrentProducer == raddleFileRow)) {
 			return true, nil
 		}
 		if found && status.CurrentProducer == finalizeRow {
@@ -310,7 +318,7 @@ func withoutFinalizeEntered(l *lymcwd.Location, ended EndedSet) EndedSet {
 	}
 	live := EndedSet{}
 	for slug, how := range ended {
-		if finalizeEntered(l, slug) {
+		if finalizeEntered(l, slug, how) {
 			logger.Info("fabricengine: a run origin has ended is left to this machine's own landing", "slug", slug)
 			continue
 		}

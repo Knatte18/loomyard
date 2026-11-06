@@ -25,7 +25,7 @@
 // A finished run of a recipe with a Finalize row writes nothing, its landing having marked the entry done.
 // A finished run of a recipe with a RaddleFile row, a raddle run, writes nothing either, its Raddle-File row having ended the entry done instead of as a Sketch.
 // A finished run of a recipe with neither a Finalize row nor a RaddleFile row, a motif run, makes its entry a Sketch, a note of the built-in type `sketch` that leaves its run lock, never runs and waits for the operator's triage with its record stored;
-// when the board refuses that, as while another entry depends on the entry, the run warns and leaves the entry draft, and any other failure of the write is retried at the run's next finished transition.
+// when the board refuses that, as while another entry depends on the entry, the run warns, leaves the entry draft and mails its parent the refusal with the ways forward, and any other failure of the write is retried at the run's next finished transition.
 //
 // `wire` fills `Env.GateFixer` for every recipe through `gateFixerSeam`, which wraps the gate of a Darn-Write, Plan-Write or Discussion-Write row whose `fixer` element names a model-spec, so a failure at the writer's idle boundary goes to a cold fixer before the writer hears of it.
 // The seam returns the spec unchanged on the prime and outside a hub, where no pair owns a fixer.
@@ -287,7 +287,7 @@
 // An unreachable origin, a failed check and a failed read of whether the parent holds the run's work let the push go, so the push's own failure is recorded.
 // A run another machine owns is paused under the owner, naming `lym adopt <subject>`;
 // a run a branch stops is paused naming each of its branches, and its parent branch, that stopped, the way forward and `lym tender resume <slug>`;
-// and a run origin ended is paused naming `lym cleanup --apply`, unless its parent already holds its work.
+// and a run origin ended is paused naming `lym cleanup --apply`, unless its parent already holds its work or it is a raddle run standing at Raddle-File whose entry origin shows done, which is not read as ended since its own Raddle-File row ended the entry and Land and Worktree-Teardown are still to come.
 // Each stop posts one notice line to the nearest live orch, and an active run whose own branches the reconcile moved posts one line naming them, and one whose parent branch origin moved past this machine's tip another.
 // A stopped status transition commits and pushes nothing, `commit-records` answers an ok envelope with `push_stopped` and pushes nothing after a stopped commit, and PR-Review halts on the stop as on any push refusal.
 // Bound: the check reads origin once per commit and push, so a move that lands between the check and the push is caught only by the push's own refusal.

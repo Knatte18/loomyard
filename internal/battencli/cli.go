@@ -10,6 +10,7 @@
 //
 // "lym batten cleanup [--apply]" (cleanup.go) removes done runs' records and scratch and aged orphan scratch, as a dry run unless given --apply.
 // `ClearMotifRun` (cleanup.go) removes one slug's records the same way, only when its run is done and the child-recipe record that Seed-Child writes in batten's run directory names motif.
+// A run or step of a task with recipe raddle has the start guard judge the start as a fresh one first (startguard.go) and calls it once the start's owner check has passed (claimStart), so a refused start leaves the run in place, and a promoted Sketch starts over the motif run that made it with no hand step, and dobby's read holds no start for that run.
 //
 // "lym batten cancel <slug> [--remove]" (cancel.go, cancelcmd.go) ends a run for good from the prime, whatever its state.
 // It refuses first, with nothing ended: a hub pause, work that reached the parent, an owner on another machine, a stopped origin entry, a cancel already under way and a slug with nothing left.
@@ -176,6 +177,8 @@ type battenCLI struct {
 	owner ownerSeams
 	// guard carries the pre-run's refusals of a cancel under way, a dirty source and a left pair; armAt fills it with hubStartGuard when its Marker is nil, and a hand-populated receiver leaves it zero, which checks nothing.
 	guard startGuard
+	// motifRunClearPending records that refuseAtStart judged the start as replacing a done motif run, which claimStart removes once the owner check passes.
+	motifRunClearPending bool
 	// beam carries the reads Worktree-Create makes for a beam project's run; wire fills it with hubLandingSeams, and a receiver that calls no wire leaves it zero, which reads every entry as a task.
 	beam landingSeams
 	// beamHold reads the board entry of a beam that a member's pair was just made under: its status, and whether its run holds the entry, which keeps the member from joining.
@@ -215,7 +218,8 @@ silently from the persisted current producer -- there is no re-seed flag,
 because every operator-fixable refusal this task raises lands as blocked,
 which is the everyday resume path. A slug already done refuses on the
 envelope, naming "lym batten cleanup --apply" and the leftover branches to
-delete to run it again.
+delete to run it again, unless it is the done motif run of a task whose recipe the board resolves to
+raddle, which the start removes.
 
 The Go driver meets an unexpected stop with its rule table and a cold tackler
 agent before the orch sees it; a second run for the slug is refused while the

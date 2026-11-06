@@ -194,22 +194,30 @@ func TestDobbyTasks_ReadsTheStartRefusalOfAFinishedRunRecord(t *testing.T) {
 	tests := []struct {
 		name        string
 		status      string
-		wantRefused bool
+		recipe      string
+		childRecipe string
+		// childRecipeUnreadable makes the child-recipe record a directory, so reading it fails.
+		childRecipeUnreadable bool
+		// defaultRecipe is the board's default_recipe, empty leaving the template's.
+		defaultRecipe string
+		wantRefused   bool
 	}{
 		{name: "NoRunRecordHoldsNothing"},
 		{name: "ADoneRunRecordHoldsTheStart", status: `{"state":"done"}`, wantRefused: true},
 		{name: "ARunningRunRecordHoldsNothing", status: `{"state":"running"}`},
 		{name: "AnUndecodableRunRecordHoldsNothing", status: `{not json`},
+		{name: "ADoneMotifRunOfARaddleEntryHoldsNothing", status: `{"state":"done"}`, recipe: shedrun.RecipeRaddle, childRecipe: shedrun.RecipeMotif},
+		{name: "ADoneRaddleRunOfARaddleEntryHoldsTheStart", status: `{"state":"done"}`, recipe: shedrun.RecipeRaddle, childRecipe: shedrun.RecipeRaddle, wantRefused: true},
+		{name: "ADoneRunOfARaddleEntryWhoseChildRecipeDoesNotReadHoldsTheStart", status: `{"state":"done"}`, recipe: shedrun.RecipeRaddle, childRecipeUnreadable: true, wantRefused: true},
+		{name: "ADoneMotifRunOfADarnEntryHoldsTheStart", status: `{"state":"done"}`, recipe: shedrun.RecipeDarn, childRecipe: shedrun.RecipeMotif, wantRefused: true},
+		{name: "ADoneMotifRunOfAnEntryWithNoRecipeUnderARaddleDefaultHoldsNothing", status: `{"state":"done"}`, childRecipe: shedrun.RecipeMotif, defaultRecipe: shedrun.RecipeRaddle},
+		{name: "ADoneMotifRunOfAnEntryWithNoRecipeUnderTheTemplateDefaultHoldsTheStart", status: `{"state":"done"}`, childRecipe: shedrun.RecipeMotif, wantRefused: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			boardDir := t.TempDir()
-			content := `{"version":1,"entries":[{"id":0,"slug":"released","title":"R","kind":"task","labels":["bug"]}]}`
-			if err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(content), 0o644); err != nil {
-				t.Fatalf("write board.json: %v", err)
-			}
 			prime := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "main", AnchorRel: "."}
+			writeBoardHub(t, prime, tt.defaultRecipe, `{"version":1,"entries":[{"id":0,"slug":"released","title":"R","kind":"task","labels":["bug"],"recipe":"`+tt.recipe+`"}]}`)
 			if tt.status != "" {
 				path := shedrun.StatusFile(prime, "released")
 				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -219,10 +227,20 @@ func TestDobbyTasks_ReadsTheStartRefusalOfAFinishedRunRecord(t *testing.T) {
 					t.Fatalf("write the run status: %v", err)
 				}
 			}
+			if tt.childRecipe != "" {
+				if err := shedrun.WriteChildRecipe(prime, "released", tt.childRecipe); err != nil {
+					t.Fatalf("write the child recipe: %v", err)
+				}
+			}
+			if tt.childRecipeUnreadable {
+				if err := os.MkdirAll(shedrun.ChildRecipeFile(prime, "released"), 0o755); err != nil {
+					t.Fatalf("create the unreadable child recipe: %v", err)
+				}
+			}
 			parents := NewDobbyParents(prime)
 			parents.known["released"] = "main"
 
-			views, err := DobbyTasks(prime, boardDir, parents)
+			views, err := DobbyTasks(prime, fabricengine.BoardDir(prime.HubPath), parents)
 			if err != nil {
 				t.Fatalf("DobbyTasks() error = %v; want nil", err)
 			}

@@ -1294,12 +1294,13 @@
 // Seed commits are dropped, and any other commit is cherry-picked as on a weft.
 // `Bolt.pullFirst` replays through it: a conflict skips as diverged, naming the conflicting paths and the two ways to settle them, and an uncommitted change on a touched path skips as dirty.
 //
-// **The ended set.** `readEndedSet` reads which runs origin has ended through the run ledger: a run the ledger marks ended on origin's Bolt tip, or one that tip's history held and the tip pruned; none registered returns `ErrReplayerMissing`.
+// **The ended set.** `readEndedSet` reads which runs origin has ended through the run ledger: a run the ledger marks ended on origin's Bolt tip, or one that tip's history held and the tip pruned, which reads as done when the newest commit holding it marked it ended and as removed otherwise; none registered returns `ErrReplayerMissing`.
 // A created stamp keeps a reused slug from matching a pruned run.
 // A replay sets aside, under a local `set-aside/<slug>/<sha>` tag, each local commit whose every path belongs to an ended run, since replaying it would resurrect the run.
 // A commit that also touches another replayer's path skips only the ledger's part and is tagged the same way, and a loss or refusal from a replayer other than the run ledger tags the original `set-aside/replayer/<name>/<sha>`, as does a ledger loss that names no run.
 // The prefix is one no archive reader matches, so a set-aside commit shows as no run.
 // `finalizeEntered` exempts a run this machine's own landing has reached past the parent-side merge of Finalize, read from the pair's loom status, the local parent branch and the prime's batten status, and treats an unreadable state as reached.
+// It also exempts a raddle run standing at Raddle-File when origin shows its entry done, the row that ends the run's own entry, so a filed run goes on through Land and Worktree-Teardown; an entry origin removed before it ended done still reconciles as ended there.
 //
 // # The local removal mode
 //

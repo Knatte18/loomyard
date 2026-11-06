@@ -57,7 +57,7 @@
 // The refused member keeps its claim, so it stays an open member that stops the beam's landing.
 //
 // A resume, "lym batten run" over an existing status file, first runs the origin reconcile of the slug's run scope.
-// An entry origin ended refuses, naming the landing or the removal and "lym cleanup --apply" from the prime; a stopped entry refuses, naming the branch, its state and the way forward for it, then the re-run;
+// An entry origin ended refuses, naming the landing or the removal and "lym cleanup --apply" from the prime, except a raddle run standing at Raddle-File over an entry origin shows done, which its own row ended and which resumes; a stopped entry refuses, naming the branch, its state and the way forward for it, then the re-run;
 // an entry another machine owns refuses, naming the owner and "lym adopt <subject>", the beam or `root` that takes it over; an active entry resumes, and so does an unreachable origin, with a Warn.
 // With origin answering, the resume first records this machine as the hub's prime owner when none is recorded, and as the owner of a run-held entry that has none; a failed write refuses, naming the re-run once origin answers or the push's own way forward.
 // With origin unreachable the resume reads the local board instead, refuses a task it shows owned elsewhere, and writes no owner.

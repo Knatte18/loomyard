@@ -388,6 +388,7 @@ func TestRecordsReplay(t *testing.T) {
 			{name: "A pair status holding a Finalize row is not set aside", withPair: true, pairStatus: statusJSON("Land", "Finalize")},
 			{name: "A pair status at Finalize with no row, its local parent holding the task's work, is not set aside", withPair: true, pairStatus: statusJSON("Finalize")},
 			{name: "A pair status at Finalize with no row, its local parent lacking the task's work, is set aside", withPair: true, pairStatus: statusJSON("Finalize"), taskWork: true, wantSetAside: true},
+			{name: "A pair status at Raddle-File is not set aside", withPair: true, pairStatus: statusJSON("Raddle-File")},
 			{name: "A gone pair whose prime batten status stands at Land is not set aside", primeStatus: statusJSON("Land")},
 		}
 		for _, row := range finalizeRows {
@@ -470,6 +471,24 @@ func TestRecordsReplay(t *testing.T) {
 				t.Fatalf("ReadEndedSetForTest: %v", err)
 			}
 			if want := map[string]string{"a": "removed"}; !maps.Equal(got, want) {
+				t.Errorf("ended set = %v, want %v", got, want)
+			}
+		})
+
+		t.Run("An entry done and then pruned on origin is ended as done", func(t *testing.T) {
+			t.Parallel()
+			f := newRecordsFixture(t)
+			board := f.hub.BoardDir()
+			branch := gitkit.CurrentBranch(t, board)
+			f.originCommit(branch, "board.json", boardFileOf(t, boardEntry("a", withBoardCreated(created), withBoardStatus("done")), boardEntry("b")), "a done")
+			f.originCommit(branch, "board.json", boardFileOf(t, boardEntry("b")), "prune a")
+			gitkit.Git(t, board, "pull", "--ff-only")
+
+			got, err := fabricengine.ReadEndedSetForTest(board, "refs/remotes/origin/"+branch, []string{"a", "b"}, map[string]string{"a": stamp})
+			if err != nil {
+				t.Fatalf("ReadEndedSetForTest: %v", err)
+			}
+			if want := map[string]string{"a": "done"}; !maps.Equal(got, want) {
 				t.Errorf("ended set = %v, want %v", got, want)
 			}
 		})

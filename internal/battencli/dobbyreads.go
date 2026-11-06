@@ -265,6 +265,9 @@ func DobbyLandings(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *D
 // unreadableNoticeEntry keeps one failure episode per entry carrying notify_on_land whose parent or owner does not read, keyed by slug, so a persistent failure logs one Warn and not one line per dobby tick.
 var unreadableNoticeEntry logger.EpisodeSet
 
+// unreadableDoneRunStart keeps one failure episode per released task whose done run record's start judgment does not read, keyed by slug, so a persistent failure logs one Warn and not one line per dobby tick.
+var unreadableDoneRunStart logger.EpisodeSet
+
 // readTaskPlacement reads the parent worktree of slug, the prime's name for the prime, and whether another machine owns slug.
 func readTaskPlacement(prime *lymcwd.Location, parents *DobbyParents, owners boardengine.Owners, here, slug string) (parent string, ownedElsewhere bool, err error) {
 	parent, err = parents.Of(slug)
@@ -284,7 +287,7 @@ func readTaskPlacement(prime *lymcwd.Location, parents *DobbyParents, owners boa
 // DobbyTasks reads the local board under boardDir as TaskViews.
 // A released task, one with an empty status, and an entry carrying notify_on_land get their parent worktree and owner read; the others carry neither.
 // A parent or owner that does not read fails the whole read for a released task, and leaves an entry carrying notify_on_land with neither, logged once per episode, so one such entry never blocks the starts of the others.
-// A released task whose slug has a finished run record under the prime carries the refusal every start of that slug gets; a run status that does not read holds nothing.
+// A released task whose slug has a finished run record under the prime carries the refusal every start of that slug gets, except a done motif run of a task whose recipe the board resolves to raddle, which that start clears; a run status that does not read holds nothing.
 // A dependency is pending until its entry is done, whatever its kind, a plain project also once every landing member of it is done, and a dependency no longer on the board was pruned as done.
 func DobbyTasks(prime *lymcwd.Location, boardDir string, parents *DobbyParents) ([]dobbyengine.TaskView, error) {
 	tasks, err := boardengine.ReadTasks(boardDir)
@@ -323,7 +326,15 @@ func DobbyTasks(prime *lymcwd.Location, boardDir string, parents *DobbyParents) 
 				logger.Warn("battencli: a released task's run status is unreadable and holds no start", "slug", task.Slug, "error", err)
 			}
 			if err == nil && found && status.State == shedengine.StateDone {
-				view.StartRefusal = doneSlugRefusal(prime, task.Slug).Error()
+				clears, err := startClearsMotifRun(prime, task)
+				if err != nil {
+					unreadableDoneRunStart.Fail(task.Slug, "battencli: whether a done run's start clears it is unreadable, so the run holds the start", "slug", task.Slug, "error", err)
+				} else {
+					unreadableDoneRunStart.Recover(task.Slug, "battencli: whether a done run's start clears it reads again", "slug", task.Slug)
+				}
+				if !clears {
+					view.StartRefusal = doneSlugRefusal(prime, task.Slug).Error()
+				}
 			}
 		}
 		encoded, err := json.Marshal(task)

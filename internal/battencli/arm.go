@@ -27,7 +27,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -392,13 +391,9 @@ func (c *battenCLI) armAt(location *lymcwd.Location, runID string, explicit bool
 		return shedverbs.Spec{}, err
 	}
 
-	// A start writes its seed below, so its owner check runs first: a task another machine owns leaves no seed behind.
-	if verb == "run" || verb == "step" {
-		if _, err := os.Stat(StatusFile(location, runID)); errors.Is(err, fs.ErrNotExist) {
-			if err := c.refuseStartOwnedElsewhere(); err != nil {
-				return shedverbs.Spec{}, err
-			}
-		}
+	// A start writes its seed below, so its owner check runs first: a task another machine owns leaves no seed behind and no done motif run removed.
+	if err := c.claimStart(verb); err != nil {
+		return shedverbs.Spec{}, err
 	}
 
 	if err := c.armSeed(location, runID, verb); err != nil {

@@ -1,4 +1,5 @@
 // startguard.go holds batten's pre-run guard: the refusals of a run a cancel is ending, of a start over a dirty source and of a start over the left parts of an earlier pair, all raised before the pre-run writes anything.
+// It also judges a raddle entry's start over the done motif run under its own slug as the fresh start that run's removal makes, and removes the run only once the start's owner check has passed.
 
 package battencli
 
@@ -49,6 +50,12 @@ type startGuard struct {
 	// Raddle judges the start of a raddle entry: it returns a raddleRefusal when the entry cannot start, any other error for a failed probe, and nil for an entry of another recipe.
 	// A nil Raddle checks nothing.
 	Raddle func() error
+	// ClearsMotifRun reports, without removing anything, whether the slug's done run is the motif run of the raddle entry about to start, which that start removes.
+	// A nil ClearsMotifRun reads every done run as one the start does not clear.
+	ClearsMotifRun func() (bool, error)
+	// ClearMotifRun removes the slug's done run when it is the motif run of the raddle entry about to start, and reports whether it did.
+	// A nil ClearMotifRun removes nothing.
+	ClearMotifRun func() (bool, error)
 }
 
 // raddleRefusal is the refusal raddleStartRefusal returns, which the guard returns as it stands where a probe error is wrapped.
@@ -123,8 +130,44 @@ func hubStartGuard(location *lymcwd.Location, slug string) startGuard {
 			}
 			return fabricengine.NewTopology(cfg).PairParts(location, slug)
 		},
-		Raddle: func() error { return readRaddleStartRefusal(location, slug) },
+		Raddle:         func() error { return readRaddleStartRefusal(location, slug) },
+		ClearsMotifRun: func() (bool, error) { return clearsMotifRunOfRaddleEntry(location, slug) },
+		ClearMotifRun:  func() (bool, error) { return ClearMotifRun(location, slug) },
 	}
+}
+
+// startClearsMotifRun reports whether a start of task clears the done run under its slug instead of refusing it: the hub board resolves the task's recipe to raddle, its own or the board's default, and that run's child ran motif.
+// Promoting a Sketch keeps the slug of the motif run that made it, so the raddle run always finds that done record.
+// A task's own recipe field decides without opening the board, which only an entry with no recipe or a project reads.
+// It removes nothing.
+func startClearsMotifRun(location *lymcwd.Location, task boardengine.Task) (bool, error) {
+	recipe := task.Recipe
+	if task.Kind != boardengine.KindTask || recipe == "" {
+		board, err := boardengine.OpenHub(location.HubPath)
+		if err != nil {
+			return false, err
+		}
+		recipe = boardRecipe(board, task)
+	}
+	if recipe != shedrun.RecipeRaddle {
+		return false, nil
+	}
+	childRecipe, err := shedrun.ReadChildRecipe(location, task.Slug)
+	return childRecipe == shedrun.RecipeMotif, err
+}
+
+// clearsMotifRunOfRaddleEntry reports whether a start of slug clears its done motif run: the board holds slug as an entry whose start startClearsMotifRun says clears it.
+// It removes nothing, and an absent entry clears nothing.
+func clearsMotifRunOfRaddleEntry(location *lymcwd.Location, slug string) (bool, error) {
+	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(location.HubPath))
+	if err != nil {
+		return false, err
+	}
+	index := slices.IndexFunc(tasks, func(task boardengine.Task) bool { return task.Slug == slug })
+	if index < 0 {
+		return false, nil
+	}
+	return startClearsMotifRun(location, tasks[index])
 }
 
 // readRaddleStartRefusal reads the slug's board entry and, when its recipe is raddle, judges its start with raddleStartRefusal.
@@ -386,6 +429,7 @@ func (c *battenCLI) refuseCancelMarker() error {
 }
 
 // refuseAtStart reads the run's status file and applies the guard to verb's start or resume.
+// A run or step over a done status asks the guard's ClearsMotifRun, which removes nothing, and a start it says clears the run is judged as the fresh start it will be, with the removal left pending for claimStart.
 // Verbs other than run, step and goto are not guarded.
 // Its reads create nothing but the status lock's ephemeral directory, which checkRunStatus creates the same way.
 func (c *battenCLI) refuseAtStart(verb string) error {
@@ -402,6 +446,17 @@ func (c *battenCLI) refuseAtStart(verb string) error {
 		return fmt.Errorf("battencli: read status file %s: %w", statusPath, err)
 	}
 
+	if found && status.State == shedengine.StateDone && verb != "goto" {
+		clears, err := c.clearsMotifRun(verb)
+		if err != nil {
+			return err
+		}
+		if clears {
+			found, status = false, shedengine.Status{}
+			c.motifRunClearPending = true
+		}
+	}
+
 	var taskPresent bool
 	if found && status.CurrentProducer == battenrecipe.NameWorktreeCreate {
 		taskPresent, err = taskWorktreePresent(c.location, c.slug)
@@ -410,4 +465,49 @@ func (c *battenCLI) refuseAtStart(verb string) error {
 		}
 	}
 	return c.guard.refuse(c.slug, verb, status, found, taskPresent)
+}
+
+// claimStart runs the owner check of a run or step that starts a fresh run, then removes the done motif run refuseAtStart found the start replacing.
+// A start with no status file, or one replacing a done motif run, refuses when another machine owns the task, before anything is written or removed.
+// The owner check pulls the board, so the start is judged as replacing the run once more before the removal, and a start the pulled board no longer says replaces it removes nothing.
+// A failed removal refuses naming the re-run, and leaves the removal pending.
+func (c *battenCLI) claimStart(verb string) error {
+	if verb != "run" && verb != "step" {
+		return nil
+	}
+	_, statErr := os.Stat(StatusFile(c.location, c.slug))
+	if c.motifRunClearPending || errors.Is(statErr, fs.ErrNotExist) {
+		if err := c.refuseStartOwnedElsewhere(); err != nil {
+			return err
+		}
+	}
+	if !c.motifRunClearPending || c.guard.ClearMotifRun == nil {
+		return nil
+	}
+	clears, err := c.clearsMotifRun(verb)
+	if err != nil {
+		return err
+	}
+	if !clears {
+		c.motifRunClearPending = false
+		return nil
+	}
+	if _, err := c.guard.ClearMotifRun(); err != nil {
+		return fmt.Errorf("battencli: remove the done motif run of %s: %w; way forward: fix the cause it names, then run \"lym batten %s %s\" again", c.slug, err, verb, c.slug)
+	}
+	c.motifRunClearPending = false
+	return nil
+}
+
+// clearsMotifRun asks the guard whether the start of verb replaces the slug's done motif run, which a nil ClearsMotifRun reads as not.
+// A failed read refuses naming the re-run of verb.
+func (c *battenCLI) clearsMotifRun(verb string) (bool, error) {
+	if c.guard.ClearsMotifRun == nil {
+		return false, nil
+	}
+	clears, err := c.guard.ClearsMotifRun()
+	if err != nil {
+		return false, probeRefusal("whether the done run is a motif run the start clears", c.slug, fmt.Sprintf(`"lym batten %s %s"`, verb, c.slug), err)
+	}
+	return clears, nil
 }

@@ -3,7 +3,9 @@
 package loomcli
 
 import (
+	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
@@ -99,5 +101,74 @@ func TestWiredCommitStatus_FinishedRunEntry(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// TestSketchFinish_TellsTheParentOnlyOfARefusedSketch drives a finished motif run's Finish against a real hub board and asserts the notices it posts:
+// one naming the dependent entry and both ways forward when the board refuses the Sketch, and none when it takes it;
+// a notice that cannot be sent leaves the finish succeeding after the one attempt.
+// It is serial because it sets the board skip variable, which is process-global.
+func TestSketchFinish_TellsTheParentOnlyOfARefusedSketch(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Setenv("BOARD_SKIP_GIT", "1")
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+
+	tests := []struct {
+		name       string
+		slug       string
+		dependedOn bool
+		wantNotice bool
+		// notifyErr is what the notify seam returns after recording its line.
+		notifyErr error
+	}{
+		{"ASketchTheBoardTakesPostsNothing", "takenrun", false, false, nil},
+		{"ARefusedSketchPostsOneNotice", "refusedrun", true, true, nil},
+		{"ANoticeThatCannotBeSentStillFinishesTheRun", "unsentrun", true, true, errors.New("creel is down")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hubforge.AddPair(t, hub, tt.slug)
+			location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(tt.slug))
+			if err != nil {
+				t.Fatalf("ResolveWorktree() error = %v; want nil", err)
+			}
+			board, err := boardengine.OpenHub(location.HubPath)
+			if err != nil {
+				t.Fatalf("OpenHub() error = %v; want nil", err)
+			}
+			if _, err := board.UpsertTask(map[string]any{"slug": tt.slug, "title": "Finish", "kind": "task", "labels": []string{"bug"}}); err != nil {
+				t.Fatalf("UpsertTask() error = %v; want nil", err)
+			}
+			dependent := tt.slug + "-after"
+			if tt.dependedOn {
+				if _, err := board.UpsertTask(map[string]any{"slug": dependent, "title": "After", "kind": "task", "labels": []string{"bug"}, "depends_on": []string{tt.slug}}); err != nil {
+					t.Fatalf("UpsertTask() error = %v; want nil", err)
+				}
+			}
+
+			var notices []string
+			finish := sketchFinish(location, shedrun.SelfRunID, func(line string) error {
+				notices = append(notices, line)
+				return tt.notifyErr
+			})
+			if err := finish(); err != nil {
+				t.Fatalf("Finish() error = %v; want nil", err)
+			}
+
+			if !tt.wantNotice {
+				if len(notices) != 0 {
+					t.Errorf("notices = %q; want none", notices)
+				}
+				return
+			}
+			if len(notices) != 1 {
+				t.Fatalf("notices = %q; want one", notices)
+			}
+			for _, want := range []string{"loom " + tt.slug + ":", dependent, "lym board set-deps", `lym board upsert '{"slug":"` + tt.slug + `","kind":"note","labels":["sketch"],"status":null`, `"recipe":"raddle"`, "lym board set-status"} {
+				if !strings.Contains(notices[0], want) {
+					t.Errorf("notice = %q; want it to name %q", notices[0], want)
+				}
+			}
+		})
 	}
 }

@@ -1,5 +1,5 @@
 // cleanup.go implements "lym batten cleanup", the dry-run-by-default removal of finished runs' records and scratch from the hub's prime worktree.
-// It also holds ClearMotifRun, the removal of one slug's done motif run that "lym beam create" makes before the project's own run.
+// It also holds ClearMotifRun, the removal of one slug's done motif run that "lym beam create" makes before the project's own run and a raddle entry's start makes before the raddle run.
 //
 // Cleanup is the one function the verb and "lym cleanup" both call; every refusal and skip lives in cleanup, so neither caller can remove more than cleanup decides.
 // It deletes only a done slug's records run directory and the scratch contents beside its lock files, or an aged orphan's scratch contents.
@@ -103,7 +103,7 @@ func Cleanup(location *lymcwd.Location, apply bool) (CleanupReport, error) {
 }
 
 // ClearMotifRun removes the records run directory and scratch contents of slug's batten run when that run is done and its task worktree ran the motif recipe, and reports whether it removed them.
-// A motif run is the planned first step of a project split, so its done record must not block the project's own run under the same slug.
+// A motif run is the planned first step of a project split or a raddle run, so its done record must not block the next run under the same slug.
 // It runs from the prime worktree and from a beam, acting on the prime's location, and refuses elsewhere.
 // A run whose run lock is held, that is not done, or whose child-recipe record names another recipe or none, is left alone with cleared false.
 // A removal that fails before its records commit lands is returned after the run's status and child-recipe records are written back, so a re-run finds the run again.
@@ -155,7 +155,7 @@ func clearMotifRun(location *lymcwd.Location, slug string, deps cleanupDeps) (cl
 		return false, nil
 	}
 
-	committed, err := removeRunRecords(location, slug, "beam create: remove the done motif run of "+slug, deps)
+	committed, err := removeRunRecords(location, slug, "batten: remove the done motif run of "+slug, deps)
 	var emptyErr scratchEmptyError
 	switch {
 	case errors.As(err, &emptyErr):
@@ -521,7 +521,8 @@ on the records side, empties that run's scratch beside its lock files, empties t
 any orphan (a scratch directory with no records run directory, untouched for a day), and then
 spawns the push of the records. A run that is running, paused, blocked, awaiting or failed, or whose run
 lock is held, is skipped and reported with its reason. It never touches a pair, a branch, a
-lock file or another run. A done motif run is also cleared by "lym beam create".
+lock file or another run. A done motif run is also cleared by "lym beam create"
+and by the start of a raddle run under its slug.
 
 Output: {"applied", "removed", "emptied", "skipped", "push_spawned", "push_error"}.
 push_spawned says the push was started, not that origin took it; "lym fabric status" lists a push origin refused under failed_pushes.

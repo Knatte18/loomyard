@@ -194,6 +194,69 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 		requireEntry(t, report, "task", fabricengine.EntryActive)
 	})
 
+	t.Run("A raddle run standing at Raddle-File is not ended by the entry its own row ended", func(t *testing.T) {
+		hub, _ := endedHub(t, "task")
+		writePairStatus(t, hub, "task", "Raddle-File", "Raddle-Write")
+		recorder := &teardownRecorder{}
+
+		report := moveReconcile(t, hub, fabricengine.ReconcileScope{}, recorder.seams())
+
+		if len(recorder.calls) != 0 {
+			t.Errorf("teardown calls = %v; want none for a run batten still carries to its teardown", recorder.slugsCalled())
+		}
+		requireEntry(t, report, "task", fabricengine.EntryActive)
+	})
+
+	t.Run("A raddle run a return sent back to Raddle-Write is ended", func(t *testing.T) {
+		hub, _ := endedHub(t, "task")
+		writePairStatus(t, hub, "task", "Raddle-Write", "Raddle-File")
+		recorder := &teardownRecorder{}
+
+		moveReconcile(t, hub, fabricengine.ReconcileScope{}, recorder.seams())
+
+		if got := recorder.slugsCalled(); !slices.Equal(got, []string{"task"}) {
+			t.Errorf("teardown calls = %v; want one call for task", got)
+		}
+	})
+
+	t.Run("A raddle run standing at Raddle-File whose done entry origin then pruned is not ended", func(t *testing.T) {
+		hub := newOriginHub(t)
+		originPair(t, hub, "task")
+		writeStatus(t, hub, "task", "Implementer")
+		writePairStatus(t, hub, "task", "Raddle-File", "Raddle-Write")
+		branch := publishBoard(t, hub, boardEntry("task"), boardEntry("keep"))
+		originBoard(t, hub, branch, boardEntry("task", withBoardStatus("done")), boardEntry("keep"))
+		originBoard(t, hub, branch, boardEntry("keep"))
+		recorder := &teardownRecorder{}
+
+		report := moveReconcile(t, hub, fabricengine.ReconcileScope{}, recorder.seams())
+
+		if len(recorder.calls) != 0 {
+			t.Errorf("teardown calls = %v; want none for a run batten still carries to its teardown", recorder.slugsCalled())
+		}
+		requireEntry(t, report, "task", fabricengine.EntryActive)
+	})
+
+	t.Run("A raddle run standing at Raddle-File whose entry origin removed is ended as removed", func(t *testing.T) {
+		hub := newOriginHub(t)
+		originPair(t, hub, "task")
+		writeStatus(t, hub, "task", "Implementer")
+		writePairStatus(t, hub, "task", "Raddle-File", "Raddle-Write")
+		branch := publishBoard(t, hub, boardEntry("task"), boardEntry("keep"))
+		originBoard(t, hub, branch, boardEntry("keep"))
+		recorder := &teardownRecorder{}
+
+		report := moveReconcile(t, hub, fabricengine.ReconcileScope{}, recorder.seams())
+
+		entry := requireEntry(t, report, "task", fabricengine.EntryEnded)
+		if entry.How != "removed" || !entry.Removed {
+			t.Errorf("entry = %+v; want ended as removed and torn down", entry)
+		}
+		if got := recorder.slugsCalled(); !slices.Equal(got, []string{"task"}) {
+			t.Errorf("teardown calls = %v; want one call for task", got)
+		}
+	})
+
 	t.Run("An entry removed from origin's board is ended as removed", func(t *testing.T) {
 		hub := newOriginHub(t)
 		originPair(t, hub, "task")

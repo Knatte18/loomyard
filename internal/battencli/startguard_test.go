@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/runproc"
@@ -434,6 +435,247 @@ func TestStartGuard_Refuse(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// writeBoardHub writes the board of the hub at location: board.json holding boardJSON and the Bolt checkout's board config, which names defaultRecipe as the default recipe when it is not empty.
+func writeBoardHub(t *testing.T, location *lymcwd.Location, defaultRecipe, boardJSON string) {
+	t.Helper()
+	boltDir := fabricengine.BoltDir(location.HubPath)
+	if err := os.MkdirAll(configengine.ConfigDir(boltDir), 0o755); err != nil {
+		t.Fatalf("create the config directory: %v", err)
+	}
+	config := "readme: Home.md\n"
+	if defaultRecipe != "" {
+		config = "default_recipe: " + defaultRecipe + "\n"
+	}
+	if err := os.WriteFile(configengine.ConfigFile(boltDir, "board"), []byte(config), 0o644); err != nil {
+		t.Fatalf("write the board config: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(fabricengine.BoardDir(location.HubPath), "board.json"), []byte(boardJSON), 0o644); err != nil {
+		t.Fatalf("write board.json: %v", err)
+	}
+}
+
+// TestRefuseAtStart_JudgesADoneMotifRunAsTheFreshStartItsClearMakes drives refuseAtStart over a status file and fake seams:
+// only a run or step over a done status asks whether the start clears the run, a start that does is judged as a fresh start with the removal left pending, nothing is removed whatever the guard answers, and a failed read refuses naming the re-run.
+func TestRefuseAtStart_JudgesADoneMotifRunAsTheFreshStartItsClearMakes(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	clearsErr := errors.New("child recipe unreadable")
+	refusal := raddleRefusal{"some-slug holds no record"}
+	tests := []struct {
+		name         string
+		verb         string
+		state        shedengine.State
+		clears       bool
+		clearsErr    error
+		guardRefusal error
+		wantAsked    bool
+		wantFresh    bool
+		wantPending  bool
+	}{
+		{name: "RunOverAClearingStartIsAFreshStart", verb: "run", state: shedengine.StateDone, clears: true, wantAsked: true, wantFresh: true, wantPending: true},
+		{name: "StepOverAClearingStartIsAFreshStart", verb: "step", state: shedengine.StateDone, clears: true, wantAsked: true, wantFresh: true, wantPending: true},
+		{name: "ADoneRunTheStartDoesNotClearIsNoFreshStart", verb: "run", state: shedengine.StateDone, wantAsked: true},
+		{name: "AFailedReadRefuses", verb: "run", state: shedengine.StateDone, clearsErr: clearsErr, wantAsked: true},
+		{name: "AGuardRefusalOfAClearingStartLeavesTheRunInPlace", verb: "run", state: shedengine.StateDone, clears: true, guardRefusal: refusal, wantAsked: true, wantFresh: true, wantPending: true},
+		{name: "ARunningRunIsNotAsked", verb: "run", state: shedengine.StateRunning},
+		{name: "GotoIsNotAsked", verb: "goto", state: shedengine.StateDone},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			location := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "main", AnchorRel: "."}
+			path := shedrun.StatusFile(location, "some-slug")
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatalf("create the run directory: %v", err)
+			}
+			if err := os.WriteFile(path, []byte(`{"state":"`+string(tt.state)+`"}`), 0o644); err != nil {
+				t.Fatalf("write the run status: %v", err)
+			}
+
+			asked, fresh, removed := false, false, false
+			c := &battenCLI{location: location, slug: "some-slug", guard: startGuard{
+				ClearsMotifRun: func() (bool, error) {
+					asked = true
+					return tt.clears, tt.clearsErr
+				},
+				ClearMotifRun: func() (bool, error) {
+					removed = true
+					return true, nil
+				},
+				Raddle: func() error {
+					fresh = true
+					return tt.guardRefusal
+				},
+			}}
+
+			err := c.refuseAtStart(tt.verb)
+
+			wantErr := tt.clearsErr
+			if tt.guardRefusal != nil {
+				wantErr = tt.guardRefusal
+			}
+			if wantErr == nil && err != nil {
+				t.Fatalf("refuseAtStart(%q) error = %v; want nil", tt.verb, err)
+			}
+			if wantErr != nil && !errors.Is(err, wantErr) {
+				t.Fatalf("refuseAtStart(%q) error = %v; want it to wrap %v", tt.verb, err, wantErr)
+			}
+			if tt.clearsErr != nil && !strings.Contains(err.Error(), `"lym batten run some-slug"`) {
+				t.Errorf("refuseAtStart(%q) error = %q; want it to name the re-run", tt.verb, err)
+			}
+			if asked != tt.wantAsked {
+				t.Errorf("ClearsMotifRun called = %v; want %v", asked, tt.wantAsked)
+			}
+			if fresh != tt.wantFresh {
+				t.Errorf("the start judged fresh = %v; want %v", fresh, tt.wantFresh)
+			}
+			if c.motifRunClearPending != tt.wantPending {
+				t.Errorf("motifRunClearPending = %v; want %v", c.motifRunClearPending, tt.wantPending)
+			}
+			if removed {
+				t.Errorf("ClearMotifRun called by refuseAtStart; want the removal left to claimStart")
+			}
+		})
+	}
+}
+
+// TestClaimStart_RemovesTheDoneMotifRunOnlyOnceTheOwnerCheckPasses drives claimStart over a status file and the fake owners:
+// A start replacing a done motif run is judged by the owner check first and removes the run only when it passes.
+// A refused owner check leaves the run and its pending removal in place.
+// An entry the owner check's pull turned away from raddle leaves the run in place.
+// A failed removal refuses naming the re-run.
+func TestClaimStart_RemovesTheDoneMotifRunOnlyOnceTheOwnerCheckPasses(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	removeErr := errors.New("records commit refused")
+	tests := []struct {
+		name        string
+		verb        string
+		pending     bool
+		owner       string
+		removeErr   error
+		wantOwned   bool
+		wantPulls   int
+		wantRemoved int
+		wantPending bool
+		// turnedAway makes the guard read the entry as no longer replacing the run once the owner check has pulled the board.
+		turnedAway bool
+	}{
+		{name: "AnOwnerCheckThatPassesRemovesTheRunOnce", verb: "run", pending: true, owner: "this", wantPulls: 1, wantRemoved: 1},
+		{name: "AnOwnerCheckThatRefusesLeavesTheRunInPlace", verb: "run", pending: true, owner: "other", wantOwned: true, wantPulls: 1, wantPending: true},
+		{name: "AFailedRemovalRefusesNamingTheRerun", verb: "step", pending: true, owner: "this", removeErr: removeErr, wantPulls: 1, wantRemoved: 1, wantPending: true},
+		{name: "AnEntryThePullTurnedAwayFromRaddleLeavesTheRunInPlace", verb: "run", pending: true, owner: "this", turnedAway: true, wantPulls: 1},
+		{name: "ADoneRunTheStartDoesNotReplaceIsNeitherPulledNorRemoved", verb: "run", owner: "other"},
+		{name: "GotoJudgesNoOwnerAndRemovesNothing", verb: "goto", pending: true, owner: "other", wantPending: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			location := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "main", AnchorRel: "."}
+			path := shedrun.StatusFile(location, "some-slug")
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatalf("create the run directory: %v", err)
+			}
+			if err := os.WriteFile(path, []byte(`{"state":"done"}`), 0o644); err != nil {
+				t.Fatalf("write the run status: %v", err)
+			}
+			owners := &fakeOwners{machine: "this", owners: ownedBy("this", tt.owner, false)}
+			removed := 0
+			c := &battenCLI{location: location, slug: "some-slug", owner: owners.seams(), motifRunClearPending: tt.pending, guard: startGuard{
+				ClearsMotifRun: func() (bool, error) { return !tt.turnedAway, nil },
+				ClearMotifRun: func() (bool, error) {
+					removed++
+					return true, tt.removeErr
+				},
+			}}
+
+			err := c.claimStart(tt.verb)
+
+			var owned *OwnedElsewhereError
+			if got := errors.As(err, &owned); got != tt.wantOwned {
+				t.Errorf("claimStart(%q) error = %v; want an owned-elsewhere refusal = %v", tt.verb, err, tt.wantOwned)
+			}
+			if tt.removeErr != nil && (!errors.Is(err, tt.removeErr) || !strings.Contains(err.Error(), `"lym batten step some-slug"`)) {
+				t.Errorf("claimStart(%q) error = %v; want it to wrap the removal error and name the re-run", tt.verb, err)
+			}
+			if !tt.wantOwned && tt.removeErr == nil && err != nil {
+				t.Errorf("claimStart(%q) error = %v; want nil", tt.verb, err)
+			}
+			if owners.pulls != tt.wantPulls {
+				t.Errorf("owner pulls = %d; want %d", owners.pulls, tt.wantPulls)
+			}
+			if removed != tt.wantRemoved {
+				t.Errorf("ClearMotifRun calls = %d; want %d", removed, tt.wantRemoved)
+			}
+			if c.motifRunClearPending != tt.wantPending {
+				t.Errorf("motifRunClearPending = %v; want %v", c.motifRunClearPending, tt.wantPending)
+			}
+		})
+	}
+}
+
+// TestClearsMotifRunOfRaddleEntry drives the guard's read of whether a start clears the done run under its slug over a fixture board and run directory:
+// a slug the board lacks and an entry of another recipe clear nothing, a raddle entry clears a done run whose child ran motif and not one whose child ran raddle, an entry with no recipe takes the board's default, a board that does not read is an error, and the read removes nothing.
+func TestClearsMotifRunOfRaddleEntry(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	const slug = "some-slug"
+	entryOf := func(name, recipe string) string {
+		return `{"id":0,"slug":"` + name + `","title":"R","kind":"task","labels":["bug"],"recipe":"` + recipe + `"}`
+	}
+	tests := []struct {
+		name string
+		// board is the entry list of board.json, or the whole file when rawBoard is set.
+		board         string
+		rawBoard      bool
+		defaultRecipe string
+		childRecipe   string
+		want          bool
+		wantErr       bool
+	}{
+		{name: "ASlugTheBoardLacksClearsNothing", board: entryOf("other-slug", shedrun.RecipeRaddle), childRecipe: shedrun.RecipeMotif},
+		{name: "ABoardThatDoesNotReadIsAnError", board: "{not json", rawBoard: true, childRecipe: shedrun.RecipeMotif, wantErr: true},
+		{name: "ADarnEntryWithADoneMotifRunClearsNothing", board: entryOf(slug, shedrun.RecipeDarn), childRecipe: shedrun.RecipeMotif},
+		{name: "ARaddleEntryWhoseDoneRunRanRaddleClearsNothing", board: entryOf(slug, shedrun.RecipeRaddle), childRecipe: shedrun.RecipeRaddle},
+		{name: "ARaddleEntryWhoseDoneRunRanMotifIsCleared", board: entryOf(slug, shedrun.RecipeRaddle), childRecipe: shedrun.RecipeMotif, want: true},
+		{name: "AnEntryWithNoRecipeUnderARaddleDefaultIsCleared", board: entryOf(slug, ""), defaultRecipe: shedrun.RecipeRaddle, childRecipe: shedrun.RecipeMotif, want: true},
+		{name: "AnEntryWithNoRecipeUnderTheTemplateDefaultClearsNothing", board: entryOf(slug, ""), childRecipe: shedrun.RecipeMotif},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			location := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "main", AnchorRel: "."}
+			board := tt.board
+			if !tt.rawBoard {
+				board = `{"version":1,"entries":[` + board + `]}`
+			}
+			writeBoardHub(t, location, tt.defaultRecipe, board)
+			statusPath := shedrun.StatusFile(location, slug)
+			if err := os.MkdirAll(filepath.Dir(statusPath), 0o755); err != nil {
+				t.Fatalf("create the run directory: %v", err)
+			}
+			if err := os.WriteFile(statusPath, []byte(`{"state":"done"}`), 0o644); err != nil {
+				t.Fatalf("write the run status: %v", err)
+			}
+			if err := shedrun.WriteChildRecipe(location, slug, tt.childRecipe); err != nil {
+				t.Fatalf("write the child recipe: %v", err)
+			}
+
+			got, err := clearsMotifRunOfRaddleEntry(location, slug)
+
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("clearsMotifRunOfRaddleEntry() error = %v; want an error = %v", err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Errorf("clearsMotifRunOfRaddleEntry() = %v; want %v", got, tt.want)
+			}
+			if _, statErr := os.Stat(statusPath); statErr != nil {
+				t.Errorf("run status after the read: %v; want the run left in place", statErr)
+			}
+		})
 	}
 }
 

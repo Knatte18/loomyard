@@ -106,7 +106,7 @@
 //     Bound: the hold reaches only new starts in this worktree, never a nested beam's.
 //   - Each tick, after the passes and the notices and before the start step, `Deps.SettleFronts` settles the worktree's front tasks, which records an open front entry that has no record and runs the land action of one that landed.
 //     An error stops nothing: the first of an episode is logged and posted once to the nearest live orch as `[dobby notice] front task: <error>`, naming the slug, the action and its hand step; a tick that settles cleanly ends the episode.
-//   - A released task whose slug has a finished run record carries the refusal every start of that slug gets, from TaskView.StartRefusal, with its way forward.
+//   - A released task whose slug has a finished run record carries the refusal every start of that slug gets, from TaskView.StartRefusal, with its way forward, except a done motif run of a task whose recipe the board resolves to raddle, which that start clears and which carries none.
 //     Dobby spawns no pass for it; unless the task is owned elsewhere, has open dependencies or is covered by a pause, it also records the refusal as the start record's refusal with no backoff, with the same one notice per refusal text, again when the entry changes.
 //     Bound: the record is read every tick, so the task starts on the first tick after the record is gone.
 //   - A task is started only from an empty status, by its parent's dobby or a hand-run `lym batten run`, and never twice while a pass of it is in flight.
