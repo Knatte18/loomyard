@@ -84,6 +84,10 @@ func TestFinalize_PullRequest(t *testing.T) {
 		parentPushErr error
 		// wantSquashedMerges asserts every parent-side merge was asked to squash.
 		wantSquashedMerges bool
+		// entryField is what Deps.PullRequest.EntryField answers.
+		entryField string
+		// wantTrueMerges asserts no parent-side merge was asked to squash.
+		wantTrueMerges bool
 		// parentOwnedElsewhere makes the owner checks find the parent owned by another machine.
 		parentOwnedElsewhere bool
 		// wantRecord is the pull request record the landing must leave behind.
@@ -220,6 +224,16 @@ func TestFinalize_PullRequest(t *testing.T) {
 			parentPushErr: errors.New("gitrepo: push rejected: ! [remote rejected] main -> main (protected branch hook declined)"),
 			wantOutcome:   shedengine.Stuck, wantMerges: 1, wantReason: []string{"protected branch hook declined", `"git reset --keep origin/main"`},
 			wantNotInReason: []string{"lym config beam"}, wantCalls: []string{"Status 7", wantGitHubMerge},
+		},
+		{
+			name: "AMergeInEntryLandsByATrueMergeWithNoPullRequestAndNoRuleReadUnderARequiredParent", parentMode: "required", entryField: "merge-in",
+			wantOutcome: shedengine.Done, wantMerges: 1, wantTrueMerges: true, wantOrder: "merge,mark,push",
+		},
+		{
+			name: "AProtectedParentPushRefusalOfAMergeInEntryOmitsTheSettingAdvice", parentMode: "off", entryField: "merge-in",
+			parentPushErr: errors.New("gitrepo: push rejected: ! [remote rejected] main -> main (protected branch hook declined)"),
+			wantOutcome:   shedengine.Stuck, wantMerges: 1, wantTrueMerges: true, wantReason: []string{"protected branch hook declined", `"git reset --keep origin/main"`},
+			wantNotInReason: []string{"lym config beam"},
 		},
 		{
 			name: "AFailedReopenHaltsNamingGitHubsMessageAndMergesNothing", parentMode: "on", record: recorded(reviewEnded),
@@ -464,7 +478,7 @@ func TestFinalize_PullRequest(t *testing.T) {
 				},
 				EntryField: func() (string, error) {
 					entryFieldCalls++
-					return "", nil
+					return tt.entryField, nil
 				},
 				CommitsMissing: func(string, string) ([]string, error) {
 					order = append(order, "commits-missing")
@@ -552,6 +566,9 @@ func TestFinalize_PullRequest(t *testing.T) {
 			for i, call := range merger.calls {
 				if tt.wantSquashedMerges && !call.opts.Squash {
 					t.Errorf("parent-side merge %d Squash = false; want true", i)
+				}
+				if tt.wantTrueMerges && call.opts.Squash {
+					t.Errorf("parent-side merge %d Squash = true; want false", i)
 				}
 			}
 			if tt.wantRecord != nil {

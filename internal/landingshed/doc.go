@@ -38,9 +38,11 @@
 // A nil seam, an empty record path and a cancelled context are errors.
 //
 // ResolvePullRequest is the one decision of whether a landing goes through a pull request, so PR-Review and Finalize cannot disagree.
-// It takes the receiving branch's beam.yaml `pull_request` (`on`, `off`, `required` or `merge`), the landing entry's `pull_request` field (empty, `on` or `off`), the origin facts and whether the task branch has commits beyond its parent, and reads no file: its callers read the parent's beam.yaml, the entry and the task branch through git and tell the values.
+// It takes the receiving branch's beam.yaml `pull_request` (`on`, `off`, `required` or `merge`), the landing entry's `pull_request` field (empty, `on`, `off` or `merge-in`), the origin facts and whether the task branch has commits beyond its parent, and reads no file: its callers read the parent's beam.yaml, the entry and the task branch through git and tell the values.
 // A required or merge parent wants a pull request whatever the field says, an on parent wants one unless the field is off, and an off parent wants one only when the field is on.
 // A merge parent's yes is marked MergeAtOnce: the parent is one the remote takes only through a pull request, with no approval or check to wait for, so the pull request is opened and squash-merged at once.
+// A `merge-in` field, a merge task's, is a no under every parent and GitHub rule, marked TrueMerge: PR-Review passes at once and Finalize's parent-side merge does not squash, so the beam keeps the parent's commit as an ancestor, and the beam's own pull request reviews the merge.
+// A push the remote refuses then is Stuck as for any landing with no pull request.
 // beam.yaml's `pull_request` set at the default layer marks every branch of the hub, and at a worktree's layer that worktree's branch.
 // A wanted pull request needs an origin on github.com that the owner and repository parse from, an upstream for the parent and no push skip.
 // A wanted pull request on a task branch with no commit beyond its parent is a no, before any origin fact is judged, since GitHub opens none on an empty branch; both rows then take the no path, and Finalize's parent-side merge commits nothing.
@@ -283,7 +285,7 @@
 // interface with a permanently-nil implementation is exactly the hypothetical-requirement design this
 // codebase avoids.
 //
-// Finalize's parent-side merge squashes by default (landing.yaml's squash key, defaulting to true):
+// Finalize's parent-side merge squashes by default (landing.yaml's squash key, defaulting to true), bar a landing the resolver marks TrueMerge:
 // one commit per merged task branch was the goal, weighed against the accepted cost that a squashed
 // branch carries no merge commit linking it to its target, so "was this branch merged?" becomes
 // unanswerable from git history alone afterward. The commit noise an ordinary merge would leave behind

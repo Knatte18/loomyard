@@ -156,6 +156,33 @@ func TestSandboxedRoleGuard(t *testing.T) {
 		}
 	})
 
+	t.Run("a merge task's writer runs the merge verbs and no other mutating form", func(t *testing.T) {
+		mergeVerbs := [][]string{{"merge-in", "main"}, {"merge-stage", "path"}, {"merge", "--continue"}, {"merge", "--abort"}}
+		refusedForms := [][]string{{"merge", "branch"}, {"push"}, {"commit"}}
+
+		for _, strand := range []string{"ly:beam-merge-in:darn", "ly:beam-merge-in-2:darn"} {
+			t.Setenv(agentname.StrandNameEnv, strand)
+			for _, args := range mergeVerbs {
+				if _, out := runUnderParent(t, args...); strings.Contains(out, refusalMarker) {
+					t.Errorf("%v under %s was refused: %s", args, strand, out)
+				}
+			}
+			for _, args := range refusedForms {
+				if code, out := runUnderParent(t, args...); code != 1 || !strings.Contains(out, refusalMarker) {
+					t.Errorf("%v under %s = %d, output %s; want a guard refusal", args, strand, code, out)
+				}
+			}
+		}
+		for _, strand := range []string{"ly:beam-task:darn", "ly:beam-merge-in:code-fix"} {
+			t.Setenv(agentname.StrandNameEnv, strand)
+			for _, args := range mergeVerbs {
+				if code, out := runUnderParent(t, args...); code != 1 || !strings.Contains(out, refusalMarker) {
+					t.Errorf("%v under %s = %d, output %s; want a guard refusal", args, strand, code, out)
+				}
+			}
+		}
+	})
+
 	t.Run("a bypass flag passes only on push", func(t *testing.T) {
 		t.Setenv(agentname.StrandNameEnv, webster)
 		if _, out := runUnderParent(t, "push", "--weft-path", t.TempDir()); strings.Contains(out, refusalMarker) {

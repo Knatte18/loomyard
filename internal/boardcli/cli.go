@@ -544,9 +544,9 @@ Optional fields:
   "issues"     array  — hub issue numbers
   "created"    string — RFC 3339 creation
   "revised"    string — RFC 3339 scope change
-  "run_settings" object — module name to config keys for the pair's local config; {} clears it
+  "run_settings" object — module name to config keys; {} clears it
   "profile"    string — a "lym board profiles" name; "" clears it
-  "pull_request" string — "on" or "off" overrides beam.yaml; "" clears it
+  "pull_request" string — "on", "off" or "merge-in" (a true merge, no PR) overrides beam.yaml; "" clears it
   "notify_on_land" bool — tell the orch when the run lands, at once if it has
   "owner_machine" string — the effective owner only; "lym adopt" moves it
   "project"    string — slug of the open project holding the entry; "" leaves none

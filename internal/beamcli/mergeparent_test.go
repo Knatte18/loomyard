@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/reviewbudget"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -65,7 +66,7 @@ func TestMergeParent(t *testing.T) {
 				w.pairs[longBeam] = true
 				w.origins[longBeam] = fabricengine.Origin{Beam: true, ParentBranch: "main"}
 			},
-			wantTask: longBeam[:boardengine.MaxSlugLength-len(mergeParentSuffix)] + mergeParentSuffix, wantRounds: 1, wantHard: 2,
+			wantTask: longBeam[:boardengine.MaxSlugLength-len(darnengine.MergeTaskSuffix)] + darnengine.MergeTaskSuffix, wantRounds: 1, wantHard: 2,
 		},
 	}
 	for _, tt := range tests {
@@ -105,6 +106,9 @@ func TestMergeParent(t *testing.T) {
 			wantSettings := map[string]any{"loom": map[string]any{"code_max_bounces": tt.wantRounds, "code_hard_max_bounces": tt.wantHard}}
 			if fields["slug"] != tt.wantTask || fields["kind"] != boardengine.KindTask || fields["project"] != tt.slug || fields["recipe"] != "darn" || !reflect.DeepEqual(fields["run_settings"], wantSettings) {
 				t.Errorf("mergeParent(%q) filed %v; want slug %q, a darn task in project %q with run settings %v", tt.slug, fields, tt.wantTask, tt.slug, wantSettings)
+			}
+			if fields["pull_request"] != boardengine.PullRequestMergeIn {
+				t.Errorf("mergeParent(%q) pull_request = %v; want %q", tt.slug, fields["pull_request"], boardengine.PullRequestMergeIn)
 			}
 			if body, _ := fields["body"].(string); !strings.Contains(body, "lym fabric merge-in main") || !strings.Contains(body, "reviews the merge alone") {
 				t.Errorf("mergeParent(%q) body = %q; want it to name `lym fabric merge-in main` and the perch's review of the merge alone", tt.slug, body)

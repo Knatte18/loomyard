@@ -127,6 +127,7 @@
 // A `--continue` refused because some conflicts remain lists them in an `unresolved` array, a key separate from `conflicts`, so a script keeps telling a conflict result from a hard failure by the `conflicts` key alone.
 // `merge-in` and `merge` continue and abort the same way, but only `merge-in` resolves conflicts in its own worktree;
 // `merge` self-aborts on a conflict with a `fabricengine.ErrMergeInRequired` naming the source branch.
+// The sandboxed-role guard refuses these verbs from a task session, bar a merge task's darn writer, which may run `merge-in`, `merge-stage`, `merge --continue` and `merge --abort` in its own worktree since that merge is its task; `merge <branch>` stays refused.
 //
 // The Webster warning on `merge-in` exists because `lym webster record-batch` tolerates a clean parent merge commit after a fork's commit, but refuses a fast-forward past it and a merge whose conflicts were resolved by hand.
 // An already-up-to-date `merge-in` and a hard failure carry no `warnings` key.

@@ -4,20 +4,14 @@ package beamcli
 
 import (
 	"fmt"
-	"regexp"
 	"strconv"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/reviewbudget"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
-
-// mergeParentSuffix ends the slug of every merge task `lym beam merge-parent` files, before the number a second one takes.
-const mergeParentSuffix = "-merge-in"
-
-// mergeTaskSlugPattern matches the slug of a merge task: the suffix, then an optional number.
-var mergeTaskSlugPattern = regexp.MustCompile(regexp.QuoteMeta(mergeParentSuffix) + `(-[0-9]+)?$`)
 
 // mergeParentMinRounds is the fewest Code-Review rounds a merge task runs, so its perch is on whatever the hub's budget.
 const mergeParentMinRounds = 1
@@ -26,6 +20,7 @@ const mergeParentMinRounds = 1
 // It refuses what `land`'s entry check refuses, a beam whose origin record names no parent branch, and a beam that holds an open merge task already.
 // The task is a released darn task in the beam's project, carrying the beam's labels, so the beam's dobby starts it as any member.
 // Its run settings set the Code-Review budget to the hub's, or to mergeParentMinRounds when the hub's is lower, with a hard cap above it.
+// Its pull_request field lands it with no pull request, by a true merge, so the beam keeps the parent's commit as an ancestor.
 func mergeParent(deps landDeps, slug string) (map[string]any, error) {
 	const verb = "lym beam merge-parent"
 	owners, err := deps.ReadOwners()
@@ -65,13 +60,14 @@ func mergeParent(deps landDeps, slug string) (map[string]any, error) {
 
 	taskSlug := freeMergeTaskSlug(tasks, slug)
 	fields := map[string]any{
-		"slug":    taskSlug,
-		"title":   fmt.Sprintf("Merge %s into the beam %s", origin.ParentBranch, slug),
-		"kind":    boardengine.KindTask,
-		"project": slug,
-		"recipe":  shedrun.RecipeDarn,
-		"labels":  labels,
-		"body":    mergeParentBody(slug, origin.ParentBranch),
+		"slug":         taskSlug,
+		"title":        fmt.Sprintf("Merge %s into the beam %s", origin.ParentBranch, slug),
+		"kind":         boardengine.KindTask,
+		"project":      slug,
+		"recipe":       shedrun.RecipeDarn,
+		"labels":       labels,
+		"body":         mergeParentBody(slug, origin.ParentBranch),
+		"pull_request": boardengine.PullRequestMergeIn,
 		"run_settings": map[string]any{
 			"loom": map[string]any{
 				reviewbudget.SoftKey(perch): rounds,
@@ -93,7 +89,7 @@ func mergeParent(deps landDeps, slug string) (map[string]any, error) {
 // openMergeTask returns the slug of a merge task of beam that is not done, found by its project and its slug's suffix.
 func openMergeTask(tasks []boardengine.Task, beam string) (string, bool) {
 	for _, task := range tasks {
-		if task.Kind == boardengine.KindTask && task.Project == beam && !boardengine.IsDoneStatus(task.Status) && mergeTaskSlugPattern.MatchString(task.Slug) {
+		if task.Kind == boardengine.KindTask && task.Project == beam && !boardengine.IsDoneStatus(task.Status) && darnengine.IsMergeTaskSlug(task.Slug) {
 			return task.Slug, true
 		}
 	}
@@ -108,7 +104,7 @@ func freeMergeTaskSlug(tasks []boardengine.Task, beam string) string {
 		taken[task.Slug] = true
 	}
 	for number := 1; ; number++ {
-		tail := mergeParentSuffix
+		tail := darnengine.MergeTaskSuffix
 		if number > 1 {
 			tail += "-" + strconv.Itoa(number)
 		}
@@ -126,7 +122,7 @@ func freeMergeTaskSlug(tasks []boardengine.Task, beam string) string {
 // The decision record carries it as the task's goal, so it instructs both the darn writer and the Code-Review perch.
 func mergeParentBody(beam, parentBranch string) string {
 	return fmt.Sprintf(`Merge in from parent: bring the parent branch %[2]s into the beam %[1]s.
-This task's branch forks from the beam, so its landing carries the merge into the beam.
+This task's branch forks from the beam, so its landing carries the merge into the beam, as a true merge with no pull request.
 Filed by `+"`lym beam merge-parent %[1]s`"+`.
 
 - Run `+"`lym fabric merge-in %[2]s`"+` in this task's worktree.

@@ -128,6 +128,7 @@
 // A merge task is found by its project and its slug's `-merge-in` suffix, with an optional number; the new one takes the first free slug of that shape, the beam's slug cut to fit the board's slug length.
 // It carries the beam's labels, so the board's type-label rule holds, and a body the decision record carries as the goal of both the darn writer and the Code-Review perch: the writer runs `lym fabric merge-in`, settles the conflicts, makes the gate pass and changes nothing else, and the perch reviews the merge alone.
 // Its `run_settings` turn the perch on: loom's `code_max_bounces` is the hub's resolved Code-Review budget, at least one round, and `code_hard_max_bounces` stays above it.
+// Its `pull_request` field is `merge-in`, so it lands with no pull request by a true merge, and the parent's commit stays an ancestor of the beam for the beam's own pull request.
 // The beam's dobby starts it as any member, so it runs at any time; pawl neither starts one nor waits for one.
 // The orch runs it before `ready`, which refuses while the parent holds commits the beam lacks, and Finalize brings the parent in again at the landing.
 //

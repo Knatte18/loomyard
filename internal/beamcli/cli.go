@@ -247,10 +247,12 @@ func mergeParentCmd() *cobra.Command {
 parent branch into the beam: its writer runs "lym fabric merge-in <parent branch>"
 in the task's own worktree, settles the conflicts and the gate failures, and its
 Code-Review perch, turned on through the task's run_settings, reviews the merge
-alone. The task's landing brings the merge into the beam. The beam's dobby starts
-it as any member, at any time. The orch runs it before "lym beam ready", which
-refuses while the parent holds commits the beam lacks; Finalize merges the parent
-in again at landing.
+alone. The task's landing brings the merge into the beam as a true merge, with no
+pull request, whatever the beam's pull_request mode, so the beam keeps the parent's
+commit as an ancestor; the beam's own pull request reviews the merge again. The
+beam's dobby starts it as any member, at any time. The orch runs it before
+"lym beam ready", which refuses while the parent holds commits the beam lacks;
+Finalize merges the parent in again at landing.
 
 The task's slug is the beam's slug and "-merge-in", numbered from -2 when that slug
 is taken, and it carries the beam's labels.

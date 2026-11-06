@@ -49,6 +49,20 @@ func TestResolvePullRequest(t *testing.T) {
 		}
 	})
 
+	t.Run("MergeInFieldWantsNoPullRequestUnderAnyParentOrRule", func(t *testing.T) {
+		for _, parent := range []string{"on", "off", "required", "merge"} {
+			for _, rule := range []bool{false, true} {
+				got := ResolvePullRequest("slug", parent, "merge-in", NotABeam, rule, githubOrigin, true)
+				if got.Open || got.MergeAtOnce || got.Halt != "" || !got.TrueMerge || got.Reason == "" {
+					t.Errorf("ResolvePullRequest(%q, merge-in, rule %v) = %+v; want a no marked TrueMerge, with a reason", parent, rule, got)
+				}
+			}
+		}
+		if got := ResolvePullRequest("slug", "required", "merge-in", BeamWithoutPullRequest, false, githubOrigin, true); got.TrueMerge || !got.Open {
+			t.Errorf("ResolvePullRequest(required, merge-in, beam) = %+v; want a beam to ignore the field", got)
+		}
+	})
+
 	t.Run("ParentRule", func(t *testing.T) {
 		const ruleDemand = "GitHub's rules for the parent branch require a pull request"
 		local := Origin{URL: "/srv/hub.git", Upstream: true}

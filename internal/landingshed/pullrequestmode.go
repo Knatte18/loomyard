@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/githubclient"
 	"github.com/Knatte18/loomyard/internal/logger"
 )
@@ -14,12 +15,13 @@ import (
 // githubHost is the one host a landing opens a pull request on.
 const githubHost = "github.com"
 
-// Pull-request modes of the receiving branch's beam.yaml and the landing entry's field; merge is beam.yaml's alone.
+// Pull-request modes of the receiving branch's beam.yaml and the landing entry's field; merge is beam.yaml's alone, and merge-in the field's alone.
 const (
 	pullRequestOn       = "on"
 	pullRequestOff      = "off"
 	pullRequestRequired = "required"
 	pullRequestMerge    = "merge"
+	pullRequestMergeIn  = boardengine.PullRequestMergeIn
 )
 
 // Origin holds the facts about the origin a pull request needs.
@@ -38,6 +40,8 @@ type PullRequestDecision struct {
 	Open bool
 	// MergeAtOnce reports whether Finalize opens the pull request itself and squash-merges it on GitHub at once, with no review, as a parent whose beam.yaml pull_request is merge asks.
 	MergeAtOnce bool
+	// TrueMerge reports whether the landing keeps the task branch's history, a fast-forward or a merge commit and never a squash, so a merge of the parent's own parent stays an ancestor of the parent.
+	TrueMerge bool
 	// Reason names the values the decision read.
 	Reason string
 	// Halt is a Stuck reason with its way forward, non-empty only when the landing must stop.
@@ -65,7 +69,8 @@ type BeamPullRequest struct {
 }
 
 // ResolvePullRequest decides whether a landing goes through a pull request.
-// parentMode is the receiving branch's beam.yaml pull_request (on, off, required or merge) and entryField the landing entry's pull_request (empty, on or off); slug is the landing run's slug.
+// parentMode is the receiving branch's beam.yaml pull_request (on, off, required or merge) and entryField the landing entry's pull_request (empty, on, off or merge-in); slug is the landing run's slug.
+// A merge-in field wants none whatever the parent's mode and GitHub's rules say, and marks the no TrueMerge: a pull request squashes away the merged commit, and the merge is reviewed again in the beam's own pull request.
 // parentRuleRequired reports whether GitHub's rules for the parent branch require a pull request, and counts as a required parent whatever beam.yaml says, since GitHub refuses the direct push a landing with no pull request ends in.
 // A required or merge parent wants one whatever the field says, an on parent wants one unless the field is off, and an off parent wants one only when the field is on.
 // A merge parent's yes is marked MergeAtOnce.
@@ -80,6 +85,9 @@ func ResolvePullRequest(slug, parentMode, entryField string, beam BeamRecord, pa
 	isBeam := beam != NotABeam
 	if isBeam {
 		entryField = ""
+	}
+	if entryField == pullRequestMergeIn {
+		return PullRequestDecision{TrueMerge: true, Reason: fmt.Sprintf("no pull request: the entry's pull_request is %s, so the task lands by a true merge whatever the parent's beam.yaml pull_request, %s, says", pullRequestMergeIn, parentMode)}
 	}
 	mergeAtOnce := parentMode == pullRequestMerge || isBeam
 	required := parentMode == pullRequestRequired || parentMode == pullRequestMerge || parentRuleRequired
@@ -140,7 +148,7 @@ func ResolvePullRequest(slug, parentMode, entryField string, beam BeamRecord, pa
 }
 
 // resolveWithParentRule asks ResolvePullRequest for the run deps tells, and asks it again with GitHub's rules for the parent branch when its answer is a no that would land a non-empty task by direct push to an origin a pull request could be opened on.
-// The rules are read only then, so a landing beam.yaml or the entry already sends through a pull request, and one that never reaches GitHub, makes no extra call.
+// The rules are read only then, so a landing beam.yaml or the entry already sends through a pull request, a no marked TrueMerge, which no rule changes, and one that never reaches GitHub, make no extra call.
 // A cancelled context and a transient failure of the read are errors the driver re-steps.
 // beam is what the beam's landing record holds, NotABeam for a landing that is no beam's.
 // recordFound reports whether the run already holds a pull request record, which shows the rule applied when the pull request was opened.
@@ -148,7 +156,7 @@ func ResolvePullRequest(slug, parentMode, entryField string, beam BeamRecord, pa
 // Otherwise any failure of the read, an unusable token included, logs one Warn and reads as no rule, so the landing goes as beam.yaml and the entry say.
 func resolveWithParentRule(ctx context.Context, name string, deps Deps, parentMode, entryField string, beam BeamRecord, origin Origin, taskHasCommits, recordFound bool) (PullRequestDecision, error) {
 	decision := ResolvePullRequest(deps.Slug, parentMode, entryField, beam, false, origin, taskHasCommits)
-	if decision.Open || decision.Halt != "" || !taskHasCommits {
+	if decision.Open || decision.TrueMerge || decision.Halt != "" || !taskHasCommits {
 		return decision, nil
 	}
 	if _, _, missing, _ := checkOrigin(origin); missing != "" {

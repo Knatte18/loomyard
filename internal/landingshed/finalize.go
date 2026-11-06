@@ -176,6 +176,7 @@ func NewFinalize(deps Deps) (*Finalize, error) {
 // a closed pull request whose record carries the operator's ending is reopened and merged on GitHub like an open one, and a merged one lands through the already-landed path.
 // An open pull request is merged on GitHub just before the parent-side merge, with the pushed task head as its expected head, and the parent pair is fast-forwarded to the merge, so the parent-side merge then finds the parent holding the task's work.
 // A parent whose beam.yaml pull_request is merge needs no record: Finalize opens the pull request itself at that point and squash-merges it with no review.
+// A no marked TrueMerge never squashes the parent-side merge, so the parent's history keeps the task branch's merge commits.
 // A parent push the remote refuses as a protected branch is Stuck naming that setting, unless the landing already went through it.
 //
 // Finalize is idempotent over an already-landed parent: when the parent already contains the task's
@@ -308,7 +309,7 @@ func (fz *Finalize) landUnderLock(ctx context.Context, front bool, title, body, 
 
 	// landed ends the pass once the parent-side merge is done: it pushes the parent and, for a beam whose recorded pull request is spent, drops that record after the push answered Done, since the landing has happened by then.
 	landed := func() (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
-		outcome, out, err := fz.pushParent(ctx, parentHandle, notice, landing.atOnce)
+		outcome, out, err := fz.pushParent(ctx, parentHandle, notice, landing.atOnce || landing.trueMerge)
 		if err == nil && outcome == shedengine.Done && landing.dropBeamRecord {
 			fz.dropBeamRecord()
 		}
@@ -346,7 +347,8 @@ func (fz *Finalize) landUnderLock(ctx context.Context, front bool, title, body, 
 	// whether or not Config.Squash is true -- it is the conclude-commit message for both merge
 	// shapes, so gating it on Squash would leave the non-squash landing commit with an unset message.
 	// A parent that takes its pull request at once always squashes on GitHub, so the parent-side merge squashes too, whatever landing.yaml says.
-	mergeOpts := fabricengine.MergeOptions{Squash: fz.deps.Config.Squash || landing.atOnce, Message: landingMessage}
+	// A true merge never squashes, since a squash would drop the merged commit from the parent's history.
+	mergeOpts := fabricengine.MergeOptions{Squash: (fz.deps.Config.Squash || landing.atOnce) && !landing.trueMerge, Message: landingMessage}
 	_, mergeErr := parentHandle.Merge(fz.deps.TaskBranch, mergeOpts)
 	if mergeErr == nil {
 		fz.markTaskDone()
@@ -666,7 +668,7 @@ func (fz *Finalize) keepParentHead(parentHandle parentMerger) {
 // Deps.PushSkipped suppresses the push.
 //
 // A push the remote refuses as a protected branch carries protectedParentWayForward alone, in place of any class's way forward and the repair note.
-// parentMerges is true when the landing went through a parent that takes its pull request at once, so that way forward leaves out the advice to set that mode.
+// parentMerges is true when setting a parent to take its pull request at once would change nothing, because the landing went through such a parent or is a true merge, so that way forward leaves out the advice to set that mode.
 // On its Done return only, a non-empty notice is queued through Deps.Notify, and a failure there is a logged warning that never changes the verdict.
 // The push is the parent branch's own, whether the landing went through a pull request merged on GitHub or not.
 func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger, notice string, parentMerges bool) (shedengine.Outcome, shedengine.OutputPointer, error) {
@@ -720,7 +722,7 @@ func protectedBranchRefusal(err error) bool {
 }
 
 // protectedParentWayForward is the way forward of a parent push refused as a protected branch, for task landing on parent.
-// It names beam.yaml's pull_request=merge, at the parent's worktree or the hub's default layer, unless parentMerges says the parent already has it, and the hand landing of the work the local parent alone holds.
+// It names beam.yaml's pull_request=merge, at the parent's worktree or the hub's default layer, unless parentMerges says that setting would change nothing, and the hand landing of the work the local parent alone holds.
 func protectedParentWayForward(task, parent string, parentMerges bool) string {
 	handLanding := fmt.Sprintf(`this run's work is on the local parent only, so merge task branch %q into %q through a pull request on GitHub by hand, then run "git fetch origin" and "git reset --keep origin/%s" in the parent's worktree, then "lym loom resume" in the task worktree, which finds the work on the parent and ends the landing`, task, parent, parent)
 	if parentMerges {

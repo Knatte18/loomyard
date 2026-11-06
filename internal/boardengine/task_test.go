@@ -265,8 +265,8 @@ func TestNewTask(t *testing.T) {
 		}
 	})
 
-	t.Run("pull_request on and off round-trip in the JSON, empty stores no key and an unknown value is refused", func(t *testing.T) {
-		for _, value := range []string{"on", "off"} {
+	t.Run("pull_request on, off and merge-in round-trip in the JSON, empty stores no key and an unknown value is refused", func(t *testing.T) {
+		for _, value := range []string{"on", "off", boardengine.PullRequestMergeIn} {
 			task, err := boardengine.NewTask(map[string]any{"slug": "my-task", "pull_request": value}, 1)
 			if err != nil {
 				t.Fatalf("NewTask(pull_request %q) error = %v; want nil", value, err)
@@ -296,7 +296,7 @@ func TestNewTask(t *testing.T) {
 		if err == nil {
 			t.Fatalf("NewTask(pull_request maybe) error = nil; want a refusal")
 		}
-		if !strings.Contains(err.Error(), "pull_request is on, off or empty") {
+		if !strings.Contains(err.Error(), "pull_request is on, off, merge-in or empty") {
 			t.Errorf("refusal %q does not name the accepted values", err.Error())
 		}
 	})

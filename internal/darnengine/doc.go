@@ -10,6 +10,9 @@
 // The module is hub-wide, so a task cannot weaken `tree_scope` through its own tree, and `lym config darn --set` writes it from the prime.
 // LoadConfig loads the file strictly and validates the `writer` model-spec at load time, leaving `verify_attempts` to its reader.
 //
+// A merge task is the darn task that brings a beam's parent branch into the beam, known by the `-merge-in` suffix of its slug with an optional number.
+// IsMergeTaskWriter names its writer from the strand name alone, so a guard that reads nothing else can let that session run the merge verbs its work needs.
+//
 // Tree scope lets a diff wholly under the hub's non-production trees run each darn verify site's own gate key over the touched trees' targets, in place of the key's scope.
 // `tree_scope` maps a worktree-relative tree path to the test target the tree contributes, an empty target meaning the tree has no tests of its own.
 // Tree scope is on exactly when `tree_scope` holds a tree, and removing every tree turns it off.

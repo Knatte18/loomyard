@@ -28,6 +28,8 @@ type prLanding struct {
 	open bool
 	// atOnce marks a parent that takes its pull request with no review, which always squash-merges.
 	atOnce bool
+	// trueMerge marks a landing whose parent-side merge keeps the task branch's history, whatever landing.yaml's squash says.
+	trueMerge bool
 	// reopen marks a landing whose closed recorded pull request mergeOnGitHub reopens just before it merges.
 	reopen bool
 	// dropBeamRecord marks the landing of a beam whose recorded pull request is spent: Finalize drops it from the beam's landing record once the parent-side landing completed.
@@ -216,7 +218,9 @@ func (fz *Finalize) pullRequestLanding(ctx context.Context) (prLanding, shedengi
 	if beam == BeamWithPullRequest {
 		return fz.recordedBeamLanding(ctx, mode, beamPullRequest, origin, hasCommits, decision, rec, found)
 	}
-	return fz.landingForDecision(ctx, decision, origin, rec, found)
+	landing, outcome, out, err, stop := fz.landingForDecision(ctx, decision, origin, rec, found)
+	landing.trueMerge = decision.TrueMerge
+	return landing, outcome, out, err, stop
 }
 
 // prStopped adapts a Finalize stop, which carries no landing, to the stop return of pullRequestLanding.
