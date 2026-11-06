@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/planglyph"
+	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -800,6 +801,69 @@ func TestBeginBatch_ReResolvesPlanAtDispatch(t *testing.T) {
 			t.Error("Advisories = []; want at least one informational advisory")
 		}
 	})
+}
+
+// dispatchFindingsIndex is a planindex.Index whose ValidateDispatch answers findings.
+type dispatchFindingsIndex struct {
+	planindex.Index
+	findings []planindex.Finding
+}
+
+func (i dispatchFindingsIndex) ValidateDispatch(*planparser.Plan, string, []planparser.Card, []planparser.Card) ([]planindex.Finding, error) {
+	return i.findings, nil
+}
+
+// TestBeginBatch_ConflictCauseNamesAPlanOrderConflict proves a refusal whose every blocking finding is delete-before-reference is plan_order and tells the reader to move the delete, begun batches or not.
+// A set holding any other blocking finding keeps its plan_defect or tree_moved cause and the way forward to match the tree; an informational delete-before-reference does not count.
+func TestBeginBatch_ConflictCauseNamesAPlanOrderConflict(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const (
+		moveDelete = "way forward: move each named delete to a card after the card that still references it, run \"lym webster rebaseline --card NN\""
+		matchTree  = "way forward: edit the plan so the named cards match the tree, run \"lym webster rebaseline --card NN\""
+	)
+	deleteOrder := planindex.Finding{Check: planindex.CheckDeleteBeforeReference, Card: "01-json-flag", Severity: planindex.SeverityBlocking}
+	deleteOrderAdvisory := planindex.Finding{Check: planindex.CheckDeleteBeforeReference, Card: "01-json-flag", Severity: planindex.SeverityInformational}
+	notFound := planindex.Finding{Check: "glyph-not-found", Card: "02-list-tests", Severity: planindex.SeverityBlocking}
+
+	tests := []struct {
+		name           string
+		findings       []planindex.Finding
+		begun          bool
+		wantCause      string
+		wantWayForward string
+	}{
+		{"DeleteOrderAfterABatchIsBegun", []planindex.Finding{deleteOrder}, true, websterengine.ConflictCausePlanOrder, moveDelete},
+		{"DeleteOrderWithNoBatchBegun", []planindex.Finding{deleteOrder}, false, websterengine.ConflictCausePlanOrder, moveDelete},
+		{"MixedFindingsAfterABatchIsBegun", []planindex.Finding{deleteOrder, notFound}, true, websterengine.ConflictCauseTreeMoved, matchTree},
+		{"MixedFindingsWithNoBatchBegun", []planindex.Finding{notFound, deleteOrder}, false, websterengine.ConflictCausePlanDefect, matchTree},
+		{"InformationalDeleteOrderBesideABlockingFinding", []planindex.Finding{deleteOrderAdvisory, notFound}, true, websterengine.ConflictCauseTreeMoved, matchTree},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			fx := newBeginFixture(t)
+			fx.Deps.Geom.Index = dispatchFindingsIndex{Index: fx.Deps.Geom.Index, findings: tt.findings}
+			batchNumber := 1
+			if tt.begun {
+				batchNumber = 2
+				fx.Deps.State.Batches = map[int]*websterengine.BatchState{1: {Slug: "json-flag", Kind: "fork"}}
+			}
+
+			_, err := websterengine.BeginBatch(fx.Deps, batchNumber)
+			var conflict *websterengine.PlanConflictError
+			if !errors.As(err, &conflict) {
+				t.Fatalf("BeginBatch() error = %v; want errors.As to a *PlanConflictError", err)
+			}
+			if conflict.Cause != tt.wantCause {
+				t.Errorf("Cause = %q; want %q", conflict.Cause, tt.wantCause)
+			}
+			if !strings.Contains(err.Error(), tt.wantWayForward) {
+				t.Errorf("error %q; want it to hold %q", err.Error(), tt.wantWayForward)
+			}
+		})
+	}
 }
 
 // TestBeginBatch_AlreadyBuiltCardsAreNotReResolved proves the dispatch-boundary re-resolution is

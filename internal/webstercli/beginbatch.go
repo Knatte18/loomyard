@@ -90,8 +90,9 @@ prompt (carrying the previous batch's own persisted digest), and returns the
 prompt path Master forwards to its Agent-tool fork call verbatim.
 
 A refusal because the plan's re-resolution against the tree found a blocking
-defect carries "plan_conflict" with its cause: "plan_defect" when no batch is
-begun, "tree_moved" when one is.
+defect carries "plan_conflict" with its cause: "plan_order" when every finding
+is a delete a later card's Edit code still references, otherwise "plan_defect"
+when no batch is begun and "tree_moved" when one is.
 
 Under a pause that covers the pair it refuses first, claiming Master into it.
 

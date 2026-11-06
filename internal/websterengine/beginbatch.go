@@ -90,17 +90,19 @@ func cardNumberOf(name string) string {
 // Dispatching a fork on a re-resolve that failed is strictly worse than not dispatching.
 var ErrPlanConflict = errors.New("webster: plan re-resolution at begin-batch reported a blocking finding")
 
-// The two causes a PlanConflictError carries, and the only values its Cause takes.
+// The three causes a PlanConflictError carries, and the only values its Cause takes.
 const (
 	// ConflictCausePlanDefect is a conflict found while no batch was begun: the approved plan contradicts the tree before any work started.
 	ConflictCausePlanDefect = "plan_defect"
 	// ConflictCauseTreeMoved is a conflict found after a batch was begun: the tree moved under the plan.
 	ConflictCauseTreeMoved = "tree_moved"
+	// ConflictCausePlanOrder is a conflict whose every blocking finding is a delete a later card's Edit code still references, begun batches or not: the cards run in the wrong order, and moving the delete settles it.
+	ConflictCausePlanOrder = "plan_order"
 )
 
 // PlanConflictError is the refusal BeginBatch returns when the dispatch-boundary re-resolution reports blocking findings.
 // Batch is the batch whose begin was refused.
-// Cause is ConflictCausePlanDefect or ConflictCauseTreeMoved.
+// Cause is ConflictCausePlanDefect, ConflictCauseTreeMoved or ConflictCausePlanOrder.
 // Findings is every blocking finding as Finding.Error renders it, in the order the re-resolution reported them.
 type PlanConflictError struct {
 	Batch    int
@@ -110,7 +112,11 @@ type PlanConflictError struct {
 
 // Error renders the refusal with its class and cause, the findings and the way forward.
 func (e *PlanConflictError) Error() string {
-	return fmt.Sprintf("%s (plan_conflict: %s): %s; way forward: edit the plan so the named cards match the tree, run \"lym webster rebaseline --card NN\" naming each card you edited, then begin-batch %02d again", ErrPlanConflict.Error(), e.Cause, strings.Join(e.Findings, "; "), e.Batch)
+	planEdit := "edit the plan so the named cards match the tree"
+	if e.Cause == ConflictCausePlanOrder {
+		planEdit = "move each named delete to a card after the card that still references it"
+	}
+	return fmt.Sprintf("%s (plan_conflict: %s): %s; way forward: %s, run \"lym webster rebaseline --card NN\" naming each card you edited, then begin-batch %02d again", ErrPlanConflict.Error(), e.Cause, strings.Join(e.Findings, "; "), planEdit, e.Batch)
 }
 
 // Unwrap returns ErrPlanConflict, so errors.Is identifies the refusal.
@@ -490,17 +496,23 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	}
 	var blocking []string
 	var advisories []string
+	orderOnly := true
 	for _, f := range resolveFindings {
 		if f.Severity == planindex.SeverityBlocking {
 			blocking = append(blocking, f.Error())
+			orderOnly = orderOnly && f.Check == planindex.CheckDeleteBeforeReference
 		} else {
 			advisories = append(advisories, f.Error())
 		}
 	}
 	if len(blocking) > 0 {
 		// begun is computed before this call records its batch, so a first begin of batch 1 has none begun (plan_defect) and a re-begin of a recorded batch has it begun (tree_moved).
+		// A set holding any other finding keeps those two causes, since moving a delete would not settle it.
 		cause := ConflictCauseTreeMoved
-		if len(begun) == 0 {
+		switch {
+		case orderOnly:
+			cause = ConflictCausePlanOrder
+		case len(begun) == 0:
 			cause = ConflictCausePlanDefect
 		}
 		return nil, &PlanConflictError{Batch: batchNumber, Cause: cause, Findings: blocking}

@@ -58,6 +58,7 @@
 //     The delete-order edit regions cover Extends groups as they cover Edit groups.
 //     It is computed by callerCoverageFindings (callercoverage.go) through planGatePass at the plan gates, from the reference computation caller-uncovered shares, and by LaterDeleteReferences (deleteorder.go) scan-only at ValidateDispatch and for Webster.
 //     Only Go files outside the directories the go tool ignores are searched; a package self glyph Delete keeps its quoted import-path match, over Go regions only.
+//     A plan gate reads the tree as it stands, so a reference an earlier card writes during the run, or one inside a later card's Edit target that is still a handle, is first seen at ValidateDispatch.
 //     A member reference that an Edit target of the deleting card or an earlier card also covers is not reported, since that card rewrites the code before the later card runs; the quoted import-path match keeps no such exemption.
 //     glyph-rejected is additionally its own fail-closed arm of LaterDeleteReferences, for a Delete or Edit member whose answer it cannot read.
 //     A member partitioned by build constraints is looked up through its candidates, which are its declarations.

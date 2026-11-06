@@ -110,6 +110,7 @@ Under `language: none` the glyph checks are skipped: `bare-symbol-target`, `dire
   It does not see a caller in a file an earlier card creates, nor an interface break at an assignment site when a re-signed method stops satisfying it.
 - `delete-before-reference` *(planglyph)* — a deleted member glyph or package self glyph that a later card's `Edit` or `Extends` code still references; blocking per line, informational for a method matched by name alone.
   Way forward: move the delete after the editing card.
+  A plan gate reads the tree as it stands, so a reference an earlier card writes during the run, or one inside an Edit target that is still a handle, is first reported at dispatch, by the first `begin-batch` after it lands.
 - `delete-target-gone` *(planglyph)* — informational, at dispatch only once a batch has begun: a pending card's `Delete` target is already gone, in place of its `path-missing` or `glyph-not-found`.
 - `uses-later-target` — a card's `Uses:` entry that a later card targets, matched as exact trimmed strings; one finding per consumer, producer and entry, on the consumer.
 

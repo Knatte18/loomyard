@@ -25,6 +25,9 @@ const (
 	SeverityInformational Severity = "informational"
 )
 
+// CheckDeleteBeforeReference is the Check of a finding that a card deletes a symbol a later card's Edit code still references.
+const CheckDeleteBeforeReference = "delete-before-reference"
+
 // Finding is the plan gates' own finding type: the same Check, Card and Detail fields planparser.ValidationError carries, plus a Severity every converted planparser finding is stamped with.
 // Ref is the raw plan ref a per-ref finding reports, empty for a finding that is not about one ref.
 // File is the worktree-relative file a finding concerns, empty for a finding about no file.

@@ -157,7 +157,9 @@
 // A forthcoming card's Create targets and Rename New sides are excluded from the status check, so a later card that Uses one passes while the fork has landed nothing yet.
 // A terminal batch's cards are never forthcoming: its done-checks proved its targets present.
 // With no begun card, validate runs the whole-plan check set, approval gate included.
-// begin-batch's blocking refusal is a PlanConflictError, the `plan_conflict` class: its cause is `plan_defect` when begun is empty and `tree_moved` otherwise.
+// begin-batch's blocking refusal is a PlanConflictError, the `plan_conflict` class: its cause is `plan_order` when every blocking finding is delete-before-reference, and otherwise `plan_defect` when begun is empty and `tree_moved` when it is not.
+// A delete-before-reference conflict can first appear mid-run, because the reference may be code an earlier card wrote, which no plan gate could read.
+// Every begin-batch checks all pending cards, so the first begin-batch after that code lands reports it, and a rebaseline needs no check of its own: the next begin-batch runs the same one before any fork.
 //
 // The bound: drift in a begun, non-terminal card's own targets is reported by none of the three sites.
 // That card was fully validated at its first begin-batch, its bytes stay pinned by its recorded CardHashes, and record-batch and recover-batch still run its done-checks and drift detection.
@@ -579,7 +581,8 @@
 //
 // # The plan fixer
 //
-// A `plan_conflict` refusal of begin-batch goes to a cold plan fixer before Master ends stuck:
+// A `plan_conflict` refusal of begin-batch with the cause `plan_defect` or `tree_moved` goes to a cold plan fixer before Master ends stuck;
+// one with the cause `plan_order` goes to none, since moving a delete reshapes cards, and Master ends stuck at once quoting the refusal:
 // Merriam runs `lym webster fix-plan` backgrounded, ends its turn, and on the verb's completion calls begin-batch again for the same batch on verdict `fixed`, and otherwise writes `outcome: stuck` quoting the begin-batch refusal, so a tapestry run still reroutes to plan review through the conflict record, which nothing but the next begin-batch removes.
 // A `plan_drifted` refusal gets no fixer.
 // FixPlanSpawnOrAttach reads the conflict record (ReadConflictRecord) and spawns the fixer as its own strand, role `plan-fixer`, at RoleMaster's model choice with recovery_timeout_min as its timeout, with RenderPlanFixPrompt's prompt carrying the parent, edit and friction directives.

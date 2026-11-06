@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/quarry/glyph"
 	"github.com/Knatte18/quarry/quarry"
@@ -256,7 +257,7 @@ func deleteOrderFindings(subjects []coverageSubject, resolved, nameOnly []map[st
 					continue
 				}
 				findings = append(findings, Finding{
-					Check: "delete-before-reference",
+					Check: planindex.CheckDeleteBeforeReference,
 					Card:  subject.card.ID(),
 					Detail: fmt.Sprintf(
 						"card %d deletes %q, but card %s still references it at %s:%d in its Edit code — move the delete to a card after card %d",
@@ -290,7 +291,7 @@ func deleteOrderFindings(subjects []coverageSubject, resolved, nameOnly []map[st
 		}
 		if len(sites) > 0 {
 			findings = append(findings, Finding{
-				Check: "delete-before-reference",
+				Check: planindex.CheckDeleteBeforeReference,
 				Card:  subject.card.ID(),
 				Detail: fmt.Sprintf(
 					"card %d deletes %q, but its name follows a dot in %s, in the Edit code of card %s, and the receiver could not be resolved — if one is a call, move the delete to a card after card %d",
@@ -371,7 +372,7 @@ func laterImportFindings(plan *planparser.Plan, deleting []planparser.Card, regi
 						}
 						reported[key] = true
 						findings = append(findings, Finding{
-							Check: "delete-before-reference",
+							Check: planindex.CheckDeleteBeforeReference,
 							Card:  c.ID(),
 							Detail: fmt.Sprintf(
 								"card %d deletes %q, but card %s still references it at %s:%d in its Edit code — move the delete to a card after card %d",

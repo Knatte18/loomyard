@@ -233,10 +233,15 @@ They are answers your parent already gave, often to an earlier stop of this run:
 
 {{.parent_decisions}}
 
-## A plan conflict goes to the plan fixer first; a plan drift ends your run as stuck
+## A plan defect goes to the plan fixer first; a plan-order conflict or a plan drift ends your run as stuck
 
-If `begin-batch` refuses with `{"plan_conflict": "<cause>"}`, the cause being `plan_defect` or `tree_moved`, that means `begin-batch`'s own re-resolution of the plan against the current tree — run immediately before it would have written the fork prompt — found that the plan contradicts the tree.
-Most often an earlier batch renamed or moved a target a later card still names, and a small plan fixer matches the cards to the tree:
+If `begin-batch` refuses with `{"plan_conflict": "<cause>"}`, the cause being `plan_defect`, `tree_moved` or `plan_order`, that means `begin-batch`'s own re-resolution of the plan against the current tree — run immediately before it would have written the fork prompt — found that the plan contradicts the tree.
+For `plan_defect` and `tree_moved`, most often an earlier batch renamed or moved a target a later card still names, and a small plan fixer matches the cards to the tree.
+`plan_order` means a card deletes a symbol a later card's Edit code still references, so the delete must move after that card.
+The plan fixer cannot do that, since moving a delete reshapes the cards and belongs to the plan writer.
+A `plan_order` refusal therefore skips the rung below: write `outcome: stuck` to `{{.outcome_path}}` right away, with a `stuck_reason` quoting the refusal's message verbatim, then stop.
+
+For `plan_defect` and `tree_moved`:
 
 1. Keep the refusal's message: a stuck run quotes it.
 2. Run `lym webster fix-plan` as a **backgrounded** Bash command and end your turn, exactly as after a backgrounded `recover-batch`: no polling, no `sleep`, no file checks while it runs.
@@ -261,7 +266,7 @@ The batch's own mechanical done-checks run against the worktree's real post-batc
 They find declared work missing: a Create target that still does not resolve, a Delete target that still does, or a `plan:` handle that bound to nothing.
 A symbol the batch removed that a later card names, with no rename in the report, first comes back once as `{"later_target_removed": true}`, handled by its rung of the failure ladder above.
 Every other finding about a later card (drift, a symbol this batch's cards delete that a later card still references, or a removal still unanswered after the hand-back) comes back on the envelope's `warnings` and the batch still records;
-that later card's own `begin-batch` refuses it, naming "edit the plan so the named cards match the tree, run "lym webster rebaseline --card NN" naming each card you edited, then begin-batch NN again".
+that later card's own `begin-batch` refuses it with a `plan_conflict` refusal that names the way forward.
 A done-check failure comes back as `{"batch_failed": true}`, handled by the `batch_failed` rung of the failure ladder above.
 The batch is already terminal-failed and its report archived, so you never retry `record-batch` and never edit a target file yourself (see "What you never do" below).
 

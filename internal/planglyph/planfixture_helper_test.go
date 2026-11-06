@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 )
@@ -103,7 +104,7 @@ var (
 func deleteOrderSites(findings []Finding) []string {
 	var sites []string
 	for _, f := range findings {
-		if f.Check != "delete-before-reference" {
+		if f.Check != planindex.CheckDeleteBeforeReference {
 			continue
 		}
 		pattern := blockingDeleteOrderSite

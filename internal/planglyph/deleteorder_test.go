@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -237,7 +238,7 @@ func TestLaterDeleteReferences(t *testing.T) {
 				t.Errorf("LaterDeleteReferences(%s) sites = %q; want %q", tc.name, sites, tc.wantRefs)
 			}
 			for _, f := range got {
-				if f.Check != "delete-before-reference" || f.Card != tc.deleting.ID() {
+				if f.Check != planindex.CheckDeleteBeforeReference || f.Card != tc.deleting.ID() {
 					t.Errorf("finding %+v; want a delete-before-reference on card %s", f, tc.deleting.ID())
 				}
 				for _, want := range []string{tc.later.ID(), tc.deleting.TargetGroups[0].Refs[0]} {
