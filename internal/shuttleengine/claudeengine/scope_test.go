@@ -14,7 +14,7 @@ import (
 )
 
 // scopeSettingsKeys are the settings keys a session scope writes.
-var scopeSettingsKeys = []string{"enabledPlugins", "skillOverrides", "disableClaudeAiConnectors", "disableBundledSkills", "autoMemoryEnabled", "permissions"}
+var scopeSettingsKeys = []string{"enabledPlugins", "skillOverrides", "disableClaudeAiConnectors", "disableBundledSkills", "disableWorkflows", "autoMemoryEnabled", "permissions"}
 
 // scopeKeysOf returns the scope keys a settings document holds, with their values.
 func scopeKeysOf(t *testing.T, data []byte) map[string]any {
@@ -29,25 +29,13 @@ func scopeKeysOf(t *testing.T, data []byte) map[string]any {
 	return got
 }
 
-// writeInstalledPlugins writes a Claude Code config directory whose plugins file names each plugin of skills, with an install path holding one directory per listed skill, and returns the directory.
-func writeInstalledPlugins(t *testing.T, skills map[string][]string) string {
-	t.Helper()
-	installPaths := map[string][]string{}
-	for id, names := range skills {
-		installPaths[id] = []string{makeSkillsDir(t, names, nil)}
-	}
-	return writePluginsFile(t, installPaths)
-}
-
-// writePluginsFile writes a Claude Code config directory whose plugins file names each plugin of installPaths with one install per listed path, and returns the directory.
-func writePluginsFile(t *testing.T, installPaths map[string][]string) string {
+// writeInstalledPlugins writes a Claude Code config directory whose plugins file names each plugin of ids with one install, and returns the directory.
+func writeInstalledPlugins(t *testing.T, ids []string) string {
 	t.Helper()
 	configDir := t.TempDir()
 	plugins := map[string][]map[string]string{}
-	for id, paths := range installPaths {
-		for _, path := range paths {
-			plugins[id] = append(plugins[id], map[string]string{"scope": "user", "installPath": path})
-		}
+	for _, id := range ids {
+		plugins[id] = []map[string]string{{"scope": "user", "installPath": "/plugins/" + id}}
 	}
 	data, err := json.Marshal(map[string]any{"version": 2, "plugins": plugins})
 	if err != nil {
@@ -76,38 +64,12 @@ func writeMalformedPlugins(t *testing.T) string {
 	return configDir
 }
 
-// makeSkillsDir creates an install path holding a skills directory with one directory per name and one plain file per fileName, and returns the install path.
-func makeSkillsDir(t *testing.T, names, fileNames []string) string {
-	t.Helper()
-	installPath := t.TempDir()
-	skillsDir := filepath.Join(installPath, pluginSkillsDirName)
-	for _, name := range names {
-		if err := os.MkdirAll(filepath.Join(skillsDir, name), 0o755); err != nil {
-			t.Fatalf("MkdirAll: %v", err)
-		}
-	}
-	for _, name := range fileNames {
-		if err := os.MkdirAll(skillsDir, 0o755); err != nil {
-			t.Fatalf("MkdirAll: %v", err)
-		}
-		if err := os.WriteFile(filepath.Join(skillsDir, name), []byte("x"), 0o644); err != nil {
-			t.Fatalf("write: %v", err)
-		}
-	}
-	return installPath
-}
-
 // TestSessionScope_WrittenSettingsPerRole pins the scope keys of the settings document each kind of session gets:
 // the orch, which keeps its memory and the ListAgents tool, an opened session with no skills, the board session with the ly plugin and scribe skills, a darn writer with its language's skills, and a scope switched off.
 func TestSessionScope_WrittenSettingsPerRole(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	installed := []installedPlugin{
-		{id: "ly@loomyard", skills: []string{"ly:board", "ly:board-policy", "ly:distill"}},
-		{id: "mill@millhouse", skills: []string{"mill:mill-go"}},
-		{id: "prowler@scribe", skills: []string{"prowler:prowler"}},
-		{id: "scribe@scribe", skills: []string{"scribe:conversation", "scribe:golang-testing", "scribe:prose", "scribe:python-testing"}},
-	}
+	installed := []string{"ly@loomyard", "mill@millhouse", "prowler@scribe", "scribe@scribe"}
 	enabled := ScopeConfig{Enabled: true, SkillsOff: []string{"anthropic-skills:docx", "scribe:prose"}}
 	tests := []struct {
 		name      string
@@ -121,24 +83,24 @@ func TestSessionScope_WrittenSettingsPerRole(t *testing.T) {
 			cfg:       enabled,
 			preloaded: []string{"scribe:prose", "scribe:conversation", "ly:board", "ly:board-policy"},
 			orch:      true,
-			want:      `{"enabledPlugins":{"ly@loomyard":true,"mill@millhouse":false,"prowler@scribe":false,"scribe@scribe":true},"skillOverrides":{"anthropic-skills:docx":"off","scribe:golang-testing":"off","scribe:python-testing":"off"},"disableClaudeAiConnectors":true,"disableBundledSkills":true}`,
+			want:      `{"enabledPlugins":{"ly@loomyard":true,"mill@millhouse":false,"prowler@scribe":false,"scribe@scribe":true},"skillOverrides":{"anthropic-skills:docx":"off"},"disableClaudeAiConnectors":true,"disableBundledSkills":true,"disableWorkflows":true}`,
 		},
 		{
 			name: "OpenedSessionWithoutSkills",
 			cfg:  enabled,
-			want: `{"enabledPlugins":{"ly@loomyard":false,"mill@millhouse":false,"prowler@scribe":false,"scribe@scribe":false},"skillOverrides":{"anthropic-skills:docx":"off","scribe:prose":"off"},"disableClaudeAiConnectors":true,"disableBundledSkills":true,"autoMemoryEnabled":false,"permissions":{"deny":["ListAgents"]}}`,
+			want: `{"enabledPlugins":{"ly@loomyard":false,"mill@millhouse":false,"prowler@scribe":false,"scribe@scribe":false},"skillOverrides":{"anthropic-skills:docx":"off","scribe:prose":"off"},"disableClaudeAiConnectors":true,"disableBundledSkills":true,"disableWorkflows":true,"autoMemoryEnabled":false,"permissions":{"deny":["ListAgents"]}}`,
 		},
 		{
 			name:      "BoardSession",
 			cfg:       enabled,
 			preloaded: []string{"scribe:prose", "scribe:conversation", "ly:board-policy", "ly:board"},
-			want:      `{"enabledPlugins":{"ly@loomyard":true,"mill@millhouse":false,"prowler@scribe":false,"scribe@scribe":true},"skillOverrides":{"anthropic-skills:docx":"off","scribe:golang-testing":"off","scribe:python-testing":"off"},"disableClaudeAiConnectors":true,"disableBundledSkills":true,"autoMemoryEnabled":false,"permissions":{"deny":["ListAgents"]}}`,
+			want:      `{"enabledPlugins":{"ly@loomyard":true,"mill@millhouse":false,"prowler@scribe":false,"scribe@scribe":true},"skillOverrides":{"anthropic-skills:docx":"off"},"disableClaudeAiConnectors":true,"disableBundledSkills":true,"disableWorkflows":true,"autoMemoryEnabled":false,"permissions":{"deny":["ListAgents"]}}`,
 		},
 		{
 			name:      "DarnWriter",
 			cfg:       enabled,
 			preloaded: []string{"scribe:prose", "scribe:golang-testing"},
-			want:      `{"enabledPlugins":{"ly@loomyard":false,"mill@millhouse":false,"prowler@scribe":false,"scribe@scribe":true},"skillOverrides":{"anthropic-skills:docx":"off","scribe:conversation":"off","scribe:python-testing":"off"},"disableClaudeAiConnectors":true,"disableBundledSkills":true,"autoMemoryEnabled":false,"permissions":{"deny":["ListAgents"]}}`,
+			want:      `{"enabledPlugins":{"ly@loomyard":false,"mill@millhouse":false,"prowler@scribe":false,"scribe@scribe":true},"skillOverrides":{"anthropic-skills:docx":"off"},"disableClaudeAiConnectors":true,"disableBundledSkills":true,"disableWorkflows":true,"autoMemoryEnabled":false,"permissions":{"deny":["ListAgents"]}}`,
 		},
 		{
 			name:      "ScopeOff",
@@ -165,8 +127,7 @@ func TestSessionScope_WrittenSettingsPerRole(t *testing.T) {
 	}
 }
 
-// TestReadInstalledPlugins pins the reading of Claude Code's plugins file:
-// each plugin with the skill directories of its installs merged, no skill for an empty install path or a plain file under skills, none for an absent file, and an error for a malformed one.
+// TestReadInstalledPlugins pins the reading of Claude Code's plugins file: each plugin's id, sorted, none for an absent file, and an error for a malformed one.
 func TestReadInstalledPlugins(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -174,26 +135,13 @@ func TestReadInstalledPlugins(t *testing.T) {
 	tests := []struct {
 		name      string
 		configDir string
-		want      []installedPlugin
+		want      []string
 		wantErr   bool
 	}{
 		{
-			name:      "NamesEachPluginWithItsSkills",
-			configDir: writeInstalledPlugins(t, map[string][]string{"scribe@scribe": {"testing", "prose"}, "bare@market": nil}),
-			want:      []installedPlugin{{id: "bare@market"}, {id: "scribe@scribe", skills: []string{"scribe:prose", "scribe:testing"}}},
-		},
-		{
-			name:      "FileUnderSkillsIsNotASkill",
-			configDir: writePluginsFile(t, map[string][]string{"p@m": {makeSkillsDir(t, []string{"real"}, []string{"notes.md"})}}),
-			want:      []installedPlugin{{id: "p@m", skills: []string{"p:real"}}},
-		},
-		{
-			name: "SeveralInstallsMergeTheirSkills",
-			configDir: writePluginsFile(t, map[string][]string{"p@m": {
-				makeSkillsDir(t, []string{"shared", "first"}, nil),
-				makeSkillsDir(t, []string{"shared", "second"}, nil),
-			}}),
-			want: []installedPlugin{{id: "p@m", skills: []string{"p:first", "p:second", "p:shared"}}},
+			name:      "NamesEachPluginSorted",
+			configDir: writeInstalledPlugins(t, []string{"scribe@scribe", "bare@market"}),
+			want:      []string{"bare@market", "scribe@scribe"},
 		},
 		{name: "AbsentFileNamesNone", configDir: t.TempDir()},
 		{name: "MalformedFileIsAnError", configDir: malformed, wantErr: true},
@@ -209,25 +157,6 @@ func TestReadInstalledPlugins(t *testing.T) {
 				t.Errorf("readInstalledPlugins() = %+v; want %+v", got, tt.want)
 			}
 		})
-	}
-}
-
-// TestReadInstalledPlugins_EmptyInstallPathIgnoresWorkingDirectory pins that an empty install path names no skills, even when a skills directory sits in the working directory the empty path would resolve against.
-func TestReadInstalledPlugins_EmptyInstallPathIgnoresWorkingDirectory(t *testing.T) {
-	tiergate.Require(t, 0)
-	workdir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(workdir, pluginSkillsDirName, "stray"), 0o755); err != nil {
-		t.Fatalf("MkdirAll: %v", err)
-	}
-	configDir := writePluginsFile(t, map[string][]string{"p@m": {""}})
-	// t.Chdir changes process-global state, so this test is not parallel.
-	t.Chdir(workdir)
-	got, err := readInstalledPlugins(configDir)
-	if err != nil {
-		t.Fatalf("readInstalledPlugins() error: %v", err)
-	}
-	if want := []installedPlugin{{id: "p@m"}}; !reflect.DeepEqual(got, want) {
-		t.Errorf("readInstalledPlugins() = %+v; want %+v", got, want)
 	}
 }
 
@@ -262,11 +191,11 @@ func TestClaudeConfigDir(t *testing.T) {
 
 // TestSessionScope_ReachesWrittenSettings pins that Prepare and OpenLaunch write the scope the shipped claude.yaml turns on:
 // a run's and an opened session's plugins follow their preloaded skills and their auto-memory is off, an opened orch session's auto-memory is left alone,
-// and a plugins file Prepare cannot read leaves connectors and bundled skills off with no plugin named.
+// and a plugins file Prepare cannot read leaves connectors, bundled skills and the Workflow tool off with no plugin named.
 func TestSessionScope_ReachesWrittenSettings(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	installed := map[string][]string{"ly@loomyard": {"board"}, "scribe@scribe": {"prose"}}
+	installed := []string{"ly@loomyard", "scribe@scribe"}
 
 	t.Run("Prepare", func(t *testing.T) {
 		t.Parallel()
@@ -302,7 +231,7 @@ func TestSessionScope_ReachesWrittenSettings(t *testing.T) {
 			t.Fatalf("read settings.json: %v", err)
 		}
 		got := scopeKeysOf(t, data)
-		for _, key := range []string{"disableClaudeAiConnectors", "disableBundledSkills"} {
+		for _, key := range []string{"disableClaudeAiConnectors", "disableBundledSkills", "disableWorkflows"} {
 			if got[key] != true {
 				t.Errorf("%s = %v; want true", key, got[key])
 			}

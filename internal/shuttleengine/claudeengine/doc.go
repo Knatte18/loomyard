@@ -320,12 +320,13 @@
 // With `enabled` on, Prepare writes it into every run's settings, and OpenLaunch into an opened session's settings in a hub, as the documents' last keys;
 // Claude Code's `--settings` layer outranks the user's and the repository's settings, so the scope holds whatever those say.
 // Each plugin Claude Code's `plugins/installed_plugins.json` names, under `CLAUDE_CONFIG_DIR` or else `~/.claude`, is on in `enabledPlugins` exactly when the session preloads a skill listed under the plugin's name, and off otherwise.
-// `disableClaudeAiConnectors` and `disableBundledSkills` are true, and `skillOverrides` turns off each skill of `skills_off` the session does not preload.
-// Each plugin that is on also has every skill but the preloaded ones turned off, read from the `skills` directory of each install path, except the `ly` plugin, whose skills the operator types as slash commands and which keeps all of them.
+// `disableClaudeAiConnectors`, `disableBundledSkills` and `disableWorkflows` are true, and `skillOverrides` turns off each skill of `skills_off` the session does not preload.
+// No session lym launches calls the `Workflow` tool, and `disableBundledSkills` alone would move the workflow authoring reference from its bundled skill into that tool's schema, so the scope drops the tool.
+// A plugin that is on lists all of its skills: Claude Code reads `skillOverrides` for a plugin's skill only through its claude.ai skill sync, a `Skill(...)` deny rule refuses a call but leaves the listing, and the session skills allowlist reaches only an SDK session.
 // A session whose strand role is the orch's alone keeps its auto-memory and the `ListAgents` tool; every other session, run or opened, has `autoMemoryEnabled` false and `ListAgents` in its `permissions.deny`.
 // A config directory or plugins file the engine cannot read is logged and names no plugin, so the session's other settings decide its plugins.
 // An opened session outside a hub writes no settings and gets no scope.
-// Bound: the setting names are Claude Code 2.1.318's, and no launch has yet shown that `skillOverrides` turns off a plugin's skill or a claude.ai skill.
+// Bound: the settings and the behavior above are Claude Code 2.1.319's, as real launches showed them.
 //
 // A replay corpus of real turn ends lives under testdata/corpus, one directory per case:
 // transcript.jsonl holds the source transcript's lines the parsers read, trimmed to the fields they read;
