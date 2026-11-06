@@ -400,6 +400,52 @@ func TestCheck(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "a volatile file and key the record names leave no cell",
+			setup: func(f *checkFixture) {
+				scope := countedScope()
+				scope.Volatile = Volatile{Files: []string{"_source.txt"}, Keys: []string{"captured_at"}}
+				f.seed(scope, map[string]string{"_source.txt": "commit=a\n", "a.txt": "x=1\ncaptured_at=1\n"})
+				f.current = map[string]string{"_source.txt": "commit=b\n", "a.txt": "x=1\ncaptured_at=2\n"}
+			},
+			gatePasses: true,
+			check: func(t *testing.T, f *checkFixture, report CheckReport) {
+				if len(report.Cells) != 0 {
+					t.Errorf("Check() cells = %+v; want none", report.Cells)
+				}
+			},
+		},
+		{
+			name: "a change beside the volatile ones stays unexpected",
+			setup: func(f *checkFixture) {
+				scope := countedScope()
+				scope.Volatile = Volatile{Files: []string{"_source.txt"}}
+				f.seed(scope, map[string]string{"_source.txt": "commit=a\n", "a.txt": "x=1\n"})
+				f.current = map[string]string{"_source.txt": "commit=b\n", "a.txt": "x=2\n"}
+			},
+			check: func(t *testing.T, f *checkFixture, report CheckReport) {
+				unexpected := report.Unexpected()
+				if len(report.Cells) != 1 || len(unexpected) != 1 || unexpected[0].Cell.Case != "a.txt" {
+					t.Errorf("Check() cells = %+v; want the one unexpected cell of a.txt", report.Cells)
+				}
+			},
+		},
+		{
+			name: "a record with no diff reads the config's volatile lists",
+			setup: func(f *checkFixture) {
+				scope := countedScope()
+				scope.Diff, scope.KeyPatterns = "", nil
+				f.config.Volatile = Volatile{Files: []string{"_source.txt"}}
+				f.seed(scope, map[string]string{"_source.txt": "commit=a\n"})
+				f.current = map[string]string{"_source.txt": "commit=b\n"}
+			},
+			gatePasses: true,
+			check: func(t *testing.T, f *checkFixture, report CheckReport) {
+				if len(report.Cells) != 0 {
+					t.Errorf("Check() cells = %+v; want none", report.Cells)
+				}
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

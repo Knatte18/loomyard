@@ -82,7 +82,7 @@ func (r CheckReport) Unexpected() []ClassifiedCell {
 // a capture that never counted, a missing baseline directory and a changed baseline digest are a baseline fault;
 // a records mismatch is a records fault and the check goes on over the committed copies;
 // a failed seal check is a seal fault and the check goes on against the sealed copy, or an empty expectation when there is none.
-// Under DiffLines it takes a current capture, whose failure is a capture fault, diffs it against the baseline and classifies each cell by the merged expectation.
+// Under DiffLines it takes a current capture, whose failure is a capture fault, diffs it against the baseline, drops the cells of the volatile lists and classifies each cell left by the merged expectation.
 // Under DiffCommand it runs the declared compare and takes no capture.
 // Whether the capture counted is read from the tracked scope record alone, never from the capture record.
 func Check(ctx context.Context, d Deps) (CheckReport, error) {
@@ -98,13 +98,13 @@ func Check(ctx context.Context, d Deps) (CheckReport, error) {
 		return report, nil
 	}
 
-	mode, patterns := rec.Scope.Diff, rec.Scope.KeyPatterns
+	mode, patterns, volatile := rec.Scope.Diff, rec.Scope.KeyPatterns, rec.Scope.Volatile
 	if mode == "" {
 		cfg, err := d.Config()
 		if err != nil {
 			return report, fmt.Errorf("drift: load the drift config for the check: %w", err)
 		}
-		mode, patterns = cfg.Diff, cfg.KeyPatterns
+		mode, patterns, volatile = cfg.Diff, cfg.KeyPatterns, cfg.Volatile
 	}
 	report.Mode = mode
 	compiled, err := CompileKeyPatterns(patterns)
@@ -163,7 +163,7 @@ func Check(ctx context.Context, d Deps) (CheckReport, error) {
 
 	switch mode {
 	case DiffLines:
-		return report, classifyCurrent(ctx, d, rec.Scope, compiled, baselineListings, &report)
+		return report, classifyCurrent(ctx, d, rec.Scope, compiled, volatile, baselineListings, &report)
 	case DiffCommand:
 		if err := requireSeams("the drift check under diff command", seam{"Compare", d.Compare != nil}); err != nil {
 			return report, err
@@ -227,9 +227,9 @@ func sealedAndAmended(sealed []byte, amendments []Amendment, mode string, baseli
 	return expectation, nil
 }
 
-// classifyCurrent takes the current capture, diffs it against the baseline and classifies each cell into report.
+// classifyCurrent takes the current capture, diffs it against the baseline and classifies each cell volatile does not name into report.
 // A capture that did not pass is a capture fault and ends the check with no error.
-func classifyCurrent(ctx context.Context, d Deps, scope ScopeRecord, patterns []*regexp.Regexp, baseline []CaseListing, report *CheckReport) error {
+func classifyCurrent(ctx context.Context, d Deps, scope ScopeRecord, patterns []*regexp.Regexp, volatile Volatile, baseline []CaseListing, report *CheckReport) error {
 	if err := requireSeams("the drift check under diff lines", seam{"CaptureCurrent", d.CaptureCurrent != nil}); err != nil {
 		return err
 	}
@@ -253,6 +253,7 @@ func classifyCurrent(ctx context.Context, d Deps, scope ScopeRecord, patterns []
 	if err != nil {
 		return err
 	}
+	cells = volatile.withoutCells(cells)
 	current, err := ListCaptures(capture.Dir, patterns)
 	if err != nil {
 		return err

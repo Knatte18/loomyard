@@ -58,6 +58,7 @@ var nilLegal = map[string]bool{
 	"WebsterRecord":                    true,
 	"PreflightBatcher":                 true,
 	"PreflightStencils":                true,
+	"PreflightDrift":                   true,
 	"Pawl.Watch":                       true,
 	"Sampler.Watch":                    true,
 	"NotifyParent":                     true,

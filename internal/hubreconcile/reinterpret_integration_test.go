@@ -133,6 +133,32 @@ func TestEnsure_DriftDirsOnAnAnchoredHubAreRewrittenOnceAndMailed(t *testing.T) 
 }
 
 // It does not call t.Parallel: it installs the process-global notifier and swaps the package-global detached board sync.
+func TestEnsure_SkipFileArgumentLeavesTheHubBase(t *testing.T) {
+	tiergate.Require(t, 1)
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	board := h.BoardDir()
+	gitkit.CommitFile(t, board, configengine.ConfigFileRel("drift"),
+		"diff: lines\ncapture:\n  command: \"run -e NORCE_BASELINE_SKIP_FILE={skip_file} -v {baseline_dir}:/out img\"\n  timeout_min: 30\n",
+		"fixture: a capture holding the retired placeholder")
+	recordBoardSyncs(t)
+	recordNotices(t)
+
+	if err := hubreconcile.Ensure(geometryOf(h), hubreconcile.Options{}); err != nil {
+		t.Fatalf("Ensure: %v", err)
+	}
+
+	cfg, err := driftengine.LoadConfig(configengine.Dirs{Board: board})
+	if err != nil {
+		t.Fatalf("driftengine.LoadConfig over the board: %v", err)
+	}
+	if want := "run -v {baseline_dir}:/out img"; cfg.Capture.Command != want {
+		t.Errorf("capture command = %q after the walk; want %q", cfg.Capture.Command, want)
+	}
+	assertClean(t, board)
+}
+
+// It does not call t.Parallel: it installs the process-global notifier and swaps the package-global detached board sync.
 func TestEnsure_ReinterpretationMarkerIsCommittedAndMailsOnlyAFlaggedValue(t *testing.T) {
 	tiergate.Require(t, 1)
 

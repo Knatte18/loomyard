@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -89,6 +91,50 @@ type CaseListing struct {
 	// Case is the file's slash-separated path relative to the listed directory.
 	Case  string
 	Lines []ListedLine
+}
+
+// Volatile names what a hub's capture writes that differs between captures whatever the code does, such as provenance, so it is no drift.
+// The zero Volatile names nothing.
+type Volatile struct {
+	// Files are the glob patterns of the cases left out whole: a pattern with no slash matches a case's file name at any depth, and one with a slash its whole path.
+	Files []string `json:"files,omitempty"`
+	// Keys are the line keys left out of every case.
+	Keys []string `json:"keys,omitempty"`
+}
+
+// holdsCase reports whether name is a case the list leaves out whole.
+// The patterns were checked when the config loaded, so a match cannot fail.
+func (v Volatile) holdsCase(name string) bool {
+	return slices.ContainsFunc(v.Files, func(pattern string) bool {
+		target := name
+		if !strings.Contains(pattern, "/") {
+			target = path.Base(name)
+		}
+		matched, _ := path.Match(pattern, target)
+		return matched
+	})
+}
+
+// withoutCells returns cells with every cell of a volatile case or key removed.
+func (v Volatile) withoutCells(cells []Cell) []Cell {
+	return slices.DeleteFunc(cells, func(cell Cell) bool {
+		return v.holdsCase(cell.Case) || slices.Contains(v.Keys, cell.Identity.Key)
+	})
+}
+
+// withoutListed returns listings with every volatile case and every line of a volatile key removed.
+func (v Volatile) withoutListed(listings []CaseListing) []CaseListing {
+	kept := make([]CaseListing, 0, len(listings))
+	for _, listing := range listings {
+		if v.holdsCase(listing.Case) {
+			continue
+		}
+		listing.Lines = slices.DeleteFunc(listing.Lines, func(line ListedLine) bool {
+			return slices.Contains(v.Keys, line.Identity.Key)
+		})
+		kept = append(kept, listing)
+	}
+	return kept
 }
 
 // ListCaptures reads every regular file under dir, at any depth, as a case named by its slash-separated path relative to dir, sorted by name.

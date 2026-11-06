@@ -129,7 +129,7 @@ func (p *DriftBaseline) recordScope(cfg Config) (ScopeRecord, error) {
 	if d.Now != nil {
 		now = d.Now
 	}
-	scope := ScopeRecord{Scope: ScopeFull, Diff: cfg.Diff, KeyPatterns: cfg.KeyPatterns, RecordedAt: stamp(now())}
+	scope := ScopeRecord{Scope: ScopeFull, Diff: cfg.Diff, KeyPatterns: cfg.KeyPatterns, Volatile: cfg.Volatile, RecordedAt: stamp(now())}
 	switch {
 	case cfg.Scope == ScopeOff:
 		scope = ScopeRecord{Scope: ScopeOff, ScopeSource: driftScopeKey, RecordedAt: stamp(now())}

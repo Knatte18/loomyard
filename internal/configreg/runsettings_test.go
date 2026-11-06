@@ -275,6 +275,20 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantInvalid: true,
 		},
 		{
+			name:        "a drift volatile_files is refused naming the hub's drift.yaml",
+			settings:    map[string]any{"drift": map[string]any{"volatile_files": []any{"_source.txt"}}},
+			wantRefusal: "key \"volatile_files\" of module \"drift\" is set only in the hub's config; way forward: set it in the hub's drift.yaml",
+			wantModule:  "drift",
+			wantInvalid: true,
+		},
+		{
+			name:        "a drift volatile_keys is refused naming the hub's drift.yaml",
+			settings:    map[string]any{"drift": map[string]any{"volatile_keys": []any{"captured_at"}}},
+			wantRefusal: "key \"volatile_keys\" of module \"drift\" is set only in the hub's config; way forward: set it in the hub's drift.yaml",
+			wantModule:  "drift",
+			wantInvalid: true,
+		},
+		{
 			name:     "a retired drift verify_model is renamed to judge_model by drift's Migrate",
 			settings: map[string]any{"drift": map[string]any{"verify_model": "opus"}},
 			wantDocs: map[string]string{"drift": "judge_model: opus # model-spec for the judge, which rules on each expected value against its old and new value (see contracts/specs/llm-model-spec.md)\n"},

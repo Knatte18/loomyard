@@ -80,7 +80,7 @@ func TestRunCompare(t *testing.T) {
 		t.Parallel()
 		req, pool := newCompareFixture(t, "cat {skip_file}")
 		_, err := RunCompare(context.Background(), req)
-		for _, want := range []string{"the drift compare command holds {skip_file}, which drift no longer renders", "remove it from compare in the hub's drift.yaml with lym config drift --set from the prime"} {
+		for _, want := range []string{"the drift compare command holds {skip_file}, which drift no longer renders", "the operator or the hub orch runs lym config reconcile --layer default --apply from the hub's prime worktree", "any other use of it from compare"} {
 			if err == nil || !strings.Contains(err.Error(), want) {
 				t.Errorf("RunCompare() = %v; want an error naming %q", err, want)
 			}

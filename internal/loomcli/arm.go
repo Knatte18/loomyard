@@ -332,6 +332,7 @@ const (
 	partsWriteEngine      = "PartsWrite"
 	partsPlanWriteEngine  = "PartsPlanWrite"
 	darnWriteEngine       = "DarnWrite"
+	driftBaselineEngine   = "DriftBaseline"
 	samplerSessionEngine  = "SamplerSession"
 	treeScopeVerifySource = "tree_scope"
 )

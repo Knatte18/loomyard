@@ -1,12 +1,13 @@
 // Package driftengine owns regression around a task: the hub-wide `drift` config module, the drift paths, and the records and runs the Drift rows read and write.
 // Regression is no test tier: it records a profile of the suite's behavior on the task's branch point and compares the task's code against it, and `lym gate test` never runs it.
 //
-// `drift.yaml` is a hub-wide config module with these keys: `enabled`, which switches the Drift rows on through their entry gate; `capture` and `compare`, each a command step written whole as `{command, dir, env, timeout_min}`, the compare running only under `diff: command`; `diff`, `lines` or `command`, how a run compares a capture with the baseline; `key_patterns`, the regular expressions with the named groups `key` and `value` that key a captured line, which with `diff` only the hub's file sets and a task's run settings are refused; `expect_model` and `judge_model`, the model-specs of the expect agent and the judge; `judge_interactive`, which makes the judge a session with the operator in its pane;
+// `drift.yaml` is a hub-wide config module with these keys: `enabled`, which switches the Drift rows on through their entry gate; `capture` and `compare`, each a command step written whole as `{command, dir, env, timeout_min}`, the compare running only under `diff: command`; `diff`, `lines` or `command`, how a run compares a capture with the baseline; `key_patterns`, the regular expressions with the named groups `key` and `value` that key a captured line; `volatile_files` and `volatile_keys`, the capture files and line keys the diff ignores, since a hub's harness may write provenance that differs in every capture, and lym hard-codes no name of it; these four only the hub's file sets and a task's run settings are refused; `expect_model` and `judge_model`, the model-specs of the expect agent and the judge; `judge_interactive`, which makes the judge a session with the operator in its pane;
 // and `scope`, a task's regression scope, which a task sets in its board entry's `run_settings`.
 // `skip` and `verify_max_runs` are retired keys: ConfigSpec lists them in RetiredKeys, so a board entry whose `run_settings` still carries one seeds and the load drops it, and `lym config reconcile` prunes them from a hub base.
 // LoadConfig refuses a scope other than empty, `off`, `partial` or `full`; it reads a stored `partial` as `full` and sets Config.ScopeWasPartial, so a base not yet edited still loads.
 // A declared command holds the placeholder `{baseline_dir}`, the directory the capture writes its profile files to and the compare reads them from.
-// A command still holding the retired `{skip_file}` placeholder is refused when it runs, naming the edit of that step in the hub's `drift.yaml`.
+// A command still holding the retired `{skip_file}` placeholder is refused when it runs, and CheckRetiredPlaceholders, which the Preflight row of a recipe with Drift rows runs, refuses the same command before the run starts while drift is enabled.
+// The refusal hands the operator or the hub orch `lym config reconcile --layer default --apply` and the edit of that step, since a task or beam session is refused hub-wide config writes.
 // A step's `dir` resolves by gateslot.ResolveCommandDir, so it means the directory a gate tier's `dir` means: relative to the worktree root, absolute as written, and the worktree's anchored directory when unset; every drift run is told both directories.
 // Before a step's command starts, a `dir` that is no existing directory fails naming the resolved path, the `drift.yaml` key and, as the way forward, `lym config drift --set <step>.dir=<dir>` from the prime, then `lym drift capture` and `lym loom resume` for the capture and `lym loom resume` for the compare.
 // CheckDirs refuses the same `dir` over the loaded config against a told worktree, which a hub-wide `lym config drift` write runs against the prime.
@@ -16,7 +17,7 @@
 // Once a step is declared, `--set` also changes one of its keys alone, as in `--set capture.env.NAME=1` or `--set compare.timeout_min=10`, and refuses a key a step lacks;
 // a step left with keys but no command fails the load check, so a first declaration sets `command` and `timeout_min` together.
 // LoadConfig loads the file strictly and refuses a declared step without `{baseline_dir}` or with a `timeout_min` below 1 and a model-spec that fails its grammar, each naming the key, and likewise a `diff` other than `lines` or `command`, a `key_patterns` entry CompileKeyPatterns refuses, and `diff: command` with no `compare` declared, which names `compare` as the key to set.
-// MigrateConfig renames `baseline_model`, `verify_model` and `verify_interactive` to `expect_model`, `judge_model` and `judge_interactive`, keeping each value, and drift's registration runs it for a hub base at reconcile and for a task's run settings with a Warn.
+// MigrateConfig renames `baseline_model`, `verify_model` and `verify_interactive` to `expect_model`, `judge_model` and `judge_interactive`, keeping each value, and removes each whole `-e NAME={skip_file}` argument, in its `--env` forms too, from the capture and compare commands, and leaves one that ends a quoted shell string, as in `sh -c 'docker run -e A={skip_file}'`, since the quote that closes the string follows it, for FlagDiffMode to name; drift's registration runs it for a hub base at reconcile, the walk of a new build included, and for a task's run settings with a Warn.
 // FlagDiffMode, the module's reinterpretation DiffModeReinterpretation, rewrites nothing and flags a `compare` set with no `diff`, a command holding `{skip_file}` and `scope: partial`, each with its way forward.
 // Config.Step returns a declared step and refuses an undeclared one, so every row and verb that runs a command goes through it.
 // Config.StepWithHubEnv, which every row and verb that runs a command calls, adds the env config module's variables beneath the step's own `env`, so a command runs with the inherited environment, then the hub's and this machine's variables, then the step's, each replacing the one before.
@@ -66,6 +67,8 @@
 // Key and occurrence are separate fields, so a key such as `Test #3` reads unambiguously, and a unique key keeps its cell when a keyed line is inserted before it.
 // A Cell is a case added or removed, or a line changed, added or removed, with the baseline's value as Old and the current one as New.
 // DiffCaptures returns the cells in case order and then file order, and skips a case it is told to leave out on both sides, which serves a run whose scope record skipped tests.
+// Volatile holds the `volatile_files` and `volatile_keys` lists: a file entry is a glob over a case's file name at any depth, or over its whole path when it holds a slash, and a key entry names a line key in every case.
+// Check drops their cells after the diff and the expect agent's listing leaves them out; the baseline digest still covers them, and under `diff: command` the declared compare decides alone.
 //
 // # Expectation
 //
@@ -91,15 +94,17 @@
 // Drift-Verify writes the JudgeRequest, `.lym/drift/judge-request.json`, through WriteJudgeRequest before each spawn:
 // the spawn id, the mode, the cells with their exact old and new value and covering why, the open ranges covering a judged cell or, under `command`, the compare's log, and the expectation and amendments as text.
 // TakeJudgeSnapshot records under Deps.JudgeSnapshotDir both checkouts' HEAD, a content hash of every changed tracked path and every untracked path with a copy of each untracked file, and the hash of every file of the current capture's scratch directory; ReadJudgeSnapshot reads it back, found false when it is gone.
+// A new snapshot clears only the copies and replaces the record in one atomic write, so a reader never finds the snapshot gone while one is taken.
 // JudgeSnapshot.Changes names what the judge session changed since: a moved code HEAD, each changed, added or deleted path of either checkout and each changed scratch file, judged by content so a later commit of content that was already there is no change.
-// judgement.yaml and its timestamped siblings, which keep an earlier judge's file when the next judge starts, are exempt, and so, on the records checkout, is every path under a Deps.LoomRecordsDirs directory or starting with one of its prefixes, which are the records paths loom writes during a row, the usage records of its sessions among them.
+// judgement.yaml and its timestamped siblings, which keep an earlier judge's file when the next judge starts, are exempt, and so, on the records checkout, is what lym writes itself around a session:
+// every path under a Deps.LoomRecordsDirs directory or starting with one of its prefixes, which are the records paths loom writes during a row, the usage records of its sessions among them; the drift logs, which a check under `command` adds to; and `scope.json` and `judged.json` while both match their newest `Drift-Records` commit, since every lym write of them lands in such a commit, so a hand edit or an unstamped commit of either is still the judge's.
 // A moved records HEAD counts only through the paths Deps.RecordsChangedSince names since the snapshot's head, so loom's own commits are never read as the judge's edits.
-// Bound: an edit the judge session makes under the exempt loom paths goes unseen; they are loom's own run bookkeeping and hold no code, no expectation and neither record.
+// Bound: an edit the judge session makes under the exempt loom paths or the drift logs goes unseen; they are lym's own run bookkeeping and hold no code, no expectation and neither record.
 //
 // # Records
 //
 // Two durable records are guarded: `scope.json` and `judged.json`, the judge's stored rulings as exact tuples of case, identity, kind, old value, new value, ruling and reason, its notes on open ranges with the covering entry's why, and under `command` its rulings per case and code head.
-// `scope.json` also holds what the checks record: the config's `diff` and `key_patterns` as first seen, the source of a scope `off`, the two agent-session marks, the parent's amendments, the last check's result, the head and amendment count of the last passing check, and the `unsealed` and `snapshot_lost` marks; every one is optional, so a record written before it existed still reads.
+// `scope.json` also holds what the checks record: the config's `diff`, `key_patterns` and volatile lists as first seen, the source of a scope `off`, the two agent-session marks, the parent's amendments, the last check's result, the head and amendment count of the last passing check, and the `unsealed` and `snapshot_lost` marks; every one is optional, so a record written before it existed still reads.
 // WriteRecords is the one writer: it starts from the copies ReadRecords returns, applies the caller's change, writes both files and commits both at once through Deps.CommitWithTrailers with the trailer `Drift-Records: <RecordsDigest of the written files>` and any extra trailer the caller names.
 // ReadRecords finds the newest records commit carrying that trailer and returns both files as that commit holds them, with Mismatch set when the files on disk digest differently, which a hand edit or a write interrupted before its commit causes; the committed copy is returned either way.
 // With no such commit it returns the files as they are, so a run seeded before the guard existed reads its records unguarded until its first write.
@@ -126,7 +131,7 @@
 // A records mismatch sets RecordsFault naming `lym drift amend <slug> --restore` and the check goes on over the committed copies;
 // a failed CheckSeal against the baseline's code head sets SealFault and the check goes on against the sealed copy, or an empty expectation when there is none.
 // The sealed bytes and every amendment that adds entries are parsed by ParseExpectation under the mode and merged.
-// The mode and key patterns are the scope record's, or the config's when the record holds none yet.
+// The mode, key patterns and volatile lists are the scope record's, or the config's when the record holds no mode yet, so a run keeps the lists it started with and a run started before they were set still needs `lym drift amend`.
 // Under `lines` the current capture is taken through Deps.CaptureCurrent, and one that did not pass sets CaptureFault naming its log and the way forward;
 // the diff leaves out the cases of the scope record's skipped tests when its scope is the old `partial`, and each cell is classified by Expectation.Cover, with Expectation.Uncovering listing the entries no cell uses.
 // Under `command` Deps.Compare runs the declared compare and the report carries its exit and log.
@@ -177,7 +182,7 @@
 // A drift config that fails to load there is a Stuck naming `lym loom resume`.
 // DriftBaseline spawns no agent and writes no `baseline.md`.
 // It first ends, through Deps.EndRoles, every live strand of the removed `drift-baseline` and `drift-verify` agents, so no pane keeps an old stencil, and then records the scope once through WriteRecords when none is recorded:
-// `off` when `drift.scope` is `off`, with ScopeSource `drift.scope`, and `full` otherwise, with the config's `diff` and `key_patterns`.
+// `off` when `drift.scope` is `off`, with ScopeSource `drift.scope`, and `full` otherwise, with the config's `diff`, `key_patterns` and volatile lists.
 // A config scope read from `partial` is recorded `full` with one Warn naming the key.
 // A recorded scope, `off`, `full` or an old `partial`, is kept, and a later config change changes neither it nor the recorded mode and patterns.
 // Scope off, a set awaited_at and a passed capture take no capture; a capture holding the lock is left running.
@@ -196,10 +201,10 @@
 // the last two record `unsealed` first, so containment reads the empty expectation.
 // A capture that never counted, a baseline that is missing or no longer matches its digest, and a code HEAD other than the capture's head, which the scope record's `baseline_head` names and capture.json names when the record holds none, are each a Stuck for the run's parent.
 // Each opens with shedadapters.DecisionHaltPrefix and then DeferHaltPrefix and names `lym drift defer`; the moved HEAD also lists the commits since and names the operator's reset of the run's code branch to the capture's head as the other way forward.
-// A scope record with no diff mode records the config's `diff` and `key_patterns` first, which keeps them for the run.
+// A scope record with no diff mode records the config's `diff`, `key_patterns` and volatile lists first, which keeps them for the run.
 // A pass that goes on to write over records differing from their newest records commit is a Stuck for the run's parent opening with shedadapters.DecisionHaltPrefix and naming `lym drift amend <slug> --restore`, which Amend admits at the blocked row for `--restore` alone.
 // A closed `expect_session` mark that kept its `opened_at`, which an agent return without an error leaves and which records an ended session, with an expected.yaml that validates is sealed with no spawn; an open mark, a mark never opened or closed after an error, or a file that does not validate, runs the agent, resuming a live chair.
-// The pass writes the listing before the agent runs: every baseline case's lines with their identities and text under `diff: lines`, the case names alone under `diff: command`; an occurrence `n` is written only for a key that repeats in its case.
+// The pass writes the listing before the agent runs: every baseline case's lines with their identities and text under `diff: lines`, past the recorded volatile lists, the case names alone under `diff: command`; an occurrence `n` is written only for a key that repeats in its case.
 // The agent's table is gated by the row's `expectation` entry, NewExpectationGate, which parses expected.yaml with ParseExpectation under the recorded mode against the baseline's cases and re-prompts the agent with the parser's message; a missing file fails asking for it.
 // The session's return closes the mark, a Done seals the file through SealExpectation with the baseline's digest as a second trailer when no commit recorded it yet, and an exhausted entry is the shed's Stuck, whose resume spawns the agent again.
 //
@@ -221,17 +226,18 @@
 // DriftVerify is the containment check and the judge: it checks the code's captured changes against the sealed expectation and has one judge rule on the expected changes no stored ruling covers.
 // It first ends, through Deps.EndRoles, every live strand of the removed `drift-baseline` and `drift-verify` agents, so no pane keeps an old stencil, and then runs these steps in order:
 // no scope record, scope off, a deferred capture and a waiver are Done, and a records mismatch is a Stuck naming `lym drift amend <slug> --restore`;
-// a scope record with no diff mode records the config's `diff` and `key_patterns` and keeps them;
+// a scope record with no diff mode records the config's `diff`, `key_patterns` and volatile lists and keeps them;
 // a capture that never counted, a missing baseline directory and an edited baseline are a Stuck naming `lym drift defer`, the first read from the tracked scope record alone;
 // a head equal to the last passing check's with the same number of amendments is Done;
-// an open `judge_session` mark is settled before anything else: a gone snapshot is recorded as lost and is a Stuck, a change JudgeSnapshot.Changes names is a Stuck, and an intact session goes on to be resumed;
+// an open `judge_session` mark is settled before anything else: a change JudgeSnapshot.Changes names is a Stuck, a gone snapshot is recorded as lost and is a Stuck only under a live chair, whose changes cannot be told, and a session that is intact, or whose snapshot is gone with no live chair, goes on to be resumed;
 // a run past Drift-Expect with neither a seal commit nor an expected.yaml records `unsealed` once;
 // then Check runs, and a seal fault, a failed current capture and any cell the expectation does not cover are a Stuck;
 // each cell whose exact tuple has a stored ruling reuses it, a stored `does not match` is a Stuck, and with no cell left to judge the pass is recorded and Done.
 //
-// Otherwise one judge is spawned: Drift-Verify removes a stale judgement.yaml, writes the JudgeRequest under a fresh spawn id, opens the session mark through WriteRecords, takes the snapshot and runs the judge through the seat engine, its table gated by the row's `judgement` entry.
-// A session an earlier entry left open keeps its spawn id and its snapshot: the request is written again under the recorded id, a live chair is resumed and none is respawned, and a snapshot recorded lost is taken anew first.
-// On the session's return, before the mark closes, a change to either checkout or to the scratch directory and a baseline that no longer matches its digest are a Stuck that leaves the mark open.
+// Otherwise one judge is spawned: Drift-Verify removes a stale judgement.yaml, writes the JudgeRequest under a fresh spawn id, takes the snapshot, opens the session mark through WriteRecords and runs the judge through the seat engine, its table gated by the row's `judgement` entry.
+// A session an earlier entry left open keeps its spawn id and its snapshot: the request is written again under the recorded id, a live chair is resumed and none is respawned, and a snapshot recorded lost has its mark cleared and is then taken anew first.
+// On the session's return, before the mark closes, a change to either checkout or to the scratch directory, a snapshot gone while the judge ran and a baseline that no longer matches its digest are a Stuck that leaves the mark open.
+// The way forward of a changed checkout names the scratch directory by its path and keeps the snapshot directory, which the resume compares against.
 // The rulings are stored in judged.json as exact tuples with the judge's strand and time, each listed open range with the covering entry's why and the judge's sentence, replacing an earlier listing of the same range; the mark closes and the last check is recorded in the same write, and judgement.yaml is removed after it.
 // A ruling of `does not match` is a Stuck naming the cells and their reasons, and all `matches` records the pass and is Done.
 //

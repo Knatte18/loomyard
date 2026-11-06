@@ -174,6 +174,66 @@ func TestCheckDirs(t *testing.T) {
 	}
 }
 
+// TestCheckRetiredPlaceholders pins that an enabled drift config refuses a step a run executes that holds {skip_file}, with a way forward a task or beam session can hand on, and passes every other config.
+func TestCheckRetiredPlaceholders(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const (
+		leftoverCapture = `capture: {command: "p {baseline_dir} {skip_file}", timeout_min: 1}`
+		leftoverCompare = `compare: {command: "c {baseline_dir} {skip_file}", timeout_min: 1}`
+		cleanCompare    = `compare: {command: "c {baseline_dir}", timeout_min: 1}`
+	)
+	tests := []struct {
+		name  string
+		lines map[string]string
+		// wantErr are the texts the refusal names; empty when the config passes.
+		wantErr []string
+	}{
+		{name: "AnEnabledCleanConfigPasses", lines: map[string]string{"enabled": "enabled: true"}},
+		{name: "ALeftoverWithDriftOffPasses", lines: map[string]string{"capture": leftoverCapture}},
+		{
+			name:    "ALeftoverInTheCaptureIsRefused",
+			lines:   map[string]string{"enabled": "enabled: true", "capture": leftoverCapture},
+			wantErr: []string{"the drift capture command holds {skip_file}", "the operator or the hub orch runs lym config reconcile --layer default --apply", "way forward"},
+		},
+		{
+			name:  "ALeftoverInACompareThatNeverRunsPasses",
+			lines: map[string]string{"enabled": "enabled: true", "compare": leftoverCompare},
+		},
+		{
+			name:    "ALeftoverInTheCompareUnderDiffCommandIsRefused",
+			lines:   map[string]string{"enabled": "enabled: true", "diff": "diff: command", "compare": leftoverCompare},
+			wantErr: []string{"the drift compare command holds {skip_file}", "any other use of it from compare"},
+		},
+		{
+			name:  "ACleanCompareUnderDiffCommandPasses",
+			lines: map[string]string{"enabled": "enabled: true", "diff": "diff: command", "compare": cleanCompare},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			board := t.TempDir()
+			seedDriftConfig(t, board, withKeys(t, tt.lines))
+
+			err := CheckRetiredPlaceholders(configengine.Dirs{Board: board})
+
+			if len(tt.wantErr) == 0 {
+				if err != nil {
+					t.Errorf("CheckRetiredPlaceholders() = %v; want nil", err)
+				}
+				return
+			}
+			for _, want := range tt.wantErr {
+				if err == nil || !strings.Contains(err.Error(), want) {
+					t.Errorf("CheckRetiredPlaceholders() = %v; want an error naming %q", err, want)
+				}
+			}
+		})
+	}
+}
+
 // withKey returns the template with the line of key replaced by line.
 func withKey(t *testing.T, key, line string) string {
 	t.Helper()
@@ -221,7 +281,7 @@ func seedLocalDrift(t *testing.T, local string) configengine.Dirs {
 
 // templateConfig returns the Config the embedded template loads as, changed by mutate.
 func templateConfig(mutate func(*Config)) Config {
-	cfg := Config{Diff: DiffLines, KeyPatterns: defaultTestKeyPatterns, ExpectModel: "sonnet[medium]", JudgeModel: "opus[high]"}
+	cfg := Config{Diff: DiffLines, KeyPatterns: defaultTestKeyPatterns, Volatile: Volatile{Files: []string{}, Keys: []string{}}, ExpectModel: "sonnet[medium]", JudgeModel: "opus[high]"}
 	mutate(&cfg)
 	return cfg
 }
@@ -281,6 +341,28 @@ func TestLoadConfig(t *testing.T) {
 			name: "a key pattern with no value group", seed: true,
 			contents: withKey(t, "key_patterns", `key_patterns: ['^(?P<key>\w+)$']`),
 			wantErr:  []string{`"key_patterns"`, "pattern 0", `no named group "value"`, "lym config drift"},
+		},
+		{
+			name: "volatile lists load", seed: true,
+			contents: withKeys(t, map[string]string{"volatile_files": "volatile_files: [_source.txt, 'meta/*.txt']", "volatile_keys": "volatile_keys: [captured_at]"}),
+			want: templateConfig(func(c *Config) {
+				c.Volatile = Volatile{Files: []string{"_source.txt", "meta/*.txt"}, Keys: []string{"captured_at"}}
+			}),
+		},
+		{
+			name: "a volatile file that is no valid glob", seed: true,
+			contents: withKey(t, "volatile_files", "volatile_files: ['[']"),
+			wantErr:  []string{`"volatile_files"`, `"["`, "lym config drift"},
+		},
+		{
+			name: "a blank volatile file", seed: true,
+			contents: withKey(t, "volatile_files", "volatile_files: [' ']"),
+			wantErr:  []string{`"volatile_files"`, "blank", "lym config drift"},
+		},
+		{
+			name: "a blank volatile key", seed: true,
+			contents: withKey(t, "volatile_keys", "volatile_keys: ['']"),
+			wantErr:  []string{`"volatile_keys"`, "blank", "lym config drift"},
 		},
 		{
 			name: "diff command with no compare declared", seed: true,

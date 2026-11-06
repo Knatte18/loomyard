@@ -670,6 +670,17 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		}
 	}
 
+	// Preflight checks drift.yaml for a recipe with Drift rows, so a command a Drift row would refuse fails the first row.
+	var preflightDrift func() error
+	holdsDrift, err := loomrecipe.HasEngine(c.recipe, driftBaselineEngine)
+	if err != nil {
+		return err
+	}
+	if holdsDrift {
+		configDirs := fabricengine.ConfigDirs(location)
+		preflightDrift = func() error { return driftengine.CheckRetiredPlaceholders(configDirs) }
+	}
+
 	recordEngine, err := loomrecipe.RecordEngine(c.recipe)
 	if err != nil {
 		return err
@@ -687,6 +698,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 
 	c.env = shedrecipe.Env{
 		PreflightBatcher: preflightBatcher,
+		PreflightDrift:   preflightDrift,
 		Cwd:              cwd,
 		AnchorPath:       anchorPath,
 		ConfigDirs:       fabricengine.ConfigDirs(location),

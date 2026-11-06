@@ -4,6 +4,7 @@ package driftengine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -141,7 +142,9 @@ type verifyFixture struct {
 	liveChair bool
 	// codeCheckout and recordsCheckout are the two fake checkouts, and recordsChanged is what RecordsChangedSince answers.
 	codeCheckout, recordsCheckout fabricengine.CheckoutState
-	recordsChanged                []string
+	// checkoutsErr, when set, is what the checkouts read fails with, so taking the judge snapshot fails.
+	checkoutsErr   error
+	recordsChanged []string
 	// rulings is the ruling the scripted judge gives each cell by "<case> <key>", matches when absent, and rangeChecked the sentence it notes under an open range.
 	rulings      map[string]Ruling
 	rangeChecked string
@@ -210,7 +213,7 @@ func newVerifyFixture(t *testing.T) *verifyFixture {
 	d.JudgeSnapshotDir = filepath.Join(t.TempDir(), "snapshot")
 	d.LoomRecordsDirs = []string{testRunDirRel, testFrictionRel, testFrictionPrefix}
 	d.Checkouts = func() (fabricengine.CheckoutState, fabricengine.CheckoutState, error) {
-		return f.codeCheckout, f.recordsCheckout, nil
+		return f.codeCheckout, f.recordsCheckout, f.checkoutsErr
 	}
 	d.RecordsChangedSince = func(string) ([]string, error) { return f.recordsChanged, nil }
 	d.EndRoles = func(roles []string) error {
@@ -703,6 +706,22 @@ func TestDriftVerify(t *testing.T) {
 		}
 	})
 
+	t.Run("a snapshot that fails on a fresh judge session leaves no session mark open", func(t *testing.T) {
+		t.Parallel()
+		f := newVerifyFixture(t)
+		f.seedChanged(expectsY)
+		f.checkoutsErr = errors.New("checkouts unreadable")
+
+		_, _, err := f.call()
+
+		if err == nil {
+			t.Fatalf("Call() error = nil; want the snapshot failure")
+		}
+		if f.scope().JudgeSession.Open || f.seats.Calls != 0 {
+			t.Errorf("mark %+v and %d runs after the failed snapshot; want no open mark and no judge", f.scope().JudgeSession, f.seats.Calls)
+		}
+	})
+
 	t.Run("a judge ruling does not match stops naming the cell and stores the ruling", func(t *testing.T) {
 		t.Parallel()
 		f := newVerifyFixture(t)
@@ -778,20 +797,21 @@ func TestDriftVerify(t *testing.T) {
 		scope.Diff, scope.KeyPatterns = "", nil
 		f.seed(scope, verifyBaseline)
 		f.current = verifyBaseline
+		f.config.Volatile = Volatile{Files: []string{"_source.txt"}}
 
 		requireDone(f)
 
 		recorded := f.scope()
-		if recorded.Diff != DiffLines || !slices.Equal(recorded.KeyPatterns, []string{keyValuePattern}) {
-			t.Fatalf("scope diff %q and patterns %q; want the config's %q and %q", recorded.Diff, recorded.KeyPatterns, DiffLines, keyValuePattern)
+		if recorded.Diff != DiffLines || !slices.Equal(recorded.KeyPatterns, []string{keyValuePattern}) || !slices.Equal(recorded.Volatile.Files, f.config.Volatile.Files) {
+			t.Fatalf("scope diff %q, patterns %q and volatile %+v; want the config's %q, %q and %+v", recorded.Diff, recorded.KeyPatterns, recorded.Volatile, DiffLines, keyValuePattern, f.config.Volatile)
 		}
 
-		f.config.Diff, f.config.KeyPatterns = DiffCommand, []string{`^(?P<key>\w+):(?P<value>.*)$`}
+		f.config.Diff, f.config.KeyPatterns, f.config.Volatile = DiffCommand, []string{`^(?P<key>\w+):(?P<value>.*)$`}, Volatile{}
 		f.moveHead("code-head-1")
 		requireDone(f)
 
-		if again := f.scope(); again.Diff != DiffLines || !slices.Equal(again.KeyPatterns, recorded.KeyPatterns) {
-			t.Errorf("scope diff %q and patterns %q after the config changed; want %q and %q kept", again.Diff, again.KeyPatterns, DiffLines, recorded.KeyPatterns)
+		if again := f.scope(); again.Diff != DiffLines || !slices.Equal(again.KeyPatterns, recorded.KeyPatterns) || !slices.Equal(again.Volatile.Files, recorded.Volatile.Files) {
+			t.Errorf("scope diff %q, patterns %q and volatile %+v after the config changed; want %q, %q and %+v kept", again.Diff, again.KeyPatterns, again.Volatile, DiffLines, recorded.KeyPatterns, recorded.Volatile)
 		}
 	})
 
@@ -983,6 +1003,9 @@ func TestDriftVerify(t *testing.T) {
 			}{
 				{"TheRowsStatusCommit", testStatusRel},
 				{"AFrictionNoteCommit", testFrictionRel + "/halt.md"},
+				{"AScopeRecordCommit", "_lym/drift/scope.json"},
+				{"AJudgedRecordCommit", "_lym/drift/judged.json"},
+				{"ACompareLog", "_lym/drift/logs/compare-1.log"},
 			}
 			for _, tt := range tests {
 				t.Run(tt.name, func(t *testing.T) {
@@ -1002,18 +1025,14 @@ func TestDriftVerify(t *testing.T) {
 			}
 		})
 
-		t.Run("a gone snapshot stops recording it lost, and the next entry takes a new snapshot and resumes", func(t *testing.T) {
+		t.Run("a gone snapshot with no live chair takes a new one and goes on under the recorded spawn id", func(t *testing.T) {
 			t.Parallel()
 			f := newVerifyFixture(t)
 			f.seedChanged(expectsY)
 			f.seedMark("judge-recorded", false)
-
-			outcome, pointer, err := f.call()
-
-			requireStuck(t, outcome, pointer, err, true, "snapshot", "lym loom resume")
-			requireDeferPrefix(t, pointer.Reason, false)
-			if !f.scope().SnapshotLost || !f.untouched() {
-				t.Fatalf("snapshot lost %v, judge untouched %v; want it recorded lost and no judge", f.scope().SnapshotLost, f.untouched())
+			f.recordsCheckout.Root = f.store.root
+			f.onArrival = func() {
+				f.recordsCheckout.Head, f.recordsChanged = "records-2", []string{"_lym/drift/scope.json", "_lym/drift/judged.json"}
 			}
 
 			requireDone(f)
@@ -1023,6 +1042,53 @@ func TestDriftVerify(t *testing.T) {
 			}
 			if f.scope().SnapshotLost || f.scope().JudgeSession.Open || len(f.requests) != 1 || f.requests[0].SpawnID != "judge-recorded" {
 				t.Errorf("scope = lost %v, mark %+v; requests %+v; want the flag cleared, the mark closed and the recorded spawn id kept", f.scope().SnapshotLost, f.scope().JudgeSession, f.requests)
+			}
+		})
+
+		t.Run("a gone snapshot under a live chair stops recording it lost, and the next entry takes a new snapshot and resumes", func(t *testing.T) {
+			t.Parallel()
+			f := newVerifyFixture(t)
+			f.seedChanged(expectsY)
+			f.seedMark("judge-recorded", false)
+			f.liveChair = true
+
+			outcome, pointer, err := f.call()
+
+			requireStuck(t, outcome, pointer, err, true, "while its session was live", "cannot be told", "lym loom resume")
+			requireDeferPrefix(t, pointer.Reason, false)
+			if !f.scope().SnapshotLost || f.seats.Calls+f.seats.ResumeCalls != 0 {
+				t.Fatalf("snapshot lost %v, %d runs and %d resumes; want it recorded lost and no judge", f.scope().SnapshotLost, f.seats.Calls, f.seats.ResumeCalls)
+			}
+
+			requireDone(f)
+
+			if f.seats.ResumeCalls != 1 || f.scope().SnapshotLost || f.scope().JudgeSession.Open {
+				t.Errorf("%d resumes, lost %v, mark %+v; want the chair resumed, the flag cleared and the mark closed", f.seats.ResumeCalls, f.scope().SnapshotLost, f.scope().JudgeSession)
+			}
+		})
+
+		t.Run("a snapshot gone while the judge ran stops, and the next entry takes a new one", func(t *testing.T) {
+			t.Parallel()
+			f := newVerifyFixture(t)
+			f.seedChanged(expectsY)
+			f.onArrival = func() {
+				if err := os.RemoveAll(f.deps.JudgeSnapshotDir); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			outcome, pointer, err := f.call()
+
+			requireStuck(t, outcome, pointer, err, true, "while its session was live", "lym loom resume")
+			if !f.scope().SnapshotLost || !f.scope().JudgeSession.Open {
+				t.Fatalf("snapshot lost %v, mark %+v; want it recorded lost and the mark left open", f.scope().SnapshotLost, f.scope().JudgeSession)
+			}
+
+			f.onArrival = nil
+			requireDone(f)
+
+			if f.scope().SnapshotLost || f.scope().JudgeSession.Open {
+				t.Errorf("lost %v, mark %+v; want the flag cleared and the mark closed", f.scope().SnapshotLost, f.scope().JudgeSession)
 			}
 		})
 	})
@@ -1046,18 +1112,6 @@ func TestDriftVerify(t *testing.T) {
 					f.codeCheckout.Changed = nil
 				},
 				fragment: "code: a.go was changed",
-			},
-			{
-				name: "TheScopeRecord",
-				edit: func(t *testing.T, f *verifyFixture) {
-					writeTestFile(t, f.recordsCheckout.Root, "_lym/drift/scope.json", "{}")
-					f.recordsCheckout.Changed = []string{"_lym/drift/scope.json"}
-				},
-				undo: func(t *testing.T, f *verifyFixture) {
-					removeTestFile(t, f.recordsCheckout.Root, "_lym/drift/scope.json")
-					f.recordsCheckout.Changed = nil
-				},
-				fragment: "records: _lym/drift/scope.json was changed",
 			},
 			{
 				name: "AnAddedUntrackedFile",
@@ -1099,7 +1153,7 @@ func TestDriftVerify(t *testing.T) {
 
 				outcome, pointer, err := f.call()
 
-				requireStuck(t, outcome, pointer, err, true, tt.fragment, f.deps.JudgeSnapshotDir, "lym loom resume")
+				requireStuck(t, outcome, pointer, err, true, tt.fragment, f.deps.JudgeSnapshotDir, f.captureDir, "keeps the snapshot directory", "lym loom resume")
 				requireDeferPrefix(t, pointer.Reason, false)
 				if !f.scope().JudgeSession.Open || len(f.records().Judged.Tuples) != 0 {
 					t.Fatalf("scope mark %+v and %d tuples; want the mark left open and nothing stored", f.scope().JudgeSession, len(f.records().Judged.Tuples))
@@ -1120,6 +1174,37 @@ func TestDriftVerify(t *testing.T) {
 				if f.seats.Calls != 2 || f.requests[1].SpawnID != spawn || f.scope().JudgeSession.Open {
 					t.Errorf("%d runs, resumed spawn %q, mark %+v; want a respawn under %q and a closed mark", f.seats.Calls, f.requests[1].SpawnID, f.scope().JudgeSession, spawn)
 				}
+			})
+		}
+
+		for _, name := range []string{scopeFileName, judgedFileName} {
+			t.Run("AHandEditOf_"+name+"_StopsAndClearsWithARestore", func(t *testing.T) {
+				t.Parallel()
+				f := newVerifyFixture(t)
+				f.seedChanged(expectsY)
+				rel := durableRel(name)
+				f.onArrival = func() {
+					// An empty judged record serializes as {}, so the edit must differ from that to be a hand edit.
+					writeTestFile(t, f.store.root, rel, `{"hand_edit": true}`)
+					writeTestFile(t, f.recordsCheckout.Root, rel, `{"hand_edit": true}`)
+					f.recordsCheckout.Changed = []string{rel}
+				}
+
+				outcome, pointer, err := f.call()
+
+				requireStuck(t, outcome, pointer, err, true, "records: "+rel+" was changed")
+
+				f.onArrival = nil
+				outcome, pointer, err = f.call()
+
+				requireStuck(t, outcome, pointer, err, true, "lym drift amend <slug> --restore")
+
+				if err := RestoreRecords(f.deps); err != nil {
+					t.Fatalf("RestoreRecords() = %v; want nil", err)
+				}
+				removeTestFile(t, f.recordsCheckout.Root, rel)
+				f.recordsCheckout.Changed = nil
+				requireDone(f)
 			})
 		}
 

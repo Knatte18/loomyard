@@ -66,7 +66,7 @@ func newBaselineFixture(t *testing.T) *baselineFixture {
 		if f.configErr != nil {
 			return Config{}, f.configErr
 		}
-		cfg := Config{Enabled: !f.disabled, Scope: f.configScope, ScopeWasPartial: f.configWasPartial, Diff: DiffLines, KeyPatterns: []string{keyValuePattern}}
+		cfg := Config{Enabled: !f.disabled, Scope: f.configScope, ScopeWasPartial: f.configWasPartial, Diff: DiffLines, KeyPatterns: []string{keyValuePattern}, Volatile: Volatile{Keys: []string{"captured_at"}}}
 		if f.declared {
 			cfg.Capture = CommandStep{Command: "capture {baseline_dir}", Dir: ".", TimeoutMin: 1}
 		}
@@ -151,12 +151,12 @@ func (f *baselineFixture) holdCaptureLock() (release func()) {
 	return release
 }
 
-// checkRecordedScope fails t unless the scope record holds want's scope, source, diff mode and key patterns.
+// checkRecordedScope fails t unless the scope record holds want's scope, source, diff mode, key patterns and volatile keys.
 func checkRecordedScope(t *testing.T, f *baselineFixture, want ScopeRecord) {
 	t.Helper()
 	got, found, err := ReadScope(f.paths)
-	if err != nil || !found || got.Scope != want.Scope || got.ScopeSource != want.ScopeSource || got.Diff != want.Diff || !slices.Equal(got.KeyPatterns, want.KeyPatterns) {
-		t.Errorf("ReadScope() = %+v, %v, %v; want scope %q from %q, diff %q, patterns %q", got, found, err, want.Scope, want.ScopeSource, want.Diff, want.KeyPatterns)
+	if err != nil || !found || got.Scope != want.Scope || got.ScopeSource != want.ScopeSource || got.Diff != want.Diff || !slices.Equal(got.KeyPatterns, want.KeyPatterns) || !slices.Equal(got.Volatile.Keys, want.Volatile.Keys) {
+		t.Errorf("ReadScope() = %+v, %v, %v; want scope %q from %q, diff %q, patterns %q, volatile keys %q", got, found, err, want.Scope, want.ScopeSource, want.Diff, want.KeyPatterns, want.Volatile.Keys)
 	}
 }
 
@@ -182,7 +182,7 @@ func TestDriftBaseline(t *testing.T) {
 
 	whole := []string{DirRel()}
 	haltWays := []string{CaptureHaltPrefix + DeferHaltPrefix, "lym drift capture", "lym drift defer", "lym loom resume"}
-	fullFromConfig := ScopeRecord{Scope: ScopeFull, Diff: DiffLines, KeyPatterns: []string{keyValuePattern}}
+	fullFromConfig := ScopeRecord{Scope: ScopeFull, Diff: DiffLines, KeyPatterns: []string{keyValuePattern}, Volatile: Volatile{Keys: []string{"captured_at"}}}
 
 	tests := []struct {
 		name       string

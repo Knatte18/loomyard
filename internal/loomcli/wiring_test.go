@@ -20,6 +20,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -189,6 +190,23 @@ func TestWire_DefaultConfig(t *testing.T) {
 		}
 		if err := c.env.PreflightBatcher(); err != nil {
 			t.Errorf("c.env.PreflightBatcher() = %v; want nil over the default config", err)
+		}
+	})
+
+	t.Run("a tapestry seed tells Preflight the drift check", func(t *testing.T) {
+		if c.env.PreflightDrift == nil {
+			t.Fatal("c.env.PreflightDrift = nil; want the drift config check for a recipe with a Drift-Baseline row")
+		}
+		// drift.yaml is hub-wide and has no embedded fallback on load, so the default config is seeded from the template.
+		configDir := filepath.Join(fabricengine.BoardDir(loc.HubPath), "_lym", "config")
+		if err := os.MkdirAll(configDir, 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
+		}
+		if err := os.WriteFile(filepath.Join(configDir, "drift.yaml"), []byte(driftengine.ConfigTemplate()), 0o644); err != nil {
+			t.Fatalf("WriteFile drift.yaml = %v; want nil", err)
+		}
+		if err := c.env.PreflightDrift(); err != nil {
+			t.Errorf("c.env.PreflightDrift() = %v; want nil over the default config", err)
 		}
 	})
 

@@ -107,6 +107,8 @@ type ScopeRecord struct {
 	Diff string `json:"diff,omitempty"`
 	// KeyPatterns are the config's key patterns, recorded with Diff.
 	KeyPatterns []string `json:"key_patterns,omitempty"`
+	// Volatile is what the config's diff ignores, recorded with Diff.
+	Volatile Volatile `json:"volatile,omitzero"`
 	// ExpectSession marks the expect agent's session.
 	ExpectSession SessionMark `json:"expect_session,omitzero"`
 	// JudgeSession marks the judge's session.

@@ -31,6 +31,7 @@ const (
 const (
 	recordsMismatchReason = "the drift records on disk differ from their newest committed copy; way forward: the parent runs lym drift amend <slug> --restore, then lym loom resume"
 	neverCountedReason    = "the baseline capture never counted, so there is no baseline to check against; way forward: the parent runs lym drift defer, then lym loom resume"
+	snapshotGoneReason    = "the snapshot of both checkouts the judge was spawned under went while its session was live, so what that session changed cannot be told; way forward: the parent or the operator checks both checkouts for the judge's edits, then runs lym loom resume, which takes a new snapshot and resumes the judge"
 )
 
 // DriftVerify is the Drift-Verify ShedProducer; the Drift-Recheck row runs the same engine.
@@ -54,7 +55,8 @@ func NewDriftVerify(name string, row Row, judgement shuttleengine.GateEntry, dep
 // Otherwise it first ends the live chairs of the removed drift-baseline and drift-verify agents, and then runs these steps in order, each ending the pass when it answers:
 // no scope record, scope off, a deferred capture, a waiver and a head already checked with no amendment since are Done;
 // a records mismatch, a capture that never counted and a baseline that is missing or edited are a Stuck for the run's parent;
-// an open judge session whose snapshot is gone or whose checkouts changed since is a Stuck, and one that is intact is resumed;
+// an open judge session whose checkouts changed since, or whose snapshot is gone under a live chair, is a Stuck;
+// one whose snapshot is gone with no live chair takes a new snapshot and is resumed, and so is one that is intact;
 // a failed current capture, a seal fault and any change the expectation does not cover are a Stuck;
 // a change whose exact old and new value has a stored ruling reuses it, and a stored ruling of does not match is a Stuck.
 // With no change left to judge the check passes; otherwise one judge rules on the rest, and its rulings are stored.
@@ -152,12 +154,15 @@ func (p *DriftVerify) pass(ctx context.Context) (shedengine.Outcome, shedengine.
 	}
 
 	if rec.Scope.JudgeSession.Open && !rec.Scope.SnapshotLost {
-		reason, err := p.judgeSessionChanged()
+		reason, err := p.settleOpenSession()
 		if err != nil {
 			return "", shedengine.OutputPointer{}, err
 		}
 		if reason != "" {
 			return haltForParent(reason)
+		}
+		if rec, err = ReadRecords(d); err != nil {
+			return "", shedengine.OutputPointer{}, err
 		}
 	}
 	if err := p.recordUnsealed(rec); err != nil {
@@ -179,7 +184,7 @@ func (p *DriftVerify) pass(ctx context.Context) (shedengine.Outcome, shedengine.
 	return p.checkAndJudge(ctx, rec, head)
 }
 
-// recordDiffMode records the config's diff mode and key patterns in a scope record that holds none, which keeps them for the run, and returns the records as written.
+// recordDiffMode records the config's diff mode, key patterns and volatile lists in a scope record that holds no mode, which keeps them for the run, and returns the records as written.
 func (p *DriftVerify) recordDiffMode() (Records, error) {
 	d := p.deps
 	cfg, err := d.Config()
@@ -187,7 +192,7 @@ func (p *DriftVerify) recordDiffMode() (Records, error) {
 		return Records{}, fmt.Errorf("drift: %s: load the drift config: %w", p.name, err)
 	}
 	err = WriteRecords(d, func(scope *ScopeRecord, _ *JudgedRecord) error {
-		scope.Diff, scope.KeyPatterns = cfg.Diff, cfg.KeyPatterns
+		scope.Diff, scope.KeyPatterns, scope.Volatile = cfg.Diff, cfg.KeyPatterns, cfg.Volatile
 		return nil
 	})
 	if err != nil {
@@ -372,7 +377,7 @@ func (p *DriftVerify) now() time.Time {
 }
 
 // judge spawns the judge on cells, which no stored ruling covers, and stores its rulings.
-// A fresh session removes a stale judgement.yaml, writes the request under a new spawn id, opens the session mark and takes the snapshot of both checkouts.
+// A fresh session removes a stale judgement.yaml, writes the request under a new spawn id, takes the snapshot of both checkouts and opens the session mark.
 // A session an earlier entry left open keeps its spawn id and its snapshot, and takes a new snapshot only when the records say the old one was lost.
 func (p *DriftVerify) judge(ctx context.Context, rec Records, report CheckReport, cells []ClassifiedCell, reused int, head string) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	mark := rec.Scope.JudgeSession
@@ -491,7 +496,8 @@ func amendmentsText(amendments []Amendment) string {
 	return text.String()
 }
 
-// openJudgeSession starts a judge session: it removes a stale judgement.yaml, writes the request, opens the session mark and takes the snapshot of both checkouts and of scratchDir.
+// openJudgeSession starts a judge session: it removes a stale judgement.yaml, writes the request, takes the snapshot of both checkouts and of scratchDir and opens the session mark.
+// The snapshot comes first, so an open mark always has one and a pass that dies between the two leaves no session to recover.
 func (p *DriftVerify) openJudgeSession(request JudgeRequest, scratchDir string) error {
 	d := p.deps
 	if err := p.removeJudgement(); err != nil {
@@ -500,18 +506,16 @@ func (p *DriftVerify) openJudgeSession(request JudgeRequest, scratchDir string) 
 	if err := WriteJudgeRequest(d.Paths, request); err != nil {
 		return err
 	}
-	err := WriteRecords(d, func(scope *ScopeRecord, _ *JudgedRecord) error {
+	if _, err := TakeJudgeSnapshot(d, scratchDir); err != nil {
+		return err
+	}
+	return WriteRecords(d, func(scope *ScopeRecord, _ *JudgedRecord) error {
 		scope.JudgeSession = SessionMark{Open: true, OpenedAt: stamp(p.now()), SpawnID: request.SpawnID}
 		return nil
 	})
-	if err != nil {
-		return err
-	}
-	_, err = TakeJudgeSnapshot(d, scratchDir)
-	return err
 }
 
-// resumeJudgeSession rewrites the request of a session an earlier entry left open and, when the records say its snapshot was lost, takes a new one and clears that mark.
+// resumeJudgeSession rewrites the request of a session an earlier entry left open and, when the records say its snapshot was lost, clears that mark and then takes a new one, so the snapshot holds the write that cleared it.
 func (p *DriftVerify) resumeJudgeSession(rec Records, request JudgeRequest, scratchDir string) error {
 	d := p.deps
 	if err := WriteJudgeRequest(d.Paths, request); err != nil {
@@ -520,13 +524,15 @@ func (p *DriftVerify) resumeJudgeSession(rec Records, request JudgeRequest, scra
 	if !rec.Scope.SnapshotLost {
 		return nil
 	}
-	if _, err := TakeJudgeSnapshot(d, scratchDir); err != nil {
-		return err
-	}
-	return WriteRecords(d, func(scope *ScopeRecord, _ *JudgedRecord) error {
+	err := WriteRecords(d, func(scope *ScopeRecord, _ *JudgedRecord) error {
 		scope.SnapshotLost = false
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	_, err = TakeJudgeSnapshot(d, scratchDir)
+	return err
 }
 
 // removeJudgement removes judgement.yaml, which is no record, and is content with it already gone.
@@ -537,25 +543,60 @@ func (p *DriftVerify) removeJudgement() error {
 	return nil
 }
 
-// judgeSessionChanged returns why the checkouts no longer match the snapshot the judge was spawned under, and empty when they match.
-// A snapshot that is gone is recorded as lost first, so the parent's resume takes a new one.
-// The reason names each change, the directory the snapshot's copies are in and the way to restore.
-func (p *DriftVerify) judgeSessionChanged() (string, error) {
+// settleOpenSession returns why a session an earlier entry left open may not go on, and empty when it may.
+// A snapshot that is gone guards nothing once no chair is live, so it is recorded as lost and the pass goes on to take a new one;
+// under a live chair what that session changes cannot be told, which is the Stuck snapshotGoneReason words.
+func (p *DriftVerify) settleOpenSession() (string, error) {
 	d := p.deps
 	snapshot, found, err := ReadJudgeSnapshot(d)
 	if err != nil {
 		return "", err
 	}
-	if !found {
-		err := WriteRecords(d, func(scope *ScopeRecord, _ *JudgedRecord) error {
-			scope.SnapshotLost = true
-			return nil
-		})
-		if err != nil {
-			return "", err
-		}
-		return "the snapshot of both checkouts the judge was spawned under is gone, so what its session changed cannot be told; way forward: the parent or the operator checks both checkouts for the judge's edits, then runs lym loom resume, which takes a new snapshot and resumes the judge", nil
+	if found {
+		return p.changedSince(snapshot)
 	}
+	table, err := p.tableFor()
+	if err != nil {
+		return "", err
+	}
+	live, err := d.Seats.Probe(table)
+	if err != nil {
+		return "", fmt.Errorf("drift: %s: probe the judge's chair: %w", p.name, err)
+	}
+	if err := p.recordSnapshotLost(); err != nil {
+		return "", err
+	}
+	if live.Chair != nil {
+		return snapshotGoneReason, nil
+	}
+	return "", nil
+}
+
+// judgeSessionChanged returns why the checkouts no longer match the snapshot the judge that just ended was spawned under, and empty when they match.
+// A snapshot that went while that judge ran is recorded as lost, so the parent's resume takes a new one.
+func (p *DriftVerify) judgeSessionChanged() (string, error) {
+	snapshot, found, err := ReadJudgeSnapshot(p.deps)
+	if err != nil {
+		return "", err
+	}
+	if !found {
+		return snapshotGoneReason, p.recordSnapshotLost()
+	}
+	return p.changedSince(snapshot)
+}
+
+// recordSnapshotLost marks the session's snapshot lost, so the next judge step takes a new one.
+func (p *DriftVerify) recordSnapshotLost() error {
+	return WriteRecords(p.deps, func(scope *ScopeRecord, _ *JudgedRecord) error {
+		scope.SnapshotLost = true
+		return nil
+	})
+}
+
+// changedSince returns why the checkouts no longer match snapshot, and empty when they match.
+// The reason names each change, the directory the snapshot's copies are in and the way to restore, which keeps that directory, since the resume compares against it.
+func (p *DriftVerify) changedSince(snapshot JudgeSnapshot) (string, error) {
+	d := p.deps
 	changes, err := snapshot.Changes(d)
 	if err != nil {
 		return "", err
@@ -563,7 +604,11 @@ func (p *DriftVerify) judgeSessionChanged() (string, error) {
 	if len(changes) == 0 {
 		return "", nil
 	}
-	return fmt.Sprintf("the judge session changed what it may not: %s; the snapshot taken before it ran, with a copy of each untracked file, is in %s; way forward: the parent or the operator resets a moved branch to its snapshot HEAD, restores a changed tracked file from its HEAD and an untracked path from the snapshot's copy, deletes an added path and the changed scratch directory, then runs lym loom resume", strings.Join(changes, "; "), d.JudgeSnapshotDir), nil
+	deletes := "an added path"
+	if snapshot.ScratchDir != "" {
+		deletes += " and the current capture's scratch directory " + snapshot.ScratchDir
+	}
+	return fmt.Sprintf("the judge session changed what it may not: %s; the snapshot taken before it ran, with a copy of each untracked file, is in %s; way forward: the parent or the operator resets a moved branch to its snapshot HEAD, restores a changed tracked file from its HEAD and an untracked path from the snapshot's copy, deletes %s, keeps the snapshot directory, which the resume compares against, then runs lym loom resume", strings.Join(changes, "; "), d.JudgeSnapshotDir, deletes), nil
 }
 
 // tableFor builds the judge's table over the request file, gated by the row's judgement entry.

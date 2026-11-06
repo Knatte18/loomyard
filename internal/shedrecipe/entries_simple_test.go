@@ -283,6 +283,20 @@ func TestSimpleEntries_HappyPath(t *testing.T) {
 		}
 	})
 
+	// The Preflight row hands Env.PreflightDrift to its producer, so a failing check halts the row.
+	t.Run("Preflight forwards the drift check", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.PreflightDrift = func() error { return errors.New("the capture holds a retired placeholder") }
+		producer, err := preflightEntry(RowIdentity{Name: "Preflight"}, Config{}, env)
+		if err != nil {
+			t.Fatalf("preflightEntry() error = %v; want nil", err)
+		}
+		outcome, pointer, err := producer.Call(context.Background())
+		if err != nil || outcome != shedengine.Stuck || !strings.Contains(pointer.Reason, "drift config check failed: the capture holds a retired placeholder") {
+			t.Errorf("Call() = %q, %q, %v; want stuck with the drift reason, nil", outcome, pointer.Reason, err)
+		}
+	})
+
 	// The landing rows run the gate key their config or row name picks, read from the producer's told Deps.
 	landingRows := []struct {
 		name    string

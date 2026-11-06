@@ -150,9 +150,9 @@ func TestPreflight_BatcherCheck(t *testing.T) {
 	}
 }
 
-// TestPreflight_StencilsCheck covers the optional stencils check of NewPreflightWithChecks over a temporary non-repository cwd.
-// A failing check is Stuck with the stencils reason followed by the error's own text, and is logged with the row's name and the error.
-// A failing batcher check runs first and wins over a failing stencils check.
+// TestPreflight_StencilsCheck covers the optional stencils and drift checks of NewPreflightWithChecks over a temporary non-repository cwd.
+// A failing check is Stuck with its reason followed by the error's own text, and is logged with the row's name and the error.
+// A failing batcher check runs first and wins over a failing stencils check, which wins over a failing drift check.
 // A check that cancels the context before failing yields the cancellation error and no verdict.
 // A passing check never yields the stencils reason.
 // It does not call t.Parallel, because logcapture.Capture redirects the process-global logger output.
@@ -160,6 +160,7 @@ func TestPreflight_StencilsCheck(t *testing.T) {
 	tiergate.Require(t, 0)
 	stencilsErr := errors.New("stencil darn-template-write has marker(s) subagent_model that no value fills")
 	batcherErr := errors.New("unknown batchifier bogus")
+	driftErr := errors.New("drift: the drift capture command holds {skip_file}")
 	failWith := func(err error) func() error { return func() error { return err } }
 
 	tests := []struct {
@@ -184,6 +185,20 @@ func TestPreflight_StencilsCheck(t *testing.T) {
 			},
 			failure:    batcherErr,
 			wantReason: batchifierReasonPrefix + batcherErr.Error() + batchifierWayForward,
+		},
+		{
+			name:       "FailingDriftCheckIsStuckWithTheDriftReason",
+			checks:     func(context.CancelFunc) Checks { return Checks{Drift: failWith(driftErr)} },
+			failure:    driftErr,
+			wantReason: driftReasonPrefix + driftErr.Error(),
+		},
+		{
+			name: "FailingStencilsCheckWinsOverTheDriftCheck",
+			checks: func(context.CancelFunc) Checks {
+				return Checks{Stencils: failWith(stencilsErr), Drift: failWith(driftErr)}
+			},
+			failure:    stencilsErr,
+			wantReason: stencilsReasonPrefix + stencilsErr.Error(),
 		},
 		{
 			name: "CancelledContextWinsOverTheFailure",

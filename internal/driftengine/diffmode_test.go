@@ -71,6 +71,76 @@ func TestMigrateConfig(t *testing.T) {
 	}
 }
 
+// TestMigrateConfig_SkipFileArgument pins that each form of an argument handing {skip_file} to a variable leaves both commands whole, and that any other use of the placeholder stays.
+func TestMigrateConfig_SkipFileArgument(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		command string
+		want    string
+	}{
+		{"BetweenOtherArguments", "run --rm -e NORCE_BASELINE_SKIP_FILE={skip_file} -v {baseline_dir}:/out img", "run --rm -v {baseline_dir}:/out img"},
+		{"AtTheEnd", "run {baseline_dir} -e A={skip_file}", "run {baseline_dir}"},
+		{"TwoSideBySide", "run -e A={skip_file} -e B={skip_file} {baseline_dir}", "run {baseline_dir}"},
+		{"TheLongFlag", "run --env A={skip_file} {baseline_dir}", "run {baseline_dir}"},
+		{"TheLongFlagWithAnEqualsSign", "run --env=A={skip_file} {baseline_dir}", "run {baseline_dir}"},
+		{"AQuotedAssignment", `run -e "A={skip_file}" {baseline_dir}`, "run {baseline_dir}"},
+		{"AnotherVariableStays", "run -e KEEP=1 -e A={skip_file} {baseline_dir}", "run -e KEEP=1 {baseline_dir}"},
+		{"ABackslashContinuedCommandKeepsItsContinuations", "run \\\n  -e A={skip_file} \\\n  -v {baseline_dir}:/out img", "run \\\n  \\\n  -v {baseline_dir}:/out img"},
+		{"AnEnclosingSingleQuotedShellStringStaysWhole", "sh -c 'docker run -e A={skip_file}'", "sh -c 'docker run -e A={skip_file}'"},
+		{"AnEnclosingDoubleQuotedShellStringStaysWhole", `sh -c "docker run -e A={skip_file}"`, `sh -c "docker run -e A={skip_file}"`},
+		{"AnArgumentInsideAQuotedShellStringIsRemoved", "sh -c 'docker run -e A={skip_file} img'", "sh -c 'docker run img'"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			step := map[string]any{"command": tt.command, "timeout_min": 1}
+			existing, err := yaml.Marshal(map[string]any{"capture": step, "compare": step})
+			if err != nil {
+				t.Fatalf("yaml.Marshal() = %v; want nil", err)
+			}
+
+			got, lines, err := MigrateConfig(existing)
+			if err != nil {
+				t.Fatalf("MigrateConfig error = %v", err)
+			}
+
+			var decoded struct {
+				Capture stepFile `yaml:"capture"`
+				Compare stepFile `yaml:"compare"`
+			}
+			if err := yaml.Unmarshal(got, &decoded); err != nil {
+				t.Fatalf("migrated document does not parse: %v", err)
+			}
+			if decoded.Capture.Command != tt.want || decoded.Compare.Command != tt.want {
+				t.Errorf("commands = %q and %q; want both %q", decoded.Capture.Command, decoded.Compare.Command, tt.want)
+			}
+			if tt.want == tt.command {
+				if len(lines) != 0 {
+					t.Errorf("MigrateConfig lines = %v; want none for a command left whole", lines)
+				}
+				return
+			}
+			if len(lines) != 2 || !strings.HasPrefix(lines[0], "capture.command") || !strings.HasPrefix(lines[1], "compare.command") {
+				t.Errorf("MigrateConfig lines = %v; want one naming each command", lines)
+			}
+		})
+	}
+
+	for _, command := range []string{"cat {skip_file} > {baseline_dir}/out", "run -e A=x{skip_file} {baseline_dir}", "run {baseline_dir}"} {
+		t.Run("LeftAlone_"+command, func(t *testing.T) {
+			t.Parallel()
+			existing := "capture:\n  command: '" + command + "'\n  timeout_min: 1\n"
+			got, lines, err := MigrateConfig([]byte(existing))
+			if err != nil || string(got) != existing || len(lines) != 0 {
+				t.Errorf("MigrateConfig() = %q, %v, %v; want the document unchanged with no line", got, lines, err)
+			}
+		})
+	}
+}
+
 // TestFlagDiffMode pins each flag, a base that needs none, and that the document is never rewritten.
 func TestFlagDiffMode(t *testing.T) {
 	tiergate.Require(t, 0)

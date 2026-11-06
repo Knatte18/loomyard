@@ -128,6 +128,7 @@ func judgeSnapshotLock(d Deps) string {
 // TakeJudgeSnapshot records the state of both checkouts and of scratchDir under Deps.JudgeSnapshotDir, replacing an earlier snapshot.
 // The record holds each checkout's HEAD, a content hash of every changed tracked path and of every untracked path, and the path and hash of every file under scratchDir;
 // a copy of each untracked file lies beside the record.
+// Only the copies are cleared first: the earlier record stays until one atomic write replaces it, so a reader never finds the snapshot gone while one is taken.
 func TakeJudgeSnapshot(d Deps, scratchDir string) (JudgeSnapshot, error) {
 	err := requireSeams("the judge snapshot",
 		seam{"Checkouts", d.Checkouts != nil},
@@ -140,11 +141,11 @@ func TakeJudgeSnapshot(d Deps, scratchDir string) (JudgeSnapshot, error) {
 	if err != nil {
 		return JudgeSnapshot{}, fmt.Errorf("drift: read both checkouts for the judge snapshot: %w", err)
 	}
-	if err := os.RemoveAll(d.JudgeSnapshotDir); err != nil {
-		return JudgeSnapshot{}, fmt.Errorf("drift: clear the judge snapshot directory %s: %w", d.JudgeSnapshotDir, err)
+	copies := filepath.Join(d.JudgeSnapshotDir, judgeSnapshotUntrackedDir)
+	if err := os.RemoveAll(copies); err != nil {
+		return JudgeSnapshot{}, fmt.Errorf("drift: clear the judge snapshot's copies %s: %w", copies, err)
 	}
 
-	copies := filepath.Join(d.JudgeSnapshotDir, judgeSnapshotUntrackedDir)
 	snapshot := JudgeSnapshot{ScratchDir: scratchDir}
 	if snapshot.Code, err = snapshotCheckout(code, filepath.Join(copies, "code")); err != nil {
 		return JudgeSnapshot{}, err
@@ -179,13 +180,16 @@ func ReadJudgeSnapshot(d Deps) (JudgeSnapshot, bool, error) {
 
 // Changes compares both checkouts and the scratch directory with the snapshot and names each change the judge session made, sorted within each part.
 // It names a moved code HEAD, and each changed, added or deleted tracked or untracked path of either checkout outside the exempt ones, and each changed, added or deleted scratch file; a scratch directory that is gone is left out.
-// The exempt paths are judgement.yaml, which the judge writes, its timestamped siblings, which keep an earlier judge's file when the next judge starts, and, on the records checkout, every path under a Deps.LoomRecordsDirs directory or starting with one of its prefixes, which loom writes itself during a row.
+// The exempt paths are judgement.yaml, which the judge writes, its timestamped siblings, which keep an earlier judge's file when the next judge starts, and, on the records checkout, what lym writes itself around a session:
+// every path under a Deps.LoomRecordsDirs directory or starting with one of its prefixes, the drift logs, and scope.json and judged.json while both hold what their newest Drift-Records commit wrote, so a hand edit of either is still a change.
 // A path is judged by content: one the snapshot recorded is a change only when its content now differs from the recorded one, so a later commit of content that was already there, and a deletion that was already uncommitted and is still absent, are no change.
 // A moved records HEAD is a change only through the paths Deps.RecordsChangedSince names since the snapshot's head, minus the exempt and the unchanged.
 func (s JudgeSnapshot) Changes(d Deps) ([]string, error) {
 	err := requireSeams("the judge snapshot",
 		seam{"Checkouts", d.Checkouts != nil},
 		seam{"RecordsChangedSince", d.RecordsChangedSince != nil},
+		seam{"TrailerCommit", d.TrailerCommit != nil},
+		seam{"FileAt", d.FileAt != nil},
 	)
 	if err != nil {
 		return nil, err
@@ -194,11 +198,14 @@ func (s JudgeSnapshot) Changes(d Deps) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("drift: read both checkouts for the judge snapshot: %w", err)
 	}
-	judgementRel, err := filepath.Rel(d.WorktreeRoot, d.Paths.Judgement)
+	judgementRel, err := worktreeRel(d, d.Paths.Judgement)
 	if err != nil {
-		return nil, fmt.Errorf("drift: relate the judgement file to the worktree: %w", err)
+		return nil, err
 	}
-	judgementRel = filepath.ToSlash(judgementRel)
+	lymWritten, err := lymWrittenRecords(d)
+	if err != nil {
+		return nil, err
+	}
 
 	var changes []string
 	if code.Head != s.Code.Head {
@@ -217,7 +224,7 @@ func (s JudgeSnapshot) Changes(d Deps) ([]string, error) {
 		}
 	}
 	recordsExempt := func(rel string) bool {
-		return isJudgementPath(judgementRel, rel) || isLoomRecordsPath(d.LoomRecordsDirs, rel)
+		return isJudgementPath(judgementRel, rel) || isLoomRecordsPath(lymWritten, rel)
 	}
 	recordsChanges, err := checkoutChanges("records", s.Records, records, committed, recordsExempt)
 	if err != nil {
@@ -230,6 +237,41 @@ func (s JudgeSnapshot) Changes(d Deps) ([]string, error) {
 		return nil, err
 	}
 	return append(changes, scratchChanges...), nil
+}
+
+// worktreeRel returns path relative to the worktree root, slash-separated, the form a checkout's listed paths take.
+func worktreeRel(d Deps, path string) (string, error) {
+	rel, err := filepath.Rel(d.WorktreeRoot, path)
+	if err != nil {
+		return "", fmt.Errorf("drift: relate %s to the worktree: %w", path, err)
+	}
+	return filepath.ToSlash(rel), nil
+}
+
+// lymWrittenRecords returns the records paths lym writes itself around a judge session, in the form of Deps.LoomRecordsDirs: those entries, the drift logs and, while both match their newest Drift-Records commit, the two guarded records.
+// Every lym write of a guarded record lands in such a commit, so a guarded record that differs from it is no write of lym's and is left out.
+func lymWrittenRecords(d Deps) ([]string, error) {
+	logs, err := worktreeRel(d, d.Paths.LogsDir)
+	if err != nil {
+		return nil, err
+	}
+	written := append(slices.Clone(d.LoomRecordsDirs), logs)
+
+	records, err := ReadRecords(d)
+	if err != nil {
+		return nil, err
+	}
+	if !records.Committed || records.Mismatch {
+		return written, nil
+	}
+	for _, guarded := range []string{d.Paths.Scope, d.Paths.Judged} {
+		rel, err := worktreeRel(d, guarded)
+		if err != nil {
+			return nil, err
+		}
+		written = append(written, rel)
+	}
+	return written, nil
 }
 
 // isJudgementPath reports whether rel is the judgement file at judgementRel or a timestamped sibling of it, in the same directory with the same extension.

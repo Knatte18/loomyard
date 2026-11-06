@@ -59,16 +59,25 @@ func RebaseDirsOntoRoot(existing []byte, worktreeRoot, anchorDir string) (rewrit
 		return existing, nil, flagged, nil
 	}
 
+	encoded, err := encodeDocument(&document, "rebase drift dirs")
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return encoded, rewrote, flagged, nil
+}
+
+// encodeDocument renders a rewritten drift.yaml document, and an encoder failure as an error marked configengine.ErrInvalid that opens with action.
+func encodeDocument(document *yaml.Node, action string) ([]byte, error) {
 	var out bytes.Buffer
 	encoder := yaml.NewEncoder(&out)
 	encoder.SetIndent(2)
-	if err := encoder.Encode(&document); err != nil {
-		return nil, nil, nil, configengine.MarkInvalid(fmt.Errorf("rebase drift dirs: encode yaml: %w", err))
+	if err := encoder.Encode(document); err != nil {
+		return nil, configengine.MarkInvalid(fmt.Errorf("%s: encode yaml: %w", action, err))
 	}
 	if err := encoder.Close(); err != nil {
-		return nil, nil, nil, configengine.MarkInvalid(fmt.Errorf("rebase drift dirs: encode yaml: %w", err))
+		return nil, configengine.MarkInvalid(fmt.Errorf("%s: encode yaml: %w", action, err))
 	}
-	return out.Bytes(), rewrote, flagged, nil
+	return out.Bytes(), nil
 }
 
 // scalarAt returns the scalar node at the key path under mapping, or nil when a key is absent, a node on the way is no mapping or the leaf is no scalar.

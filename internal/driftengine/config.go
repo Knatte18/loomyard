@@ -8,6 +8,7 @@ package driftengine
 import (
 	_ "embed"
 	"fmt"
+	"path"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
@@ -74,6 +75,8 @@ type Config struct {
 	Diff string
 	// KeyPatterns are the regular expressions, tried in order, that key a captured line; each holds the named groups `key` and `value`.
 	KeyPatterns []string
+	// Volatile is what the diff ignores under DiffLines, from the keys `volatile_files` and `volatile_keys`.
+	Volatile Volatile
 	// ExpectModel is the model-spec of the expect agent.
 	ExpectModel string
 	// JudgeModel is the model-spec of the judge.
@@ -94,6 +97,8 @@ type configFile struct {
 	Compare          stepFile `yaml:"compare"`
 	Diff             string   `yaml:"diff"`
 	KeyPatterns      []string `yaml:"key_patterns"`
+	VolatileFiles    []string `yaml:"volatile_files"`
+	VolatileKeys     []string `yaml:"volatile_keys"`
 	ExpectModel      string   `yaml:"expect_model"`
 	JudgeModel       string   `yaml:"judge_model"`
 	JudgeInteractive bool     `yaml:"judge_interactive"`
@@ -115,7 +120,7 @@ func ConfigOpenMaps() []string {
 
 // ConfigSpec returns drift's layered-load spec.
 // capture and compare run commands, so they are executable keys and closed to the local layer.
-// diff and key_patterns decide what counts as drift, so they are guard keys, and a task's run settings are refused them with the hub's drift.yaml as the way forward.
+// diff, key_patterns, volatile_files and volatile_keys decide what counts as drift, so they are guard keys, and a task's run settings are refused them with the hub's drift.yaml as the way forward.
 // Both steps carry the shape their decode gives them, so `--set` writes a step whole, such as `capture={command: ..., timeout_min: 30}`, or reaches one key inside it, such as `capture.env.NAME`, and refuses a key a step lacks.
 // skip and verify_max_runs are retired keys: a task's run settings that still carry one seed, the load drops it, and a reconcile prunes it from a hub base.
 func ConfigSpec() configengine.Spec {
@@ -134,6 +139,8 @@ func ConfigSpec() configengine.Spec {
 			stepCompare:         configengine.CategoryExecutable,
 			"diff":              configengine.CategoryGuard,
 			"key_patterns":      configengine.CategoryGuard,
+			"volatile_files":    configengine.CategoryGuard,
+			"volatile_keys":     configengine.CategoryGuard,
 			"expect_model":      configengine.CategoryNone,
 			"judge_model":       configengine.CategoryNone,
 			"judge_interactive": configengine.CategoryNone,
@@ -144,8 +151,10 @@ func ConfigSpec() configengine.Spec {
 			"skip":            configengine.CategoryNone,
 		},
 		HubOnlyWayForward: map[string]string{
-			"diff":         hubOnlyWayForward,
-			"key_patterns": hubOnlyWayForward,
+			"diff":           hubOnlyWayForward,
+			"key_patterns":   hubOnlyWayForward,
+			"volatile_files": hubOnlyWayForward,
+			"volatile_keys":  hubOnlyWayForward,
 		},
 	}
 }
@@ -155,6 +164,7 @@ func ConfigSpec() configengine.Spec {
 // an all-empty step is undeclared and loads as the zero CommandStep.
 // A scope must be empty, off, partial or full; a stored partial reads as full and sets ScopeWasPartial.
 // A diff must be lines or command, every key_patterns entry must compile with the named groups key and value, and diff command needs a declared compare.
+// Every volatile_files entry must be a valid glob and no volatile_files or volatile_keys entry may be blank.
 // Every refusal names the key and lym config drift as the way forward.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.Load(dirs, ConfigSpec())
@@ -187,6 +197,9 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	if file.Diff == DiffCommand && compare.Command == "" {
 		return Config{}, refuseKey(stepCompare, "not declared under diff: command; want the command that compares a capture with the baseline")
 	}
+	if err := checkVolatile(file.VolatileFiles, file.VolatileKeys); err != nil {
+		return Config{}, err
+	}
 	for key, spec := range map[string]string{"expect_model": file.ExpectModel, "judge_model": file.JudgeModel} {
 		if _, err := modelspec.Parse(spec); err != nil {
 			return Config{}, refuseKey(key, err.Error())
@@ -207,6 +220,7 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 		Compare:          compare,
 		Diff:             file.Diff,
 		KeyPatterns:      file.KeyPatterns,
+		Volatile:         Volatile{Files: file.VolatileFiles, Keys: file.VolatileKeys},
 		ExpectModel:      file.ExpectModel,
 		JudgeModel:       file.JudgeModel,
 		JudgeInteractive: file.JudgeInteractive,
@@ -216,6 +230,24 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 // refuseKey builds the refusal of a drift config key, naming the key and its way forward.
 func refuseKey(key, want string) error {
 	return fmt.Errorf("drift config key %q: %s; way forward: fix it with lym config drift", key, want)
+}
+
+// checkVolatile refuses a blank entry of either list and a file pattern that is no valid glob.
+func checkVolatile(files, keys []string) error {
+	for _, pattern := range files {
+		if strings.TrimSpace(pattern) == "" {
+			return refuseKey("volatile_files", "holds a blank entry; want a file name or a glob")
+		}
+		if _, err := path.Match(pattern, ""); err != nil {
+			return refuseKey("volatile_files", fmt.Sprintf("%q: %v; want a file name or a glob", pattern, err))
+		}
+	}
+	for _, key := range keys {
+		if strings.TrimSpace(key) == "" {
+			return refuseKey("volatile_keys", "holds a blank entry; want a key the key_patterns read")
+		}
+	}
+	return nil
 }
 
 // checkScope refuses a scope other than empty, off, partial or full.
@@ -269,6 +301,26 @@ func CheckDirs(dirs configengine.Dirs, worktreeRoot, anchorDir string) error {
 		}
 	}
 	return nil
+}
+
+// CheckRetiredPlaceholders loads the drift config under dirs and, while drift is enabled, refuses a step a run executes that still holds the retired {skip_file} placeholder, with the refusal the step itself would meet.
+// Preflight runs it, so a leftover the reconcile could not remove stops a run before its first agent and not at a Drift row.
+// The compare runs only under diff command, so under diff lines its command is left alone.
+func CheckRetiredPlaceholders(dirs configengine.Dirs) error {
+	cfg, err := LoadConfig(dirs)
+	if err != nil {
+		return err
+	}
+	if !cfg.Enabled {
+		return nil
+	}
+	if err := refuseSkipFilePlaceholder(siteCapture, stepCapture, cfg.Capture.Command); err != nil {
+		return err
+	}
+	if cfg.Diff != DiffCommand {
+		return nil
+	}
+	return refuseSkipFilePlaceholder(siteCompare, stepCompare, cfg.Compare.Command)
 }
 
 // Step returns the declared capture or compare step.

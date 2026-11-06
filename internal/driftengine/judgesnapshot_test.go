@@ -52,6 +52,10 @@ func newJudgeFixture(t *testing.T) *judgeFixture {
 			f.sinceRevs = append(f.sinceRevs, rev)
 			return f.recordsChanged, nil
 		},
+		TrailerCommit: func(string, bool) (fabricengine.TrailerCommit, bool, error) {
+			return fabricengine.TrailerCommit{}, false, nil
+		},
+		FileAt: func(string, string) ([]byte, bool, error) { return nil, false, nil },
 	}
 	return f
 }
@@ -200,6 +204,24 @@ func TestJudgeSnapshot(t *testing.T) {
 				"records: _lym/drift/old/judgement-20261106T083132Z.yaml was added",
 				"records: _lym/drift/other-20261106T083132Z.yaml was added",
 			},
+		},
+		{
+			"DriftLogIsNoChange",
+			func(*testing.T, *judgeFixture) {},
+			func(t *testing.T, f *judgeFixture) {
+				writeTestFile(t, f.records.Root, "_lym/drift/logs/compare-1.log", "exit 1")
+				f.records.Untracked = []string{"_lym/drift/logs/compare-1.log"}
+			},
+			nil,
+		},
+		{
+			"GuardedRecordNoRecordsCommitWroteIsNamed",
+			func(*testing.T, *judgeFixture) {},
+			func(t *testing.T, f *judgeFixture) {
+				writeTestFile(t, f.records.Root, "_lym/drift/scope.json", "{}")
+				f.records.Changed = []string{"_lym/drift/scope.json"}
+			},
+			[]string{"records: _lym/drift/scope.json was changed"},
 		},
 		{
 			"StatusCommitIsNoChange",
@@ -353,6 +375,49 @@ func TestJudgeSnapshot(t *testing.T) {
 		}
 		if _, found, err := ReadJudgeSnapshot(f.deps); err != nil || found {
 			t.Errorf("ReadJudgeSnapshot() after the directory is gone = _, %v, %v; want found false", found, err)
+		}
+	})
+
+	t.Run("a new snapshot replaces the record and its copies", func(t *testing.T) {
+		t.Parallel()
+		f := newJudgeFixture(t)
+		writeTestFile(t, f.code.Root, "old.txt", "old")
+		f.code.Untracked = []string{"old.txt"}
+		if _, err := TakeJudgeSnapshot(f.deps, f.scratch); err != nil {
+			t.Fatalf("TakeJudgeSnapshot() = _, %v; want nil error", err)
+		}
+
+		f.code.Untracked = nil
+		if _, err := TakeJudgeSnapshot(f.deps, f.scratch); err != nil {
+			t.Fatalf("second TakeJudgeSnapshot() = _, %v; want nil error", err)
+		}
+
+		snapshot, found, err := ReadJudgeSnapshot(f.deps)
+		if err != nil || !found || len(snapshot.Code.Untracked) != 0 {
+			t.Errorf("ReadJudgeSnapshot() = %+v, %v, %v; want the new snapshot with no untracked path", snapshot, found, err)
+		}
+		if _, err := os.Stat(filepath.Join(f.deps.JudgeSnapshotDir, "untracked", "code", "old.txt")); !os.IsNotExist(err) {
+			t.Errorf("stat of the earlier copy = %v; want it gone", err)
+		}
+	})
+
+	t.Run("a snapshot that fails partway leaves the earlier record readable", func(t *testing.T) {
+		t.Parallel()
+		f := newJudgeFixture(t)
+		if _, err := TakeJudgeSnapshot(f.deps, f.scratch); err != nil {
+			t.Fatalf("TakeJudgeSnapshot() = _, %v; want nil error", err)
+		}
+
+		if err := os.Mkdir(filepath.Join(f.code.Root, "unreadable"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		f.code.Untracked = []string{"unreadable"}
+		if _, err := TakeJudgeSnapshot(f.deps, f.scratch); err == nil {
+			t.Fatal("TakeJudgeSnapshot() over a path that is no file = _, nil; want an error")
+		}
+
+		if _, found, err := ReadJudgeSnapshot(f.deps); err != nil || !found {
+			t.Errorf("ReadJudgeSnapshot() = _, %v, %v; want the earlier snapshot still found", found, err)
 		}
 	})
 }

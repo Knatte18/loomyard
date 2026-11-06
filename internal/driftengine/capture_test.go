@@ -284,7 +284,7 @@ func TestCaptureCurrent(t *testing.T) {
 		{
 			name:       "a command holding the retired skip file placeholder is a refusal naming the edit",
 			command:    "cat {skip_file}",
-			wantReason: []string{"the drift current capture command holds {skip_file}, which drift no longer renders", "remove it from capture in the hub's drift.yaml with lym config drift --set from the prime"},
+			wantReason: []string{"the drift current capture command holds {skip_file}, which drift no longer renders", "the operator or the hub orch runs lym config reconcile --layer default --apply from the hub's prime worktree", "any other use of it from capture"},
 		},
 	}
 	for _, tt := range failures {
@@ -613,7 +613,7 @@ func TestRunCapture(t *testing.T) {
 		}
 
 		rec, err := RunCapture(context.Background(), f.req)
-		for _, want := range []string{"the drift capture command holds {skip_file}, which drift no longer renders", "remove it from capture in the hub's drift.yaml with lym config drift --set from the prime"} {
+		for _, want := range []string{"the drift capture command holds {skip_file}, which drift no longer renders", "the operator or the hub orch runs lym config reconcile --layer default --apply from the hub's prime worktree", "any other use of it from capture"} {
 			if err == nil || !strings.Contains(err.Error(), want) {
 				t.Errorf("RunCapture() = %v; want an error naming %q", err, want)
 			}

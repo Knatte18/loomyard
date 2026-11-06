@@ -66,6 +66,8 @@ type Checks struct {
 	Batcher func() error
 	// Stencils composes the recipe's seat tables and refuses a stencil marker no value fills, or a table that cannot be built; its failure is Stuck with the stencils reason and the way forward its error carries.
 	Stencils func() error
+	// Drift loads drift.yaml and refuses a command a run would be refused at a Drift row; its failure is Stuck with the drift reason and the way forward its error carries.
+	Drift func() error
 }
 
 // preflightProducer is the general Preflight producer: it wraps preflight.Check, mapping its
@@ -91,6 +93,9 @@ const retiredKeyWayForward = ", then re-step"
 // stencilsReasonPrefix leads the Stuck reason of a failed stencils check; the error text, which carries its own way forward, follows.
 const stencilsReasonPrefix = "seat stencils check failed: "
 
+// driftReasonPrefix leads the Stuck reason of a failed drift check; the error text, which carries its own way forward, follows.
+const driftReasonPrefix = "drift config check failed: "
+
 // NewPreflight returns a shedengine.ShedProducer that validates cwd via preflight.Check.
 //
 // name is told rather than hardcoded because a second product names this row independently.
@@ -101,7 +106,7 @@ func NewPreflight(name, cwd string) shedengine.ShedProducer {
 }
 
 // NewPreflightWithChecks returns the Preflight producer with the optional checks.
-// They run after the hub reconcile and before preflight.Check, so a broken batcher.yaml or a stencil the running binary cannot fill stops the run before any agent spends tokens.
+// They run after the hub reconcile and before preflight.Check, so a broken batcher.yaml, a stencil the running binary cannot fill or a drift command a Drift row would refuse stops the run before any agent spends tokens.
 func NewPreflightWithChecks(name, cwd string, checks Checks) shedengine.ShedProducer {
 	return &preflightProducer{name: name, cwd: cwd, checks: checks}
 }
@@ -136,18 +141,30 @@ func (p *preflightProducer) batcherFailure(ctx context.Context) (string, error) 
 // stencilsFailure runs the told stencils check and returns the Stuck reason for its failure, or "" when it passed or none is told.
 // A cancelled context wins over the failure and comes back as the error.
 func (p *preflightProducer) stencilsFailure(ctx context.Context) (string, error) {
-	if p.checks.Stencils == nil {
+	return p.prefixedFailure(ctx, p.checks.Stencils, stencilsReasonPrefix)
+}
+
+// driftFailure runs the told drift check and returns the Stuck reason for its failure, or "" when it passed or none is told.
+// A cancelled context wins over the failure and comes back as the error.
+func (p *preflightProducer) driftFailure(ctx context.Context) (string, error) {
+	return p.prefixedFailure(ctx, p.checks.Drift, driftReasonPrefix)
+}
+
+// prefixedFailure runs check, when told, and returns prefix and its error's text, which carries its own way forward, logging the failure; it returns "" when the check passed.
+// A cancelled context wins over the failure and comes back as the error.
+func (p *preflightProducer) prefixedFailure(ctx context.Context, check func() error, prefix string) (string, error) {
+	if check == nil {
 		return "", nil
 	}
-	serr := p.checks.Stencils()
-	if serr == nil {
+	failure := check()
+	if failure == nil {
 		return "", nil
 	}
 	if cerr := cancelErr(ctx, p.name); cerr != nil {
 		return "", cerr
 	}
-	logger.Warn("preflightshed: seat stencils check failed", "producer", p.name, "cwd", p.cwd, "cause", serr)
-	return stencilsReasonPrefix + serr.Error(), nil
+	logger.Warn("preflightshed: a check failed", "producer", p.name, "cwd", p.cwd, "check", strings.TrimSuffix(prefix, ": "), "cause", failure)
+	return prefix + failure.Error(), nil
 }
 
 // reconcileHub reconciles the hub's config when the build stamp is stale, and does nothing for a repository outside a hub.
@@ -182,7 +199,7 @@ func (p *preflightProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 		return "", shedengine.OutputPointer{}, cerr
 	}
 
-	for _, check := range []func(context.Context) (string, error){p.batcherFailure, p.stencilsFailure} {
+	for _, check := range []func(context.Context) (string, error){p.batcherFailure, p.stencilsFailure, p.driftFailure} {
 		reason, err := check(ctx)
 		if err != nil {
 			return "", shedengine.OutputPointer{}, err

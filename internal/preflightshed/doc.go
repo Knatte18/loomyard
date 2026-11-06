@@ -18,6 +18,7 @@
 // any other load fault names the fix-and-re-step one.
 // A recipe whose writer row runs a seat table gets a stencils check, which composes the writer's table and refuses a stencil marker no value fills, as after a version skew where a newer binary refreshed the stencils mid-run, or when a value is blank;
 // the reason carries the check's own way forward, a re-step with a binary that fills them or text for the blank value.
+// A recipe that holds a Drift-Baseline row gets a drift check, which loads `drift.yaml` and refuses a command a Drift row would refuse, and the reason carries that refusal's way forward.
 //
 // It declares its own unexported entryErr/cancelErr helpers (ctx.go) for the same
 // deliberate-duplication reason internal/loomshed/doc.go and internal/landingshed/ctx.go already

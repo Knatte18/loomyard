@@ -207,3 +207,71 @@ func TestDiffCaptures(t *testing.T) {
 		}
 	})
 }
+
+// TestVolatile covers which cells the volatile lists drop, and that the expect agent's listing leaves out what they name under diff lines alone.
+func TestVolatile(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	t.Run("WithoutCells", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name     string
+			volatile Volatile
+			cell     Cell
+			dropped  bool
+		}{
+			{"AFileNameAtTheTop", Volatile{Files: []string{"_source.txt"}}, Cell{Case: "_source.txt", Kind: CellChanged}, true},
+			{"AFileNameAtAnyDepth", Volatile{Files: []string{"_source.txt"}}, Cell{Case: "deep/er/_source.txt", Kind: CellAddedCase}, true},
+			{"AGlobOverTheFileName", Volatile{Files: []string{"*.stamp"}}, Cell{Case: "deep/a.stamp", Kind: CellRemovedCase}, true},
+			{"APathPatternOverItsOwnDirectory", Volatile{Files: []string{"meta/*.txt"}}, Cell{Case: "meta/a.txt"}, true},
+			{"APathPatternLeavesAnotherDirectory", Volatile{Files: []string{"meta/*.txt"}}, Cell{Case: "other/a.txt"}, false},
+			{"AnotherFile", Volatile{Files: []string{"_source.txt"}}, Cell{Case: "a.txt"}, false},
+			{"AKeyInAnyCase", Volatile{Keys: []string{"captured_at"}}, Cell{Case: "a.txt", Identity: Identity{Key: "captured_at", N: 1}}, true},
+			{"AnotherKey", Volatile{Keys: []string{"captured_at"}}, Cell{Case: "a.txt", Identity: Identity{Key: "x", N: 1}}, false},
+			{"AnUnkeyedLineUnderAKeyList", Volatile{Keys: []string{"captured_at"}}, Cell{Case: "a.txt", Identity: Identity{Line: 1}}, false},
+			{"NoList", Volatile{}, Cell{Case: "_source.txt"}, false},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				got := tt.volatile.withoutCells([]Cell{tt.cell})
+				if dropped := len(got) == 0; dropped != tt.dropped {
+					t.Errorf("withoutCells(%+v) = %+v; want dropped %v", tt.cell, got, tt.dropped)
+				}
+			})
+		}
+	})
+
+	t.Run("TheListingLeavesThemOutUnderLinesAlone", func(t *testing.T) {
+		t.Parallel()
+		patterns, err := CompileKeyPatterns(defaultTestKeyPatterns)
+		if err != nil {
+			t.Fatalf("CompileKeyPatterns error = %v", err)
+		}
+		baseline := writeCaptureTree(t, map[string]string{"_source.txt": "commit = abc\n", "a.txt": "x = 1\ncaptured_at = now\n"})
+		volatile := Volatile{Files: []string{"_source.txt"}, Keys: []string{"captured_at"}}
+		tests := []struct {
+			mode        string
+			wantSource  bool
+			wantCapture bool
+		}{
+			{DiffLines, false, false},
+			{DiffCommand, true, false},
+		}
+		for _, tt := range tests {
+			listing := filepath.Join(t.TempDir(), "listing.yaml")
+			if err := writeListing(listing, tt.mode, baseline, patterns, volatile); err != nil {
+				t.Fatalf("writeListing(%s) = %v; want nil", tt.mode, err)
+			}
+			data, err := os.ReadFile(listing)
+			if err != nil {
+				t.Fatal(err)
+			}
+			text := string(data)
+			if strings.Contains(text, "_source.txt") != tt.wantSource || strings.Contains(text, "captured_at") != tt.wantCapture || !strings.Contains(text, "a.txt") {
+				t.Errorf("listing under %s = %q; want _source.txt listed %v, captured_at listed %v and a.txt listed", tt.mode, text, tt.wantSource, tt.wantCapture)
+			}
+		}
+	})
+}

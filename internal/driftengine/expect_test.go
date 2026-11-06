@@ -547,14 +547,15 @@ func TestDriftExpect(t *testing.T) {
 		t.Parallel()
 		f := newExpectFixture(t)
 		f.agentFile = validExpectation
+		f.cfg.Volatile = Volatile{Files: []string{"_source.txt"}, Keys: []string{"captured_at"}}
 		f.seed(func(s *ScopeRecord) { s.Diff, s.KeyPatterns = "", nil })
 
 		outcome, _, err := f.call()
 
 		requireExpectDone(t, outcome, err)
 		scope := f.records().Scope
-		if scope.Diff != f.cfg.Diff || !reflect.DeepEqual(scope.KeyPatterns, f.cfg.KeyPatterns) {
-			t.Errorf("recorded diff %q and patterns %q; want the config's %q and %q", scope.Diff, scope.KeyPatterns, f.cfg.Diff, f.cfg.KeyPatterns)
+		if scope.Diff != f.cfg.Diff || !reflect.DeepEqual(scope.KeyPatterns, f.cfg.KeyPatterns) || !reflect.DeepEqual(scope.Volatile, f.cfg.Volatile) {
+			t.Errorf("recorded diff %q, patterns %q and volatile %+v; want the config's %q, %q and %+v", scope.Diff, scope.KeyPatterns, scope.Volatile, f.cfg.Diff, f.cfg.KeyPatterns, f.cfg.Volatile)
 		}
 	})
 

@@ -309,13 +309,14 @@ func renderCommand(run stepRun) (string, error) {
 // skipFilePlaceholder is the retired placeholder that once rendered the file naming the skipped tests.
 const skipFilePlaceholder = "{skip_file}"
 
-// refuseSkipFilePlaceholder returns the stepRefusal of a command of the told site that still holds the retired {skip_file} placeholder, naming the edit of the told step that clears it.
+// refuseSkipFilePlaceholder returns the stepRefusal of a command of the told site that still holds the retired {skip_file} placeholder, naming the reconcile and the edit of the told step that clear it.
+// Both are hub-wide writes, refused from a task or beam session, so the way forward hands them to the operator or the hub orch.
 // It returns nil for a command holding none.
 func refuseSkipFilePlaceholder(site, step, command string) error {
 	if !strings.Contains(command, skipFilePlaceholder) {
 		return nil
 	}
-	return &stepRefusal{cause: fmt.Errorf("drift: the %s command holds %s, which drift no longer renders; way forward: remove it from %s in the hub's drift.yaml with lym config drift --set from the prime", site, skipFilePlaceholder, step)}
+	return &stepRefusal{cause: fmt.Errorf("drift: the %s command holds %s, which drift no longer renders; way forward: the operator or the hub orch runs lym config reconcile --layer default --apply from the hub's prime worktree, which removes an -e NAME=%s argument, and removes any other use of it from %s with lym config drift --set, since a hub-wide config write is refused from any other session, then lym loom resume", site, skipFilePlaceholder, skipFilePlaceholder, step)}
 }
 
 // renderEnv returns env as KEY=VALUE entries in key order.

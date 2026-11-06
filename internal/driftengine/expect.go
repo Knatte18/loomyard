@@ -122,13 +122,13 @@ func (p *DriftExpect) pass(ctx context.Context) (shedengine.Outcome, shedengine.
 			return "", shedengine.OutputPointer{}, fmt.Errorf("drift: %s: load the drift config: %w", p.name, err)
 		}
 		err = WriteRecords(d, func(scope *ScopeRecord, _ *JudgedRecord) error {
-			scope.Diff, scope.KeyPatterns = cfg.Diff, cfg.KeyPatterns
+			scope.Diff, scope.KeyPatterns, scope.Volatile = cfg.Diff, cfg.KeyPatterns, cfg.Volatile
 			return nil
 		})
 		if err != nil {
 			return "", shedengine.OutputPointer{}, err
 		}
-		rec.Scope.Diff, rec.Scope.KeyPatterns = cfg.Diff, cfg.KeyPatterns
+		rec.Scope.Diff, rec.Scope.KeyPatterns, rec.Scope.Volatile = cfg.Diff, cfg.KeyPatterns, cfg.Volatile
 	}
 
 	if session := rec.Scope.ExpectSession; !session.Open && session.OpenedAt != "" {
@@ -218,7 +218,7 @@ func (p *DriftExpect) runAgent(ctx context.Context, scope ScopeRecord, unguarded
 	if err != nil {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("drift: %s: %w", p.name, err)
 	}
-	if err := writeListing(d.Paths.Listing, scope.Diff, d.Paths.BaselineDir, patterns); err != nil {
+	if err := writeListing(d.Paths.Listing, scope.Diff, d.Paths.BaselineDir, patterns, scope.Volatile); err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
 	openedAt := scope.ExpectSession.OpenedAt
@@ -351,10 +351,14 @@ type listingFile struct {
 }
 
 // writeListing writes the listing of every case under baselineDir to path: each line's identity and text under diff lines, the case names alone under diff command.
-func writeListing(path, mode, baselineDir string, patterns []*regexp.Regexp) error {
+// Under diff lines it leaves out what volatile names, which the diff ignores, so the agent writes no expectation of it.
+func writeListing(path, mode, baselineDir string, patterns []*regexp.Regexp, volatile Volatile) error {
 	listings, err := ListCaptures(baselineDir, patterns)
 	if err != nil {
 		return fmt.Errorf("drift: list the baseline for the expect agent: %w", err)
+	}
+	if mode == DiffLines {
+		listings = volatile.withoutListed(listings)
 	}
 	file := listingFile{Mode: mode, Cases: make([]listingCase, 0, len(listings))}
 	for _, listing := range listings {
