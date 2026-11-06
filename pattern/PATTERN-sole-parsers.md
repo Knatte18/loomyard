@@ -12,6 +12,7 @@ Each on-disk format has one parser; consumers read only its model.
 - The halt note: `internal/haltnote`.
 - The drift expectation and judgement: `internal/driftengine`.
 - The raddle proposal: `internal/raddleparser`.
+- The lens report's outcome: `internal/lensreport`.
 
 A format another task adds joins this list with its sole parser.
 
@@ -71,6 +72,10 @@ Both files are agent-written, so both parsers are strict and refuse an unknown k
 `internal/raddleparser` is the sole parser of the raddle proposal, `_lym/raddle/proposal.yaml`, in the format `contracts/specs/raddle-proposal-spec.md` pins, and the sole home of the checks that judge it.
 It imports the standard library and `internal/discussionparser` only, and reads the Sketch's decision record through `internal/discussionparser` alone.
 Consumers read only the `raddleparser.Proposal` model and the findings its checks return.
+
+## Lens report outcome (`internal/lensreport`)
+
+`internal/lensreport`'s `Returned` is the sole Go reader of a lens report, in the format `contracts/specs/twill-lens-report-spec.md` pins, and it reads the `outcome` key alone.
 
 ## Fixer report format (`internal/landingshed`)
 

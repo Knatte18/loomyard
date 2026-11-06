@@ -109,10 +109,12 @@
 // # Assistants
 //
 // A Seat marked Assistant writes its outputs and nothing else: it gets no up line and no mail, sends none, and so never needs creel.
-// A table holds assistants only after the lead, the lead's stencil includes seat-directive-assistant-chair and every assistant's seat-directive-assistant, which tells it to ignore `[creel]` text in its pane.
+// A table holds assistants only after the lead, the lead's stencil includes seat-directive-assistant-chair and a solo assistant's seat-directive-assistant, which tells it to ignore `[creel]` text in its pane; a fanned assistant's stencil includes seat-directive-assistant-fanned instead, as below.
 // Each assistant carries an EndMarker, a path no other seat's marker or output shares, which the engine writes once the assistant's run ends, whatever the ending, or when it does not start.
 // The marker's text names the ending: done, only once the seat gate has passed; gate failed for a done run whose gate failed; died, timeout or stopped; the wait error; not started with its reason; not found.
-// A fresh Run removes every assistant's stale marker and outputs before the chair starts.
+// An assistant that runs subagents names the files it saves their reports in as SubagentReports: its stencil includes seat-directive-assistant-fanned in place of seat-directive-assistant, which says the subagents are its own work and no other session, and the output_files marker lists those files after its outputs.
+// They are no outputs, so no run waits on one and no chair reads one.
+// A fresh Run removes every assistant's stale marker, outputs and subagent reports before the chair starts.
 // An assistant whose SkipReason is set, whose start fails, or whose engine lacks an engine block its stencil includes does not start: its marker reads not started with the reason, a Warn names it, and the step goes on; Validate and CheckMarkers pass such a missing block over for an assistant alone.
 // Its parent directive is the no-parent variant and its edit directive its engine's own copy, read through editdirective.EngineDirective.
 // An assistant is never required and never ends the step: its held turn end stays quiet, the chair's hold deferral counts an unended one that reads mid-turn, and the engine stops every assistant when the chair ends, marking a stopped one stopped.

@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fsx"
+	"github.com/Knatte18/loomyard/internal/lenses"
+	"github.com/Knatte18/loomyard/internal/lensreport"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/seatengine"
@@ -19,12 +21,13 @@ import (
 // AssistSeatName is the name of the review table's assistant seat, so its strand role is the review role followed by -assist.
 const AssistSeatName = "assist"
 
-// The stencils an assisted round reads: the chair's stencil, the assistant's own, the chair's consolidation part and the assistant's fanned cluster rules.
+// The stencils an assisted round reads: the chair's stencil, the solo and the fanned assistant's own, the chair's consolidation part and the assistant's fanned cluster rules.
 const (
-	assistedReviewerStencil  = "burler-template-reviewer-assisted"
-	assistReviewerStencil    = "burler-template-assist-reviewer"
-	assistConsolidateStencil = "burler-assist-consolidation"
-	assistClusterFanStencil  = "burler-assist-cluster-fan"
+	assistedReviewerStencil     = "burler-template-reviewer-assisted"
+	assistReviewerStencil       = "burler-template-assist-reviewer"
+	assistFannedReviewerStencil = "burler-template-assist-reviewer-fanned"
+	assistConsolidateStencil    = "burler-assist-consolidation"
+	assistClusterFanStencil     = "burler-assist-cluster-fan"
 )
 
 // assistRulesMarker is the review step's optional marker an assisted round fills with the chair's consolidation part.
@@ -32,11 +35,13 @@ const assistRulesMarker = "assist_rules"
 
 // AssistOutcome is what became of one assistant seat of a review round.
 // Ending is the text of its end marker, empty when none was written; Report is its own report and Copy the copy beside the review, set only when Ending is done.
+// MissingLenses names, in fan order, each lens of a done fanned assistant that returned no lens report, so a solo run of a fanned seat cannot pass as a fanned one.
 type AssistOutcome struct {
-	Seat   string
-	Ending string
-	Report string
-	Copy   string
+	Seat          string
+	Ending        string
+	Report        string
+	Copy          string
+	MissingLenses []string
 }
 
 // assisted reports whether opts names an assistant: a model choice with a model.
@@ -73,9 +78,27 @@ func assistProfile(p *Profile, report, fan string) Profile {
 	return assist
 }
 
+// assistLensNames returns the lens names of the assistant's fan in fan order.
+// A solo assistant has none, and so has a fan the lens library does not define, which keeps the assistant from starting.
+func (e *Engine) assistLensNames(fan string) []string {
+	if fan == "" {
+		return nil
+	}
+	resolved, err := lenses.ResolveFan(e.cfg, fan)
+	if err != nil {
+		return nil
+	}
+	names := make([]string, len(resolved))
+	for i, lens := range resolved {
+		names[i] = lens.Name
+	}
+	return names
+}
+
 // assistSeat returns the assistant seat of p's review under opts, or nil when opts names none.
 // files are the assistant's instruction file paths, and values its stencil values; the caller composes both, or passes a probe's.
 // skipReason, when set, keeps the seat from starting, its end marker naming the reason.
+// A fanned assistant runs the fanned stencil, and its lens reports are its subagent reports, so its directive and write surface name them.
 func (e *Engine) assistSeat(p *Profile, opts RunOpts, files reviewFilePaths, skills []string, skipReason string) *seatengine.Seat {
 	if !opts.assisted() {
 		return nil
@@ -85,7 +108,7 @@ func (e *Engine) assistSeat(p *Profile, opts RunOpts, files reviewFilePaths, ski
 	if opts.AssistSkip != "" && skipReason == "" {
 		skipReason = opts.AssistSkip
 	}
-	return &seatengine.Seat{
+	seat := &seatengine.Seat{
 		Name:        AssistSeatName,
 		Stencil:     assistReviewerStencil,
 		ModelChoice: opts.Assist,
@@ -99,6 +122,14 @@ func (e *Engine) assistSeat(p *Profile, opts RunOpts, files reviewFilePaths, ski
 		SkipReason:  skipReason,
 		Timeout:     opts.AssistTimeout,
 	}
+	for _, lens := range e.assistLensNames(opts.AssistFan) {
+		seat.SubagentReports = append(seat.SubagentReports, lensreport.Path(report, lens))
+	}
+	if len(seat.SubagentReports) > 0 {
+		seat.Stencil = assistFannedReviewerStencil
+		seat.Values["lens_report_path"] = lensreport.PathPattern(report)
+	}
+	return seat
 }
 
 // withAssistant returns table with seat added as its assistant: the chair runs the assisted stencil and reads the assistant's report as an input.
@@ -172,7 +203,8 @@ func assistRulesBlock(stencilsDir, engine string, opts RunOpts) (string, error) 
 // keepAssistReports reads every assistant seat's end marker in seats and copies the report of one whose marker reads done beside the review file, returning what became of each.
 // Any other ending, gate failed included, copies nothing.
 // A failed read or copy is logged and leaves that assistant's Copy empty, since the assistant never gates the round.
-func keepAssistReports(reviewPath string, seats []seatengine.SeatResult) []AssistOutcome {
+// lensNames are the lenses the assistant's fan asked of it; each a done assistant returned no lens report for is named on its outcome and logged, and never fails the round.
+func keepAssistReports(reviewPath string, seats []seatengine.SeatResult, lensNames []string) []AssistOutcome {
 	var outcomes []AssistOutcome
 	for _, seat := range seats {
 		if !seat.Assistant {
@@ -189,10 +221,25 @@ func keepAssistReports(reviewPath string, seats []seatengine.SeatResult) []Assis
 		outcome.Ending = ending
 		if ending == seatengine.EndingDone && outcome.Report != "" {
 			outcome.Copy = copyAssistReport(outcome.Report, AssistCopyPath(reviewPath, seat.Name))
+			outcome.MissingLenses = missingLensReports(outcome.Report, lensNames)
+		}
+		if len(outcome.MissingLenses) > 0 {
+			logger.Warn("burler: the assistant was asked to fan and returned no report for these lenses", "seat", seat.Name, "lenses", outcome.MissingLenses)
 		}
 		outcomes = append(outcomes, outcome)
 	}
 	return outcomes
+}
+
+// missingLensReports returns the names in lensNames whose lens report beside report says its lens returned nothing, or does not exist.
+func missingLensReports(report string, lensNames []string) []string {
+	var missing []string
+	for _, lens := range lensNames {
+		if !lensreport.Returned(lensreport.Path(report, lens)) {
+			missing = append(missing, lens)
+		}
+	}
+	return missing
 }
 
 // copyAssistReport copies the report at from to to and returns to, or "" when the copy failed, which it logs.

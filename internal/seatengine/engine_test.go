@@ -483,7 +483,9 @@ func TestEngine_Run_AssistantRemovesStaleFilesBeforeTheChairStarts(t *testing.T)
 	engine, geom := engineFixture(t, shuttle)
 	table := assistantTable(geom.WorktreeRoot, 1)
 	marker, output := table.Seats[1].EndMarker, table.Seats[1].Outputs[0]
-	for path, content := range map[string]string{marker: "done\n", output: "an old report"} {
+	subagentReport := filepath.Join(geom.WorktreeRoot, "advisor-1.lens-x.md")
+	table.Seats[1].Stencil, table.Seats[1].SubagentReports = "seat-test-fanned-assistant", []string{subagentReport}
+	for path, content := range map[string]string{marker: "done\n", output: "an old report", subagentReport: "an old lens report"} {
 		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 			t.Fatalf("write the stale file: %v", err)
 		}
@@ -492,7 +494,7 @@ func TestEngine_Run_AssistantRemovesStaleFilesBeforeTheChairStarts(t *testing.T)
 	ended := runAsync(engine, table)
 	// Nothing else removes a file, so a file gone once the chair has started was removed before it started.
 	shuttle.awaitStarts(1)
-	for _, path := range []string{marker, output} {
+	for _, path := range []string{marker, output, subagentReport} {
 		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 			t.Errorf("stat %s after the chair started = %v, want the stale file removed", path, err)
 		}

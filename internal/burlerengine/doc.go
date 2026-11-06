@@ -66,9 +66,10 @@
 // A round with no assistant keeps burler-template-reviewer and the review step's bytes.
 // The assistant runs burler-template-assist-reviewer, which carries the engine-assist-reading block of its engine, and reads its own explore and review steps, composed a second time for its engine and its report path, with the same fasit, rubric, PATTERN directive, focus and prior rounds the chair reads.
 // RunOpts.AssistFan fans it out through its engine's own subagents inside its one turn, by burler-assist-cluster-fan and the engine-assist-fan block; the seat authorizes no fork, so no lym fork audit covers them.
+// A fanned assistant runs burler-template-assist-reviewer-fanned in place of burler-template-assist-reviewer, whose write surface and seat directive name its lens reports and say its subagents are its own work, since a prompt that told it to work alone and write its report and nothing else kept the real seat from fanning.
 // Its report and end marker sit under the anchor's .lym at the review path's subpath, named from the review's stem, the attempt token RunOpts.Round and the seat, so a retry never shares the first attempt's files.
 // Its gate is the review-parse entry on its report, and its run is bounded by RunOpts.AssistTimeout; RunOpts.AssistSkip, or an assistant whose files cannot be composed, keeps it from starting with the reason in its marker.
-// Once the chair has ended, fresh or resumed, the report of an assistant whose marker reads done is copied beside the review as AssistCopyPath names it, and ReviewResult.Assists says what became of each; no verdict or finding reads it.
+// Once the chair has ended, fresh or resumed, the report of an assistant whose marker reads done is copied beside the review as AssistCopyPath names it, and ReviewResult.Assists says what became of each, naming each lens a done fanned assistant returned no lens report for; no verdict or finding reads it.
 // ProbeReview and ResumeReview build the same table from the same RunOpts, so the caller passes the recorded token and assistant.
 //
 // # The fix half

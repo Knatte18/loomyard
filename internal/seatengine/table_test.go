@@ -26,6 +26,7 @@ const (
 	assistantChairStencilBody = "Assistant chair of {{.seat_name}}.\n{{template \"seat-directive-assistant-chair\"}}\n"
 	assistantStencilBody      = "Assistant {{.seat_name}}.\n{{.parent_directive}}\n{{.edit_directive}}\n{{template \"seat-directive-assistant\"}}\n"
 	enginedAssistantBody      = "Assistant {{.seat_name}}.\n{{template \"seat-directive-assistant\"}}\n{{template \"engine-test-words\"}}\n"
+	fannedAssistantBody       = "Assistant {{.seat_name}}.\n{{.parent_directive}}\n{{.edit_directive}}\n{{template \"seat-directive-assistant-fanned\"}}\n"
 )
 
 // writeStencil writes body as the stencil name under dir, in the family folder stencilstore reads it from.
@@ -51,6 +52,7 @@ func seatedStencils(t *testing.T) string {
 	writeStencil(t, dir, "seat-test-assistant-chair", assistantChairStencilBody)
 	writeStencil(t, dir, "seat-test-assistant", assistantStencilBody)
 	writeStencil(t, dir, "seat-test-engined-assistant", enginedAssistantBody)
+	writeStencil(t, dir, "seat-test-fanned-assistant", fannedAssistantBody)
 	writeStencil(t, dir, "seat-test-engined-chair", "Chair of {{.seat_name}}.\n{{template \"seat-directive-chair\"}}\n{{template \"engine-test-words\"}}\n")
 	writeStencil(t, dir, "seat-test-engined-advisor", "Advisor {{.seat_name}}.\n{{template \"seat-directive-advisor\"}}\n{{template \"engine-test-words\"}}\n")
 	writeStencil(t, dir, stencilstore.EngineBlockName("claude", "test-words"), "Claude words.\n")
@@ -194,6 +196,18 @@ func TestTable_Validate(t *testing.T) {
 			asAssistants(tb)
 			tb.Seats[2].Stencil = "seat-test-advisor"
 		}, wantErr: `seat "multi-advisor-2": the stencil "seat-test-advisor" does not include seat-directive-assistant`},
+		{name: "an assistant with subagent reports whose stencil holds the solo directive", mutate: func(tb *Table) {
+			asAssistants(tb)
+			tb.Seats[2].SubagentReports = []string{"/w/a2.lens-x.md"}
+		}, wantErr: `seat "multi-advisor-2": the stencil "seat-test-assistant" does not include seat-directive-assistant-fanned`},
+		{name: "an assistant with no subagent reports whose stencil holds the fanned directive", mutate: func(tb *Table) {
+			asAssistants(tb)
+			tb.Seats[2].Stencil = "seat-test-fanned-assistant"
+		}, wantErr: `seat "multi-advisor-2": the stencil "seat-test-fanned-assistant" does not include seat-directive-assistant,`},
+		{name: "an assistant with subagent reports on the fanned directive is accepted", mutate: func(tb *Table) {
+			asAssistants(tb)
+			tb.Seats[2].Stencil, tb.Seats[2].SubagentReports = "seat-test-fanned-assistant", []string{"/w/a2.lens-x.md"}
+		}},
 		{name: "an assistant whose engine lacks an engine block its stencil includes", mutate: func(tb *Table) {
 			asAssistants(tb)
 			tb.Seats[1].Stencil, tb.Seats[1].Engine = "seat-test-engined-assistant", "gemini"

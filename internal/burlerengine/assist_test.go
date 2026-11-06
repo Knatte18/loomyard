@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lenses"
+	"github.com/Knatte18/loomyard/internal/lensreport"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -270,6 +271,60 @@ func TestEngine_Review_AssistedRound(t *testing.T) {
 	}
 }
 
+// TestEngine_Review_AssistantPromptFollowsItsFan proves a fanned assistant's composed prompt names every lens report on its write surface, with the reports kept off its outputs, and that a solo assistant's prompt names none.
+// It also proves Review names the fan's lenses that returned no report in the assistant's outcome, in fan order, and none for a solo assistant.
+func TestEngine_Review_AssistantPromptFollowsItsFan(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		fan      string
+		wantLens bool
+	}{
+		{name: "a fanned assistant", fan: "standard", wantLens: true},
+		{name: "a solo assistant"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			root, p := newAssistProfile(t)
+			opts := assistOpts()
+			opts.AssistFan = tt.fan
+			shuttle := newAssistShuttle(halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}})
+			geom := Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug", DefaultEngine: "claude"}
+			e := New(shuttle, geom, clusterTestConfig, newTestStencilsDir(t), "", nil)
+			report, _ := assistPaths(root, p.ReviewPath, opts.Round, AssistSeatName)
+
+			got, err := e.Review(p, opts)
+			if err != nil {
+				t.Fatalf("Review() = %v; want nil error", err)
+			}
+
+			assist := shuttle.specs[assistRole]
+			if !slices.Equal(assist.OutputFiles, []string{report}) {
+				t.Errorf("assistant spec outputs = %v; want the report alone, [%s]", assist.OutputFiles, report)
+			}
+			lensPaths := []string{lensreport.PathPattern(report), lensreport.Path(report, "style")}
+			for _, path := range lensPaths {
+				if holds := strings.Contains(assist.Prompt, path); holds != tt.wantLens {
+					t.Errorf("assistant prompt holds %q = %v; want %v:\n%s", path, holds, tt.wantLens, assist.Prompt)
+				}
+			}
+			var wantMissing []string
+			if tt.wantLens {
+				wantMissing = e.assistLensNames(tt.fan)
+				if len(wantMissing) == 0 {
+					t.Fatalf("assistLensNames(%q) = none; want the fan's lenses", tt.fan)
+				}
+			}
+			if len(got.Assists) != 1 || !slices.Equal(got.Assists[0].MissingLenses, wantMissing) {
+				t.Errorf("Assists = %+v; want one outcome missing lenses %v, since the shuttle wrote no lens report", got.Assists, wantMissing)
+			}
+		})
+	}
+}
+
 // TestEngine_Review_AssistantThatDoesNotStart proves an assistant that is skipped, whose engine has no assist-reading block, or whose fan the lens library does not define, never starts and its end marker says so.
 // The chair is started and the review half returns its accepted review.
 func TestEngine_Review_AssistantThatDoesNotStart(t *testing.T) {
@@ -353,7 +408,7 @@ func TestKeepAssistReports(t *testing.T) {
 				{Name: AssistSeatName, Assistant: true, Outputs: []string{report}, EndMarker: marker},
 			}
 
-			got := keepAssistReports(reviewPath, seats)
+			got := keepAssistReports(reviewPath, seats, nil)
 
 			if len(got) != 1 || got[0].Seat != AssistSeatName || got[0].Report != report || got[0].Ending != tt.marker {
 				t.Fatalf("keepAssistReports() = %+v; want one outcome of %q with report %q and ending %q", got, AssistSeatName, report, tt.marker)
@@ -368,6 +423,50 @@ func TestKeepAssistReports(t *testing.T) {
 			}
 			if got[0].Copy != "" || err == nil {
 				t.Errorf("keepAssistReports() copy %q, copy file read error %v; want nothing copied", got[0].Copy, err)
+			}
+		})
+	}
+}
+
+// TestKeepAssistReports_MissingLenses proves a done assistant's outcome names each lens of its fan with no returned lens report, in fan order, and that an assistant that did not end done names none, since its ending already says so.
+func TestKeepAssistReports_MissingLenses(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const reported = "```yaml\nlens: x\noutcome: reported\n```\n\nThe message.\n"
+	const noReport = "```yaml\nlens: x\noutcome: no report\n```\n"
+	tests := []struct {
+		name    string
+		ending  string
+		reports map[string]string
+		want    []string
+	}{
+		{name: "every lens returned", ending: seatengine.EndingDone, reports: map[string]string{"a": reported, "b": reported}},
+		{name: "a seat that ran solo", ending: seatengine.EndingDone, want: []string{"a", "b"}},
+		{name: "one lens file absent", ending: seatengine.EndingDone, reports: map[string]string{"b": reported}, want: []string{"a"}},
+		{name: "one lens returned nothing", ending: seatengine.EndingDone, reports: map[string]string{"a": reported, "b": noReport}, want: []string{"b"}},
+		{name: "an assistant that did not end done", ending: seatengine.EndingStopped},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			report, marker := filepath.Join(dir, "report.md"), filepath.Join(dir, "report.end")
+			files := map[string]string{report: "the report", marker: tt.ending + "\n"}
+			for lens, content := range tt.reports {
+				files[lensreport.Path(report, lens)] = content
+			}
+			for path, content := range files {
+				if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+					t.Fatalf("WriteFile(%s) = %v; want nil", path, err)
+				}
+			}
+			seats := []seatengine.SeatResult{{Name: AssistSeatName, Assistant: true, Outputs: []string{report}, EndMarker: marker}}
+
+			got := keepAssistReports(filepath.Join(dir, "review.md"), seats, []string{"a", "b"})
+
+			if len(got) != 1 || !slices.Equal(got[0].MissingLenses, tt.want) {
+				t.Errorf("keepAssistReports() = %+v; want one outcome missing lenses %v", got, tt.want)
 			}
 		})
 	}

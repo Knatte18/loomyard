@@ -165,6 +165,52 @@ func TestBurlerReviewProducer_Call_RecordsAttempt(t *testing.T) {
 	})
 }
 
+// TestBurlerReviewProducer_Call_RecordsAssistOutcome proves an accepted round's usage record says how its assistant ended and which lenses it returned no report for, and that a round with no assistant records neither.
+func TestBurlerReviewProducer_Call_RecordsAssistOutcome(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name         string
+		assists      []burlerengine.AssistOutcome
+		wantEnding   string
+		wantMissing  []string
+		staleEnding  string
+		staleMissing []string
+	}{
+		{name: "a fan that returned every lens", assists: []burlerengine.AssistOutcome{{Seat: "assist", Ending: "done"}}, wantEnding: "done"},
+		{name: "a fanned seat that went solo", assists: []burlerengine.AssistOutcome{{Seat: "assist", Ending: "done", MissingLenses: []string{"a", "b"}}}, wantEnding: "done", wantMissing: []string{"a", "b"}},
+		{name: "an assistant that timed out", assists: []burlerengine.AssistOutcome{{Seat: "assist", Ending: "timeout"}}, wantEnding: "timeout"},
+		{name: "no assistant"},
+		{name: "a later attempt with no assistant clears an earlier attempt's outcome", staleEnding: "done", staleMissing: []string{"a"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			runDir := t.TempDir()
+			if tt.staleEnding != "" {
+				stale := roundUsage{AssistEnding: tt.staleEnding, AssistLensesMissing: tt.staleMissing}
+				if err := writeRoundUsage(runDir, 1, stale); err != nil {
+					t.Fatalf("writeRoundUsage: %v", err)
+				}
+			}
+			result := reviewDone("d")
+			result.Assists = tt.assists
+			runner := &shedfake.BurlerHalfRunner{ReviewResults: []burlerengine.ReviewResult{result}}
+			p := newReviewProducer(t, runDir, runner, newHalfSpec())
+
+			shedfake.CallOK(t, p)
+
+			usage, err := readRoundUsage(runDir, 1)
+			if err != nil {
+				t.Fatalf("readRoundUsage() = %v; want nil", err)
+			}
+			if usage.AssistEnding != tt.wantEnding || !reflect.DeepEqual(usage.AssistLensesMissing, tt.wantMissing) {
+				t.Errorf("record assist ending %q, lenses missing %v; want %q and %v", usage.AssistEnding, usage.AssistLensesMissing, tt.wantEnding, tt.wantMissing)
+			}
+		})
+	}
+}
+
 // TestBurlerReviewProducer_Call_ProbeFromAttemptRecord proves the probe builds its options from the round's usage record, never from the deps' current assistant settings.
 // A recorded retry token and assistant are probed as recorded, and a record without the attempt key, as an older binary wrote it, is probed as the bare round with no assistant.
 func TestBurlerReviewProducer_Call_ProbeFromAttemptRecord(t *testing.T) {

@@ -32,8 +32,11 @@ const writerDirectiveBlock = "seat-directive-writer"
 // assistantChairDirectiveBlock is the shipped block that tells the lead how to wait for its assistants, which the lead's stencil of an assistant table includes in place of chairDirectiveBlock.
 const assistantChairDirectiveBlock = "seat-directive-assistant-chair"
 
-// assistantDirectiveBlock is the shipped block that tells an assistant it writes its outputs and nothing else, which every assistant seat's stencil includes.
+// assistantDirectiveBlock is the shipped block that tells an assistant it writes its outputs and nothing else, which the stencil of an assistant with no subagent reports includes.
 const assistantDirectiveBlock = "seat-directive-assistant"
+
+// fannedAssistantDirectiveBlock is the shipped block that tells an assistant running subagents that they are its own work and which files it writes, which the stencil of an assistant with subagent reports includes in place of assistantDirectiveBlock.
+const fannedAssistantDirectiveBlock = "seat-directive-assistant-fanned"
 
 // reservedMarkers are the marker names the seat engine fills itself, sorted.
 // A table or seat value may not use one of them.
@@ -110,6 +113,9 @@ type Seat struct {
 	Assistant bool
 	// EndMarker is an assistant's end-marker path, whose text names how its run ended; only an assistant carries one.
 	EndMarker string
+	// SubagentReports are the files an assistant saves its subagents' reports in, one per subagent; empty for an assistant that runs none.
+	// They are on its write surface but are no outputs, so a run that leaves one unwritten still ends done: the caller judges what a missing report means.
+	SubagentReports []string
 	// SkipReason, when set on an assistant, keeps it from starting: its end marker then reads not started with this reason.
 	SkipReason string
 	// Timeout bounds this seat's run; zero takes the table's Timeout.
@@ -127,6 +133,14 @@ func (s Seat) stencilEngine(defaultEngine string) string {
 		return s.Engine
 	}
 	return defaultEngine
+}
+
+// assistantDirective returns the directive block this assistant's stencil includes: the fanned assistant's when it has subagent reports.
+func (s Seat) assistantDirective() string {
+	if len(s.SubagentReports) > 0 {
+		return fannedAssistantDirectiveBlock
+	}
+	return assistantDirectiveBlock
 }
 
 // endsStep reports whether an end of this seat's run that its gate and Accept do not pass ends the step: a required advisor or a writer.
@@ -214,7 +228,7 @@ func (t Table) Outputs() []string {
 // defaultEngine is the engine a seat whose model choice names none runs on; an engine block its seat's engine has no copy of is refused naming the block, the engine and the file.
 // An assistant is the exception: the missing block keeps it from starting instead, so the step goes on without it.
 // The lead's stencil of an advisor table of more than one seat includes seat-directive-chair, the lead's stencil of a writer table includes seat-directive-writer-chair in its place, and the lead's stencil of an assistant table seat-directive-assistant-chair.
-// A writer seat's stencil includes seat-directive-writer, and an assistant seat's seat-directive-assistant.
+// A writer seat's stencil includes seat-directive-writer, and an assistant seat's seat-directive-assistant, or seat-directive-assistant-fanned when the seat has subagent reports.
 // A table or seat value neither collides with a reserved marker nor is blank, except a table value named in Optional, which may be blank; an Optional name may not be a reserved marker.
 func (t Table) Validate(stencilsDir, defaultEngine string) error {
 	if err := agentname.ValidateRole(t.RolePrefix); err != nil {
@@ -258,8 +272,8 @@ func (t Table) Validate(stencilsDir, defaultEngine string) error {
 		if seat.Writer && !slices.Contains(blocks, writerDirectiveBlock) {
 			return fmt.Errorf("seatengine: seat %q: the stencil %q does not include %s, which a writer needs; include %s in the writer's stencil", label, seat.Stencil, writerDirectiveBlock, writerDirectiveBlock)
 		}
-		if seat.Assistant && !slices.Contains(blocks, assistantDirectiveBlock) {
-			return fmt.Errorf("seatengine: seat %q: the stencil %q does not include %s, which an assistant needs; include %s in the assistant's stencil", label, seat.Stencil, assistantDirectiveBlock, assistantDirectiveBlock)
+		if directive := seat.assistantDirective(); seat.Assistant && !slices.Contains(blocks, directive) {
+			return fmt.Errorf("seatengine: seat %q: the stencil %q does not include %s, which this assistant needs; include %s in the assistant's stencil", label, seat.Stencil, directive, directive)
 		}
 	}
 	return nil

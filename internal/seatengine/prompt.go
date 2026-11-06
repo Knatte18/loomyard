@@ -89,7 +89,7 @@ func seatValues(geom Geometry, table Table, seat Seat, names map[string]string) 
 	values["assistants"] = assistantList(geom, table, names)
 	values["inputs"] = joinLines(seat.Inputs)
 	values["outputs"] = joinLines(seat.Outputs)
-	values["output_files"] = joinLines(seat.Outputs)
+	values["output_files"] = joinLines(slices.Concat(seat.Outputs, seat.SubagentReports))
 	values["worktree_root"] = geom.WorktreeRoot
 	values["anchor_path"] = geom.AnchorPath
 	values["stencils_dir"] = geom.StencilsDir

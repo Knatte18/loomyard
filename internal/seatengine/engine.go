@@ -241,7 +241,7 @@ func (e *Engine) endMarkerOf(seat Seat) string {
 }
 
 // Run starts table's seats fresh and returns once the chair has ended.
-// Before the chair starts it removes every assistant's stale end marker and outputs.
+// Before the chair starts it removes every assistant's stale end marker, outputs and subagent reports.
 // It starts the chair first, then the other seats in table order, and tells the chair of each advisor once its start ends: up, or never started; a writer gets no up line, since its done line is what the chair waits for, and an assistant gets none, since the chair waits on its end marker.
 // A chair that fails to start starts no other seat and returns the error, which wraps shuttleengine.ErrNotStarted when the provider never came up.
 // An advisor that fails to start is recorded and the step goes on without it.

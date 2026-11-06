@@ -422,6 +422,12 @@ func (p *BurlerReviewProducer) acceptedExit(ctx context.Context, round int, resu
 	half := reviewHalfUsage(review, result.Review)
 	err := mergeRoundUsage(p.runDir, round, p.now, func(u *roundUsage) {
 		u.Lenses, u.Review = result.Lenses, &half
+		// Cleared first so a later attempt that ran no assistant never keeps an earlier attempt's ending.
+		u.AssistEnding, u.AssistLensesMissing = "", nil
+		// A review table holds one assistant at most.
+		for _, assist := range result.Assists {
+			u.AssistEnding, u.AssistLensesMissing = assist.Ending, assist.MissingLenses
+		}
 	})
 	if err != nil {
 		logger.Warn("shedadapters: burler review's usage record was not written", "producer", p.name, "engine", burlerReviewEngineLabel, "round", round, "error", err)

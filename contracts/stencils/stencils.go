@@ -546,6 +546,11 @@ var SeatDirectiveWriterChair []byte
 //go:embed seat/seat-directive-assistant.md
 var SeatDirectiveAssistant []byte
 
+// SeatDirectiveAssistantFanned is the fanned assistant seat block's shipped default: the rules an assistant that runs subagents works under, writing its outputs and their reports and nothing else, pulled into its stencil as an include in place of the assistant seat block.
+//
+//go:embed seat/seat-directive-assistant-fanned.md
+var SeatDirectiveAssistantFanned []byte
+
 // SeatDirectiveAssistantChair is the assistant chair seat block's shipped default: how the lead of a table of assistant seats waits for each assistant's end marker, pulled into its stencil as an include in place of the advisor chair's block.
 //
 //go:embed seat/seat-directive-assistant-chair.md
@@ -560,6 +565,11 @@ var BurlerTemplateReviewerAssisted []byte
 //
 //go:embed burler/burler-template-assist-reviewer.md
 var BurlerTemplateAssistReviewer []byte
+
+// BurlerTemplateAssistReviewerFanned is the burler assistant reviewer seat stencil of a round whose assistant runs a lens fan: the assistant reviewer stencil with the lens reports on its write surface and the fanned assistant's block.
+//
+//go:embed burler/burler-template-assist-reviewer-fanned.md
+var BurlerTemplateAssistReviewerFanned []byte
 
 // BurlerAssistConsolidation is the review step's part of an assisted round: the chair waits for the assistant and judges its findings as one more report.
 //
@@ -673,6 +683,7 @@ var entries = []registryEntry{
 	{"burler-template-reviewer", &BurlerTemplateReviewer},
 	{"burler-template-reviewer-assisted", &BurlerTemplateReviewerAssisted},
 	{"burler-template-assist-reviewer", &BurlerTemplateAssistReviewer},
+	{"burler-template-assist-reviewer-fanned", &BurlerTemplateAssistReviewerFanned},
 	{"burler-assist-consolidation", &BurlerAssistConsolidation},
 	{"burler-assist-cluster-fan", &BurlerAssistClusterFan},
 	{"burler-template-fixer", &BurlerTemplateFixer},
@@ -742,6 +753,7 @@ var entries = []registryEntry{
 	{"seat-directive-writer", &SeatDirectiveWriter},
 	{"seat-directive-writer-chair", &SeatDirectiveWriterChair},
 	{"seat-directive-assistant", &SeatDirectiveAssistant},
+	{"seat-directive-assistant-fanned", &SeatDirectiveAssistantFanned},
 	{"seat-directive-assistant-chair", &SeatDirectiveAssistantChair},
 	{"engine/claude/assist-fan", &EngineClaudeAssistFan},
 	{"engine/codex/assist-fan", &EngineCodexAssistFan},
@@ -773,7 +785,7 @@ var roleOpeningStencils = map[string][]string{
 	"plan-fixer":           {"webster-template-plan-fix"},
 	"gate-fixer":           {"gatefix-frame-cold"},
 	"burler-review":        {"burler-template-reviewer", "burler-template-reviewer-assisted"},
-	"burler-review-assist": {"burler-template-assist-reviewer"},
+	"burler-review-assist": {"burler-template-assist-reviewer", "burler-template-assist-reviewer-fanned"},
 	"burler-fix":           {"burler-template-fixer"},
 	"conflict":             {"landing-template-conflict"},
 	"fixer":                {"landing-template-fixer"},

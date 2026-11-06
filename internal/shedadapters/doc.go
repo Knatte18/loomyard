@@ -244,6 +244,7 @@
 // Round 1 runs the whole fan and drops a focus file's excludes, and an excluded lens returns only with a new generation, since an archived generation moves the whole run directory aside.
 // Every completed round, solo and fanned, also leaves round-<N>-usage.yaml beside them:
 // the fan and lenses the round ran, the fixer fan and, for a twill fixer, its `fix_lenses` and `fix_forks`, and each half's engine and model, run times, wall time and tokens, forks included, with an unknown reading left unknown rather than zero.
+// An assisted round also records the assistant's `assist_fan`, the ending its end marker read as `assist_ending`, and as `assist_lenses_missing` each lens a done fanned assistant returned no lens report for, so a seat that went solo reads as one.
 // The record also carries the Bouncer's `seed` and `judge` lists, one entry per pass in the same half shape.
 // The Bouncer appends an entry for every pass whose result reached the Call, a judgment the guard refuses included, so a re-judged round lists every pass it took;
 // a pass whose run errored, and a judgment a later Call settles from disk, record nothing, and a failed write only logs a warning.

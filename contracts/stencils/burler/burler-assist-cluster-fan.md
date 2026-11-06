@@ -19,7 +19,7 @@ While the subagents run, YOU (the handler) do your own HOLISTIC review: what no 
 Write nothing to your report while any subagent is outstanding: consolidate only once the last one has returned, with every finding in view.
 
 Once the last subagent has returned, and before you consolidate, save each subagent's final message verbatim to `{{.lens_report_path}}`, with its lens name for `<lens>`, in the format `{{.lens_report_spec_path}}` defines; a subagent that returned no report gets its file too.
-These lens reports are part of your write surface, beside your report, and are the one exception to the "nothing else" of the write-surface rules in your prompt.
+These lens reports are part of your write surface, beside your report, as the write-surface rules in your prompt name them.
 
 Consolidation: judge every subagent finding and your own holistic findings with EQUAL skepticism, dedup findings that describe the same defect across lenses, tag every kept finding's frontmatter with an `origin:` key (`lens:<name>` or `handler`), move false positives to a `## Rejected` prose section below the frontmatter with a one-line reason each, and order kept findings by severity.
 The consolidated report is your ONE report, and the review is complete once it is fully written to disk.

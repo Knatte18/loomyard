@@ -326,6 +326,23 @@ func TestPrompts_AssistantTable(t *testing.T) {
 		})
 	}
 
+	t.Run("AFannedAssistantListsItsSubagentReportsAfterItsOutputs", func(t *testing.T) {
+		t.Parallel()
+		fanned := assistantTable("", 1)
+		seat := &fanned.Seats[1]
+		seat.Stencil, seat.SubagentReports = "seat-test-fanned-assistant", []string{"/w/advisor-1.lens-x.md", "/w/advisor-1.lens-y.md"}
+
+		got, err := Prompts(geom, fanned)
+		if err != nil {
+			t.Fatalf("Prompts() = %v; want nil error", err)
+		}
+
+		prompt := got[seat.Name]
+		if want := seat.Outputs[0] + "\n/w/advisor-1.lens-x.md\n/w/advisor-1.lens-y.md\n"; !strings.Contains(prompt, want) {
+			t.Errorf("Prompts()[%q] lacks %q:\n%s", seat.Name, want, prompt)
+		}
+	})
+
 	t.Run("AnAdvisorTableListsNoAssistant", func(t *testing.T) {
 		t.Parallel()
 		advisors := promptTable()

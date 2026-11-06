@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fsx"
@@ -81,14 +82,14 @@ func writeEnding(path, ending string) error {
 	return nil
 }
 
-// clearAssistantFiles removes each assistant's end marker and outputs a previous run left, so the chair of a fresh run never reads a stale one.
+// clearAssistantFiles removes each assistant's end marker, outputs and subagent reports a previous run left, so neither the chair nor a caller of a fresh run ever reads a stale one.
 // A file already absent is no error.
 func (e *Engine) clearAssistantFiles(table Table) error {
 	for _, seat := range table.Seats {
 		if !seat.Assistant {
 			continue
 		}
-		for _, path := range e.absolute(append([]string{seat.EndMarker}, seat.Outputs...)) {
+		for _, path := range e.absolute(slices.Concat([]string{seat.EndMarker}, seat.Outputs, seat.SubagentReports)) {
 			if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 				return fmt.Errorf("seatengine: seat %q: remove stale file %q: %w", table.seatLabel(seat), path, err)
 			}

@@ -239,7 +239,7 @@ func (e *Engine) concludeReview(p *Profile, opts RunOpts, seats seatengine.Resul
 	logger.Info("burler: review joined", "round", opts.Round, "reviewOutcome", reviewer.Outcome)
 
 	result := reviewResultOf(p, reviewer)
-	result.Assists = keepAssistReports(p.ReviewPath, seats.Advisors)
+	result.Assists = keepAssistReports(p.ReviewPath, seats.Advisors, e.assistLensNames(opts.AssistFan))
 	if reviewer.Outcome != shuttleengine.OutcomeDone {
 		return result, nil
 	}

@@ -31,5 +31,5 @@ A `no report` file ends at the block.
 
 ## Readers
 
-No Go code parses a lens report.
 Its readers are audits and reviews of the lenses, which read it from the run records.
+Go reads one thing of it: `internal/lensreport`'s `Returned` tells a report whose `outcome` is `reported` from any other file, so a round can record a lens that returned nothing.

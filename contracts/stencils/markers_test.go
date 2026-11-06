@@ -48,6 +48,7 @@ func TestStencils_TopLevelMarkers(t *testing.T) {
 		{"seat-directive-writer", SeatDirectiveWriter, []string{"chair_name", "output_files", "seat_name"}},
 		{"seat-directive-writer-chair", SeatDirectiveWriterChair, []string{"advisor_names", "inputs", "output_files"}},
 		{"seat-directive-assistant", SeatDirectiveAssistant, []string{"output_files", "seat_name"}},
+		{"seat-directive-assistant-fanned", SeatDirectiveAssistantFanned, []string{"output_files", "seat_name"}},
 		{"seat-directive-assistant-chair", SeatDirectiveAssistantChair, []string{"assistants"}},
 		{"burler-assist-consolidation", BurlerAssistConsolidation, []string{"assist_origin"}},
 		{"burler-assist-cluster-fan", BurlerAssistClusterFan, []string{"lens_list", "lens_report_path", "lens_report_spec_path"}},

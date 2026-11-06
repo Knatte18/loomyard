@@ -59,6 +59,10 @@ type roundUsage struct {
 	Attempt   string        `yaml:"attempt,omitempty"`
 	Assist    *assistRecord `yaml:"assist,omitempty"`
 	AssistFan string        `yaml:"assist_fan,omitempty"`
+	// AssistEnding is the assistant's end marker text once the round is accepted, and AssistLensesMissing names each lens of a done fanned assistant that returned no lens report.
+	// A round whose AssistEnding reads done and that names no lens ran its whole fan, so AssistFan alone never says the fan ran.
+	AssistEnding        string   `yaml:"assist_ending,omitempty"`
+	AssistLensesMissing []string `yaml:"assist_lenses_missing,omitempty"`
 }
 
 // assistRecord is the assistant model choice a round's review table spawned with.
