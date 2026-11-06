@@ -23,6 +23,9 @@ const (
 	gamma = "ly:gamma:driver"
 	delta = "ly:delta:driver"
 	orch  = "ly:orch"
+	// remoteHub and remoteOrch are a hub of another shortname and its orch, the far side of mail across hubs.
+	remoteHub  = "/hubs/xx"
+	remoteOrch = "xx:orch"
 )
 
 // testClock is a Clock that stands still until a test moves it.
@@ -214,6 +217,97 @@ func TestJournal_Fold(t *testing.T) {
 				}
 				if chased.Chase != 1 || chased.ID != 1 || unanswered.Reason != UnansweredNoReply {
 					t.Errorf("log entries = chased %+v, unanswered %+v; want chase 1 of message 1 and the no-reply reason", chased, unanswered)
+				}
+			},
+		},
+		{
+			name: "outbound records fold into the outbound map and no message, delivered and returned settle them, and their log entries carry the parties, subject and receiving hub",
+			files: map[string]string{"2026-10-01.jsonl": strings.Join([]string{
+				line(record{Event: eventOutbound, ID: 1, From: alpha, To: remoteOrch, ReceivingHub: remoteHub, Body: "first line\nmore", ExpectReply: true}),
+				line(record{Event: eventRemoteDelivered, ID: 1, RemoteID: 40}),
+				line(record{Event: eventOutbound, ID: 2, From: alpha, To: remoteOrch, ReceivingHub: remoteHub, Body: "second"}),
+				line(record{Event: eventOutboundReturned, ID: 2, Reason: "no-hub"}),
+			}, "\n") + "\n"},
+			check: func(t *testing.T, p *pool) {
+				if len(p.messages) != 0 {
+					t.Errorf("messages = %+v, want none: an outbound message is held by no local strand", shapesOf(p))
+				}
+				first, second := p.outbound[1], p.outbound[2]
+				if first == nil || first.State != outboundDelivered || first.RemoteID != 40 || second == nil || second.State != outboundReturned || second.Reason != "no-hub" {
+					t.Fatalf("outbound = %+v, want 1 delivered as remote 40 and 2 returned for no-hub", p.outbound)
+				}
+				if got := second.message(); got.Holder != remoteOrch || got.Status != StatusUndelivered || got.Subject != "second" {
+					t.Errorf("returned outbound message = %+v, want holder %s, status undelivered and subject second", got, remoteOrch)
+				}
+				logged := map[string]LogEntry{}
+				for _, entry := range p.events {
+					logged[entry.Event+fmt.Sprint(entry.ID)] = entry
+				}
+				delivered, returned := logged[eventRemoteDelivered+"1"], logged[eventOutboundReturned+"2"]
+				if delivered.From != alpha || delivered.To != remoteOrch || delivered.Subject != "first line" || delivered.ReceivingHub != remoteHub || delivered.RemoteID != 40 {
+					t.Errorf("remote-delivered entry = %+v, want the parties, subject, receiving hub and remote id of message 1", delivered)
+				}
+				if returned.From != alpha || returned.To != remoteOrch || returned.Subject != "second" || returned.ReceivingHub != remoteHub || returned.Reason != "no-hub" {
+					t.Errorf("outbound-returned entry = %+v, want the parties, subject, receiving hub and reason of message 2", returned)
+				}
+			},
+		},
+		{
+			name: "an outbound reply marks the local message replied, an inbound record folds as unread mail with its hub fields and a forward leaves DeliveredTo, and an inbound reply marks its outbound message replied",
+			files: map[string]string{"2026-10-01.jsonl": strings.Join([]string{
+				line(record{Event: eventPosted, ID: 1, From: alpha, To: beta, Body: "question", ExpectReply: true}),
+				line(record{Event: eventRead, ID: 1, By: beta}),
+				line(record{Event: eventOutbound, ID: 2, From: beta, To: remoteOrch, ReceivingHub: remoteHub, Kind: kindReply, Body: "answer", ReplyTo: 9, Answers: 1}),
+				line(record{Event: eventInbound, ID: 3, From: remoteOrch, To: beta, Body: "ask", SendingHub: remoteHub, SendingShortname: "xx", SendingID: 31, Trusted: true, ExpectReply: true,
+					RemotePosted: journalEpoch.Add(-time.Hour), DeliveredTo: beta}),
+				line(record{Event: eventForwarded, ID: 3, By: beta, To: gamma}),
+				line(record{Event: eventOutbound, ID: 4, From: gamma, To: remoteOrch, ReceivingHub: remoteHub, Body: "q", ExpectReply: true}),
+				line(record{Event: eventInbound, ID: 5, From: remoteOrch, To: gamma, Kind: kindReply, ReplyTo: 4, Body: "re", SendingHub: remoteHub, SendingID: 32}),
+			}, "\n") + "\n"},
+			check: func(t *testing.T, p *pool) {
+				if !p.messages[1].Replied {
+					t.Errorf("message 1 Replied = false, want true after the outbound reply that answers it")
+				}
+				inbound := p.messages[3]
+				if inbound.Holder != gamma || inbound.DeliveredTo != beta || inbound.Status != StatusUnread || inbound.SendingHub != remoteHub || inbound.SendingID != 31 ||
+					!inbound.Trusted || !inbound.RemotePosted.Equal(journalEpoch.Add(-time.Hour)) || !inbound.ExpectReply || inbound.HubStamp() != StampTrusted {
+					t.Errorf("inbound message = %+v, want unread mail held by %s, delivered to %s, trusted, from %s as id 31", inbound, gamma, beta, remoteHub)
+				}
+				if reply := p.messages[5]; reply.Kind != kindReply || reply.ReplyTo != 4 || reply.HubStamp() != StampUntrusted || reply.DeliveredTo != gamma {
+					t.Errorf("inbound reply = %+v, want an untrusted reply to 4 delivered to %s", reply, gamma)
+				}
+				if !p.outbound[4].Replied || p.outbound[2].Replied {
+					t.Errorf("outbound replied marks = %v and %v for 4 and 2, want true and false", p.outbound[4].Replied, p.outbound[2].Replied)
+				}
+				if len(p.programs) != 0 {
+					t.Errorf("program mailboxes = %v, want none: another hub's sender makes no mailbox here", p.programs)
+				}
+				logged := map[int64]LogEntry{}
+				for _, entry := range p.events {
+					if entry.Event == eventInbound || entry.Event == eventOutbound {
+						logged[entry.ID] = entry
+					}
+				}
+				if entry := logged[3]; entry.Kind != kindMail || !entry.ExpectReply || entry.SendingHub != remoteHub || entry.SendingShortname != "xx" || entry.SendingID != 31 {
+					t.Errorf("inbound entry = %+v, want kind mail, the mark and the sending hub's path, shortname and id", entry)
+				}
+				if entry := logged[5]; entry.Kind != kindReply || entry.ReplyTo != 4 {
+					t.Errorf("inbound reply entry = %+v, want kind reply answering 4", entry)
+				}
+				if entry := logged[2]; entry.Kind != kindReply || entry.ReplyTo != 9 || entry.Answers != 1 || entry.ReceivingHub != remoteHub {
+					t.Errorf("outbound reply entry = %+v, want kind reply to 9 answering 1 for %s", entry, remoteHub)
+				}
+			},
+		},
+		{
+			name:  "a dropped record joins the log with the claimed strand as sender and folds no entry",
+			files: map[string]string{"2026-10-01.jsonl": line(record{Event: eventDropped, From: "xx:gamma:driver", To: beta, SendingHub: remoteHub, SendingShortname: "xx", Reason: "unconfirmed"}) + "\n"},
+			check: func(t *testing.T, p *pool) {
+				if len(p.messages)+len(p.outbound) != 0 || len(p.events) != 1 {
+					t.Fatalf("pool = %d messages, %d outbound, %d events; want only the one log entry", len(p.messages), len(p.outbound), len(p.events))
+				}
+				if entry := p.events[0]; entry.Event != eventDropped || entry.From != "xx:gamma:driver" || entry.To != beta || entry.SendingHub != remoteHub || entry.SendingShortname != "xx" || entry.Reason != "unconfirmed" {
+					t.Errorf("dropped entry = %+v, want the claimed strand as sender, the receiver, the sending hub, its shortname and the reason", entry)
 				}
 			},
 		},
@@ -680,6 +774,86 @@ func TestJournal_Retention(t *testing.T) {
 				t.Errorf("%s: programs = %v; want no ly:CREEL, the condition a post to it is refused as an unknown receiver on", label, p.programs)
 			}
 		}
+	})
+
+	// Retention carries a pending outbound message and an inbound message, and no settled outbound message, and a carried line beside its original folds to one entry.
+	t.Run("mail across hubs", func(t *testing.T) {
+		t.Parallel()
+		dir := filepath.Join(t.TempDir(), "journal")
+		clock := &testClock{now: journalEpoch}
+		state := newPool()
+		writer, err := openJournal(dir, clock, state)
+		if err != nil {
+			t.Fatalf("openJournal: %v", err)
+		}
+		t.Cleanup(func() { _ = writer.close() })
+		postedAt := journalEpoch.Add(123456789 * time.Nanosecond)
+		remotePosted := journalEpoch.Add(-time.Hour)
+		for _, rec := range []record{
+			{Event: eventOutbound, At: postedAt, ID: 1, From: alpha, To: remoteOrch, ReceivingHub: remoteHub, Kind: kindReply, Body: "pending", ReplyTo: 9, Answers: 8, ExpectReply: true},
+			{Event: eventOutbound, ID: 2, From: alpha, To: remoteOrch, ReceivingHub: remoteHub, Body: "delivered"},
+			{Event: eventRemoteDelivered, ID: 2, RemoteID: 40},
+			{Event: eventOutbound, ID: 3, From: alpha, To: remoteOrch, ReceivingHub: remoteHub, Body: "returned"},
+			{Event: eventOutboundReturned, ID: 3, Reason: "no-hub"},
+			{Event: eventInbound, ID: 4, From: remoteOrch, To: beta, Body: "unread", SendingHub: remoteHub, SendingID: 12, Trusted: true, RemotePosted: remotePosted, DeliveredTo: beta},
+			{Event: eventInbound, ID: 5, From: remoteOrch, To: beta, Body: "read", SendingHub: remoteHub, SendingID: 13, RemotePosted: remotePosted, DeliveredTo: beta, ExpectReply: true},
+			{Event: eventRead, ID: 5, By: beta},
+			{Event: eventChaseAged, ID: 5, ConsumedSeconds: 600},
+		} {
+			if err := writer.append(rec); err != nil {
+				t.Fatalf("append %s: %v", rec.Event, err)
+			}
+		}
+		dayOne, err := os.ReadFile(filepath.Join(dir, "2026-10-01.jsonl"))
+		if err != nil {
+			t.Fatalf("read day one: %v", err)
+		}
+		// Day eleven puts day one past seven days.
+		clock.now = journalEpoch.AddDate(0, 0, 10)
+		if err := writer.append(record{Event: eventPosted, ID: 6, From: alpha, To: beta, Body: "new"}); err != nil {
+			t.Fatalf("append: %v", err)
+		}
+
+		check := func(label string, p *pool, wantOutbound int) {
+			t.Helper()
+			pending := p.outbound[1]
+			if len(p.outbound) != wantOutbound || pending == nil || pending.State != outboundPending || !pending.Posted.Equal(postedAt) || pending.ReceivingHub != remoteHub ||
+				pending.ReplyTo != 9 || pending.Answers != 8 || pending.Kind != kindReply || !pending.ExpectReply || pending.To != remoteOrch {
+				t.Errorf("%s: outbound = %+v, want %d entries with 1 pending, posted at %v, for %s, replying to 9 and answering 8", label, p.outbound, wantOutbound, postedAt, remoteHub)
+			}
+			unread, read := p.messages[4], p.messages[5]
+			if unread == nil || unread.Status != StatusUnread || unread.SendingHub != remoteHub || unread.SendingID != 12 || !unread.Trusted || !unread.RemotePosted.Equal(remotePosted) || unread.DeliveredTo != beta || !unread.Posted.Equal(journalEpoch) {
+				t.Errorf("%s: unread inbound message = %+v, want it back with its hub fields and its original time", label, unread)
+			}
+			if read == nil || read.Status != StatusRead || !read.ReadAt.Equal(journalEpoch) || read.ChaseConsumed != 10*time.Minute || read.SendingID != 13 || read.Trusted || !isChaseable(read) {
+				t.Errorf("%s: read inbound message = %+v, want it back read, chaseable, with its read time, chase clock and hub fields", label, read)
+			}
+			if len(p.messages) != 3 {
+				t.Errorf("%s: messages = %+v, want only 4, 5 and 6", label, shapesOf(p))
+			}
+		}
+		check("the writer's pool", state, 1)
+		if got := carriedEntries(state, 4); len(got) != 1 || got[0].SendingHub != remoteHub || got[0].SendingID != 12 || got[0].Kind != kindMail {
+			t.Errorf("carried entries of inbound message 4 = %+v, want one showing its sending hub and id", got)
+		}
+		if got := carriedEntries(state, 1); len(got) != 1 || got[0].ReceivingHub != remoteHub || got[0].Kind != kindReply || got[0].Answers != 8 {
+			t.Errorf("carried entries of outbound message 1 = %+v, want one showing its receiving hub and the id it answers", got)
+		}
+		refolded, err := foldJournal(dir)
+		if err != nil {
+			t.Fatalf("foldJournal after retention: %v", err)
+		}
+		check("the refolded journal", refolded, 1)
+
+		// A crash between the carry and the deletion leaves the old file beside the carried lines: each entry folds once, and the settled outbound messages return with it.
+		if err := os.WriteFile(filepath.Join(dir, "2026-10-01.jsonl"), dayOne, 0o644); err != nil {
+			t.Fatalf("restore day one: %v", err)
+		}
+		crashed, err := foldJournal(dir)
+		if err != nil {
+			t.Fatalf("foldJournal after a crash between carry and delete: %v", err)
+		}
+		check("after a crash between carry and delete", crashed, 3)
 	})
 }
 

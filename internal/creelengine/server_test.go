@@ -44,6 +44,10 @@ type rig struct {
 	servingOnce sync.Once
 	// beforeOutcomeWait, when set before start, runs in the daemon ahead of each waiting verb's select.
 	beforeOutcomeWait func(outcomeQueued, clientLeft func() bool)
+	// hubs, when set before start, is the daemon's seam to the other hubs; nil leaves a daemon that serves no other hub.
+	hubs *creelfake.Hubs
+	// goos, when set before start, is the platform the daemon runs on in place of the host's.
+	goos string
 }
 
 // newRig returns a rig over a socket in the process run directory.
@@ -90,6 +94,12 @@ func (r *rig) options(ready func()) creelengine.Options {
 	}
 	if r.beforeOutcomeWait != nil {
 		opts = creelengine.WithBeforeOutcomeWait(opts, r.beforeOutcomeWait)
+	}
+	if r.hubs != nil {
+		opts.Hubs = r.hubs
+	}
+	if r.goos != "" {
+		opts.GOOS = r.goos
 	}
 	return opts
 }
@@ -844,6 +854,49 @@ func TestDaemon_Lifecycle(t *testing.T) {
 			cancel()
 			if err := <-results; err != nil {
 				t.Errorf("the serving daemon returned %v on cancel", err)
+			}
+		}},
+		{"StartRecordsTheHubOnceAfterTheLockAndADaemonThatLostTheLockRecordsNothing", func(t *testing.T, r *rig) {
+			r.hubs = creelfake.NewHubs()
+			r.start()
+			if got := r.hubs.Records(); got != 1 {
+				t.Errorf("records after the start = %d; want 1", got)
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			if err := creelengine.Run(ctx, r.options(nil)); !errors.Is(err, creelengine.ErrDaemonRunning) {
+				t.Errorf("a second Run = %v; want ErrDaemonRunning", err)
+			}
+			if got := r.hubs.Records(); got != 1 {
+				t.Errorf("records after a daemon lost the lock = %d; want still 1", got)
+			}
+		}},
+		{"AFailedRecordStillServesAndTheNextVerbRecordsAgainWhileASuccessfulOneWaitsOutTheInterval", func(t *testing.T, r *rig) {
+			r.hubs = creelfake.NewHubs()
+			r.hubs.SetRecordError(errors.New("disk full"))
+			r.start()
+			c := r.client(externalClaim(), nil, creelfake.NewClock(epoch))
+			verb := creelengine.Request{Verb: creelengine.VerbLog}
+			steps := []struct {
+				name    string
+				before  func()
+				records int
+			}{
+				{"AVerbAfterAFailedRecordRecordsAgainWithTheClockUnmoved", func() {}, 2},
+				{"TheRecordThatSucceedsIsMadeAtTheNextVerbToo", func() { r.hubs.SetRecordError(nil) }, 3},
+				{"AVerbInsideTheIntervalRecordsNothing", func() {}, 3},
+				{"AVerbJustShortOfTheIntervalRecordsNothing", func() { r.clock.Advance(59 * time.Second) }, 3},
+				{"AVerbPastTheIntervalRecords", func() { r.clock.Advance(2 * time.Second) }, 4},
+			}
+			if got := r.hubs.Records(); got != 1 {
+				t.Fatalf("records after the start = %d; want 1, the failed one", got)
+			}
+			for _, step := range steps {
+				step.before()
+				mustCall(t, c, verb)
+				if got := r.hubs.Records(); got != step.records {
+					t.Errorf("%s: records = %d; want %d", step.name, got, step.records)
+				}
 			}
 		}},
 		{"TwoConcurrentFirstCallsEndWithOneDaemonAndBothAnswered", func(t *testing.T, r *rig) {

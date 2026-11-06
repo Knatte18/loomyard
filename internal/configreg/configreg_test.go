@@ -44,7 +44,7 @@ func TestNames(t *testing.T) {
 	}
 }
 
-// TestModules_SeedOnlyAndHubWideFlags pins the two flags: "models" and "profiles" carry an open-ended, operator-owned key set (model aliases and run profiles respectively), so they are the only entries with SeedOnly == true, "fabric", "board", "gate", "heddle", "hibernate", "ide", "landing", "darn", "desktop", "drift", "env", "language", "report", "sampler", "slack" and "profiles" describe hub-level facts, so they are the only entries with HubWide == true, and "landing", whose per-worktree copy was in effect before it moved hub-wide, is the only entry with SeedsFromPrime == true.
+// TestModules_SeedOnlyAndHubWideFlags pins the two flags: "models" and "profiles" carry an open-ended, operator-owned key set (model aliases and run profiles respectively), so they are the only entries with SeedOnly == true, "fabric", "board", "creel", "gate", "heddle", "hibernate", "ide", "landing", "darn", "desktop", "drift", "env", "language", "report", "sampler", "slack" and "profiles" describe hub-level facts, so they are the only entries with HubWide == true, and "landing", whose per-worktree copy was in effect before it moved hub-wide, is the only entry with SeedsFromPrime == true.
 //
 //testtiming:keep pins which modules carry the SeedOnly and HubWide flags, which the covering TestFill never asserts
 func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
@@ -55,7 +55,7 @@ func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
 		if m.SeedOnly != wantSeedOnly {
 			t.Errorf("Modules(): module %q SeedOnly = %v; want %v", m.Name, m.SeedOnly, wantSeedOnly)
 		}
-		wantHubWide := m.Name == "fabric" || m.Name == "board" || m.Name == "gate" || m.Name == "heddle" || m.Name == "hibernate" || m.Name == "ide" || m.Name == "landing" || m.Name == "darn" || m.Name == "desktop" || m.Name == "drift" || m.Name == "env" || m.Name == "language" || m.Name == "profiles" || m.Name == "report" || m.Name == "sampler" || m.Name == "slack"
+		wantHubWide := m.Name == "fabric" || m.Name == "board" || m.Name == "creel" || m.Name == "gate" || m.Name == "heddle" || m.Name == "hibernate" || m.Name == "ide" || m.Name == "landing" || m.Name == "darn" || m.Name == "desktop" || m.Name == "drift" || m.Name == "env" || m.Name == "language" || m.Name == "profiles" || m.Name == "report" || m.Name == "sampler" || m.Name == "slack"
 		if m.HubWide != wantHubWide {
 			t.Errorf("Modules(): module %q HubWide = %v; want %v", m.Name, m.HubWide, wantHubWide)
 		}
@@ -201,6 +201,7 @@ func TestModules_LocalLayerRefusals(t *testing.T) {
 		wantKey string
 		allowed bool
 	}{
+		{"creel", "trusted_hubs:\n  - ly\n", "trusted_hubs", false},
 		{"darn", "verify_attempts: 2\n", "verify_attempts", true},
 		{"landing", "deploy_branches: false\n", "deploy_branches", false},
 		{"language", "skills:\n  - scribe:a\n", "skills", false},

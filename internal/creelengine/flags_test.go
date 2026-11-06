@@ -189,6 +189,15 @@ func TestStore_MailFlags(t *testing.T) {
 			claimAndAck()
 			wantFlags(nil, "after the claim of the second post")
 		}},
+		{"APendingOutboundMessageRaisesNoFlag", nil, func(t *testing.T, e *env) {
+			e.withHubs()
+			if _, err := e.store.Post(strand(alpha), "zz:orch", "across"); err != nil {
+				t.Fatalf("Post to zz:orch: %v", err)
+			}
+			if got := e.flags(t); len(got) != 0 {
+				t.Errorf("flags after an outbound post = %q; want none", got)
+			}
+		}},
 		{"ReconcileRestoresALostFlag", nil, func(t *testing.T, e *env) {
 			e.post(t, strand(alpha), beta, "kept unread")
 			if err := os.RemoveAll(e.geom.FlagDir); err != nil {

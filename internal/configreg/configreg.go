@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/creelconfig"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/desktophook"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
@@ -150,6 +151,7 @@ func Modules() []Module {
 		{Name: "batten", Template: battenshed.ConfigTemplate, CheckValues: battenshed.ValidateLocalValues, CheckLoad: checkLoad(battenshed.LoadConfig), Spec: battenshed.ConfigSpec},
 		{Name: "beam", Template: dobbyengine.ConfigTemplate, CheckLoad: checkLoad(dobbyengine.LoadConfig), Spec: dobbyengine.ConfigSpec},
 		{Name: "board", Template: boardengine.ConfigTemplate, OpenMaps: boardengine.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoadNamed(boardengine.LoadConfig, "board"), Spec: boardengine.ConfigSpec},
+		{Name: "creel", Template: creelconfig.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(creelconfig.LoadConfig), Spec: creelconfig.ConfigSpec},
 		{Name: "darn", Template: darnengine.ConfigTemplate, OpenMaps: darnengine.ConfigOpenMaps(), HubWide: true, Migrate: darnengine.MigrateConfig, CheckLoad: checkLoadNamed(darnengine.LoadConfig, "darn"), Spec: darnengine.ConfigSpec},
 		{Name: "desktop", Template: desktophook.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(desktophook.LoadConfig), Spec: desktophook.ConfigSpec},
 		{Name: "drift", Template: driftengine.ConfigTemplate, OpenMaps: driftengine.ConfigOpenMaps(), HubWide: true, Migrate: driftengine.MigrateConfig, CheckLoad: checkLoad(driftengine.LoadConfig), CheckDirs: driftengine.CheckDirs, Reinterpretations: []Reinterpretation{{ID: driftengine.DirBaseReinterpretation, Rewrite: driftengine.RebaseDirsOntoRoot}, {ID: driftengine.DiffModeReinterpretation, Rewrite: driftengine.FlagDiffMode}}, Spec: driftengine.ConfigSpec},

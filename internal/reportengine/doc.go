@@ -203,7 +203,8 @@
 // # Replies
 //
 // ComputeReplies is pure over creel log entries and groups by the receiver's role: a strand's role, a program's upper-case name.
-// Per role it counts Expected, the `posted` entries marked as expecting a reply, by their receiver; Replied, the `posted` reply entries whose reply-to names a message the entries show as marked, by the reply's sender; Chased, the `chased` entries, by their receiver; and Unanswered, the `unanswered` entries, by their holder.
+// Per role it counts Expected, the `posted` and `inbound` entries marked as expecting a reply, by their receiver; Replied, the `posted` reply entries whose reply-to names a message the entries show as marked, and the `outbound` entries whose `Answers` names one, by the reply's sender; Chased, the `chased` entries, by their receiver; and Unanswered, the `unanswered` entries, by their holder.
+// An `outbound` post and an `inbound` reply count nothing, since the report counts what this hub's receivers were asked.
 // A reply whose reply-to names no marked message counts nowhere, a name that is neither a strand nor a program counts nowhere, and roles come out in name order.
 //
 // # Outputs

@@ -31,6 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/hubregistry"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/orchengine"
@@ -296,21 +297,52 @@ func newRig(t *testing.T) *rig {
 		delivery: creelfake.NewDelivery(), clock: creelfake.NewClock(epoch), clientClock: creelfake.NewClock(epoch),
 	}
 	previous := seam
-	seam = clientSeam{clock: r.clientClock, spawn: func(string, string) (creelengine.Spawn, error) { return creelengine.Spawn{}, nil }, live: previous.live}
+	registryDir := t.TempDir()
+	seam = clientSeam{
+		clock: r.clientClock, spawn: func(string, string) (creelengine.Spawn, error) { return creelengine.Spawn{}, nil }, live: previous.live,
+		registryDir: func() (string, error) { return registryDir, nil },
+	}
 	t.Cleanup(func() { seam = previous })
 	return r
+}
+
+// addHub gives a row its second hub: a copy of the fixture hub whose shortname record it rewrites, since hubforge hubs share one shortname, with that hub's geometry, delivery and clock.
+// The new rig shares the rig's one seam and client clock, so it starts no daemon until the row starts one.
+func (r *rig) addHub(t *testing.T, shortname string) *rig {
+	t.Helper()
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	if err := fabricengine.WriteShortname(fabricengine.BoltDir(hub.Path), shortname); err != nil {
+		t.Fatalf("WriteShortname(%q) = %v", shortname, err)
+	}
+	root, err := lymtemp.ProcessRoot()
+	if err != nil {
+		t.Fatalf("ProcessRoot() = %v", err)
+	}
+	geometry, err := hubgeom.CreelGeometry(hub.Path, root.Path())
+	if err != nil {
+		t.Fatalf("CreelGeometry() = %v", err)
+	}
+	return &rig{
+		hub: hub, cwd: hub.PrimeWorktree(), geometry: geometry, short: shortname,
+		delivery: creelfake.NewDelivery(), clock: creelfake.NewClock(epoch), clientClock: r.clientClock,
+	}
 }
 
 // startDaemon runs the daemon in process on the rig's geometry and returns once it listens.
 func (r *rig) startDaemon(t *testing.T) {
 	t.Helper()
+	root, err := lymtemp.ProcessRoot()
+	if err != nil {
+		t.Fatalf("ProcessRoot() = %v", err)
+	}
+	hubs := daemonHubs(r.hub.Path, r.short, root.Path())
 	ready := make(chan struct{})
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
 		done <- creelengine.Run(ctx, creelengine.Options{
 			Geometry: r.geometry, Delivery: r.delivery, Clock: r.clock, PollClock: creelfake.NewClock(epoch),
-			ParentPID: proc.ParentPID, GOOS: runtime.GOOS, Ready: func() { close(ready) },
+			ParentPID: proc.ParentPID, GOOS: runtime.GOOS, Hubs: hubs, Ready: func() { close(ready) },
 		})
 	}()
 	t.Cleanup(func() {
@@ -363,13 +395,168 @@ func TestCreelCLI(t *testing.T) {
 		gitkit.Git(t, repo, "init", "-b", "main")
 		verbs := [][]string{
 			{"post", "r", "text"}, {"inject", "r", "text"}, {"interrupt", "r"}, {"forward", "1", "r"}, {"read"},
-			{"inbox"}, {"log"}, {"hold", "r", "--for", "1m"}, {"release", "r"},
+			{"inbox"}, {"log"}, {"hold", "r", "--for", "1m"}, {"release", "r"}, {"hubs"},
 		}
 		for _, args := range verbs {
 			run := runCreel(repo, args...)
 			if run.code != 1 || !strings.Contains(run.errorText(), "creel needs a hub") {
 				t.Errorf("creel %v in a plain repository = (%d, %q); want exit 1 naming that creel needs a hub", args, run.code, run.raw)
 			}
+		}
+	})
+
+	t.Run("hubs lists the recorded hubs that pass the lookup check and starts no daemon", func(t *testing.T) {
+		const xx, yy = "xx", "yy"
+		// listed returns the entries of a hubs run by shortname.
+		listed := func(t *testing.T, run cliRun) map[string]map[string]any {
+			t.Helper()
+			if run.code != 0 {
+				t.Fatalf("creel hubs = (%d, %q); want exit 0", run.code, run.raw)
+			}
+			entries, _ := run.fields["hubs"].([]any)
+			byName := map[string]map[string]any{}
+			for _, entry := range entries {
+				fields, _ := entry.(map[string]any)
+				byName[fields["shortname"].(string)] = fields
+			}
+			return byName
+		}
+		recordHubs := func(t *testing.T, hubs ...*rig) {
+			t.Helper()
+			registry, err := seam.registryDir()
+			if err != nil {
+				t.Fatalf("registryDir() = %v", err)
+			}
+			for _, other := range hubs {
+				if err := hubregistry.Record(registry, other.hub.Path, other.short, epoch); err != nil {
+					t.Fatalf("Record(%s) = %v", other.short, err)
+				}
+			}
+		}
+
+		t.Run("an empty record prints an empty list", func(t *testing.T) {
+			r := newRig(t)
+			run := runCreel(r.cwd, "hubs")
+			if entries, ok := run.fields["hubs"].([]any); run.code != 0 || !ok || len(entries) != 0 {
+				t.Errorf("creel hubs over an empty record = (%d, %q); want exit 0 and an empty list", run.code, run.raw)
+			}
+		})
+
+		t.Run("a daemon that answers shows true, one that does not shows false and none is started", func(t *testing.T) {
+			r := newRig(t)
+			up, down := r.addHub(t, xx), r.addHub(t, yy)
+			up.startDaemon(t)
+			recordHubs(t, up, down)
+			byName := listed(t, runCreel(r.cwd, "hubs"))
+			if byName[xx]["daemon_answers"] != true || byName[yy]["daemon_answers"] != false || byName[xx]["hub_path"] != up.hub.Path {
+				t.Errorf("creel hubs = %v; want %s answering at %s and %s not answering", byName, xx, up.hub.Path, yy)
+			}
+			if _, err := os.Stat(down.geometry.SocketPath); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("the socket of the hub with no daemon after creel hubs: %v; want none, since the verb starts no daemon", err)
+			}
+		})
+
+		t.Run("a hub named in trusted_hubs shows trusted and another does not", func(t *testing.T) {
+			r := newRig(t)
+			trusted, other := r.addHub(t, xx), r.addHub(t, yy)
+			recordHubs(t, trusted, other)
+			writeBoardCreelConfig(t, r.hub.Path, "trusted_hubs:\n  - "+xx+"\n")
+			byName := listed(t, runCreel(r.cwd, "hubs"))
+			if byName[xx]["trusted"] != true || byName[yy]["trusted"] != false {
+				t.Errorf("creel hubs = %v; want %s trusted and %s not", byName, xx, yy)
+			}
+		})
+
+		t.Run("a hub whose shortname record is gone is not listed", func(t *testing.T) {
+			r := newRig(t)
+			gone, kept := r.addHub(t, xx), r.addHub(t, yy)
+			recordHubs(t, gone, kept)
+			if err := os.Remove(filepath.Join(fabricengine.BoltDir(gone.hub.Path), fabricengine.ShortnameFileName)); err != nil {
+				t.Fatalf("Remove(shortname record) = %v", err)
+			}
+			byName := listed(t, runCreel(r.cwd, "hubs"))
+			if _, found := byName[xx]; found || byName[yy] == nil {
+				t.Errorf("creel hubs = %v; want only %s", byName, yy)
+			}
+		})
+
+		refusals := []struct {
+			name  string
+			setup func(t *testing.T, r *rig)
+			want  []string
+		}{
+			{"a corrupt record is refused naming its path", func(t *testing.T, _ *rig) {
+				registry, _ := seam.registryDir()
+				if err := os.WriteFile(filepath.Join(registry, hubregistry.RecordFileName), []byte("{not json"), 0o644); err != nil {
+					t.Fatalf("WriteFile(record) = %v", err)
+				}
+			}, []string{hubregistry.RecordFileName, "way forward"}},
+			{"an invalid creel.yaml is refused naming lym config creel", func(t *testing.T, r *rig) {
+				writeBoardCreelConfig(t, r.hub.Path, "trusted_hubs: [aa\n")
+			}, []string{"lym config creel"}},
+			{"a failing registryDir is refused naming its cause", func(t *testing.T, _ *rig) {
+				seam.registryDir = func() (string, error) {
+					return "", errors.New("no state directory: set XDG_STATE_HOME or HOME")
+				}
+			}, []string{"XDG_STATE_HOME", "HOME"}},
+		}
+		for _, tt := range refusals {
+			t.Run(tt.name, func(t *testing.T) {
+				r := newRig(t)
+				tt.setup(t, r)
+				run := runCreel(r.cwd, "hubs")
+				if run.code != 1 {
+					t.Errorf("creel hubs = (%d, %q); want exit 1", run.code, run.raw)
+				}
+				for _, want := range tt.want {
+					if !strings.Contains(run.errorText(), want) {
+						t.Errorf("creel hubs error = %q; want it to contain %q", run.errorText(), want)
+					}
+				}
+			})
+		}
+	})
+
+	t.Run("a post from a strand reaches a strand of another hub, whose read shows the stamp and whose reply ends the sender's wait", func(t *testing.T) {
+		r := newRig(t)
+		other := r.addHub(t, "xx")
+		sender, receiver := r.name("alpha:driver"), other.name("beta:driver")
+		for hub, name := range map[*rig]string{r: sender, other: receiver} {
+			inPane := creelfake.LiveStrand(name)
+			inPane.PanePID = os.Getpid()
+			hub.delivery.SetStrands(inPane)
+		}
+		r.startDaemon(t)
+		other.startDaemon(t)
+
+		t.Setenv(agentname.StrandNameEnv, sender)
+		waiting := runAsync(r.cwd, "post", "--wait-reply", receiver, "which schema?")
+		// The post has read the environment once it is journaled, so the row switches strands after it.
+		r.awaitLogged(t, "which schema?")
+		t.Setenv(agentname.StrandNameEnv, receiver)
+		other.awaitLogged(t, "which schema?")
+		read := runCreel(other.cwd, "read")
+		if read.code != 0 || !strings.Contains(read.raw, `"`+sender+`" `+creelengine.StampUntrusted) || !strings.Contains(read.raw, "which schema?") {
+			t.Fatalf("creel read in the receiving hub = (%d, %q); want the message with %s and the stamp after it", read.code, read.raw, sender)
+		}
+		id := regexp.MustCompile(`#(\d+)`).FindStringSubmatch(read.raw)
+		if id == nil {
+			t.Fatalf("creel read = %q; want a message id", read.raw)
+		}
+		if reply := runCreel(other.cwd, "post", "--reply", id[1], "the schema is v2"); reply.code != 0 {
+			t.Fatalf("creel post --reply across hubs = (%d, %q); want exit 0", reply.code, reply.raw)
+		}
+
+		answered := awaitRun(t, waiting)
+		reply, _ := answered.fields["reply"].(map[string]any)
+		if answered.code != 0 || answered.fields["outcome"] != "reply" || reply["body"] != "the schema is v2" ||
+			reply["from"] != receiver || reply["trust"] != "untrusted" || reply["sending_hub"] != other.hub.Path {
+			t.Errorf("creel post --wait-reply = (%d, %q); want the reply from the bare name %s beside the trust and sending hub fields", answered.code, answered.raw, receiver)
+		}
+		t.Setenv(agentname.StrandNameEnv, sender)
+		mail := runCreel(r.cwd, "read", "--envelope")
+		if messages, _ := mail.fields["messages"].([]any); mail.code != 0 || len(messages) != 1 || messages[0].(map[string]any)["body"] != "the schema is v2" {
+			t.Errorf("creel read in the sending hub = (%d, %q); want the reply still delivered as mail", mail.code, mail.raw)
 		}
 	})
 
@@ -848,6 +1035,37 @@ func TestCreelCLI(t *testing.T) {
 		}
 		if again := runCreel(r.cwd, "read"); again.code != 0 || again.raw != "nothing unread\n" {
 			t.Errorf("creel read after the acknowledged ones = (%d, %q); want exit 0 printing nothing unread", again.code, again.raw)
+		}
+	})
+
+	t.Run("mail from another hub reads with trust and sending fields beside a bare from, and the log shows the sending hub and its id", func(t *testing.T) {
+		r := newRig(t)
+		alpha := r.name("alpha:driver")
+		t.Setenv(agentname.StrandNameEnv, alpha)
+		strand := creelfake.LiveStrand(alpha)
+		strand.PanePID = os.Getpid()
+		r.delivery.SetStrands(strand)
+		if err := os.MkdirAll(r.geometry.JournalDir, 0o755); err != nil {
+			t.Fatalf("MkdirAll() = %v", err)
+		}
+		inbound := fmt.Sprintf(`{"event":"inbound","at":"2026-10-01T11:00:00Z","id":1,"from":"xx:orch","to":%q,"body":"hello","sending_hub":"/hubs/xx","sending_id":7,"trusted":true,"delivered_to":%q}`, alpha, alpha)
+		if err := os.WriteFile(filepath.Join(r.geometry.JournalDir, "2026-10-01.jsonl"), []byte(inbound+"\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile() = %v", err)
+		}
+		r.startDaemon(t)
+
+		logged := runCreel(r.cwd, "log", "--id", "1").fields["log"].([]any)[0].(map[string]any)
+		if logged["event"] != "inbound" || logged["sending_hub"] != "/hubs/xx" || logged["sending_id"] != float64(7) {
+			t.Errorf("creel log --id 1 first entry = %v; want the inbound event with the sending hub's path and id 7", logged)
+		}
+		read := runCreel(r.cwd, "read", "--envelope")
+		messages, _ := read.fields["messages"].([]any)
+		if read.code != 0 || len(messages) != 1 {
+			t.Fatalf("creel read --envelope = (%d, %q); want exit 0 with one message", read.code, read.raw)
+		}
+		message, _ := messages[0].(map[string]any)
+		if message["from"] != "xx:orch" || message["trust"] != "trusted-orch" || message["sending_hub"] != "/hubs/xx" || message["sending_id"] != float64(7) {
+			t.Errorf("creel read --envelope message = %v; want from xx:orch bare beside trust trusted-orch, sending_hub /hubs/xx and sending_id 7", message)
 		}
 	})
 

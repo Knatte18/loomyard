@@ -44,6 +44,16 @@ const (
 	eventCarried = "carried"
 	// eventHighWater opens every day file with the largest id issued so far.
 	eventHighWater = "high-water"
+	// eventOutbound records a message a strand of this hub posted to a strand of another hub; it is held in the outbound map and never in the mail pool.
+	eventOutbound = "outbound"
+	// eventRemoteDelivered records that the receiving hub's daemon accepted an outbound message, with the id it gave it.
+	eventRemoteDelivered = "remote-delivered"
+	// eventOutboundReturned records that an outbound message ended undelivered, with the reason.
+	eventOutboundReturned = "outbound-returned"
+	// eventInbound records mail from a strand of another hub, which the pool holds as unread mail stamped with its sending hub.
+	eventInbound = "inbound"
+	// eventDropped records mail from another hub that was dropped, never delivered to any agent.
+	eventDropped = "dropped"
 )
 
 // Kinds of a posted record.
@@ -116,6 +126,23 @@ type record struct {
 	// OrigAt is the time a carried entry was first recorded, and ReceiverAt the time its returned message ended unread.
 	OrigAt     time.Time `json:"orig_at,omitzero"`
 	ReceiverAt time.Time `json:"receiver_at,omitzero"`
+	// SendingHub is the path of the hub that sent an inbound or dropped message, and SendingShortname the shortname it claimed.
+	SendingHub       string `json:"sending_hub,omitempty"`
+	SendingShortname string `json:"sending_shortname,omitempty"`
+	// SendingID is the id the sending hub gave an inbound message.
+	SendingID int64 `json:"sending_id,omitempty"`
+	// ReceivingHub is the path of the hub an outbound message goes to.
+	ReceivingHub string `json:"receiving_hub,omitempty"`
+	// RemoteID is the id the receiving hub gave an outbound message.
+	RemoteID int64 `json:"remote_id,omitempty"`
+	// Trusted marks an inbound message from the orch of a hub this hub trusts.
+	Trusted bool `json:"trusted,omitempty"`
+	// RemotePosted is when the sending hub posted an inbound message.
+	RemotePosted time.Time `json:"remote_posted,omitzero"`
+	// DeliveredTo is the receiver the delivery of an inbound message named; it never changes.
+	DeliveredTo string `json:"delivered_to,omitempty"`
+	// Answers is the id of the local message an outbound reply answers.
+	Answers int64 `json:"answers,omitempty"`
 }
 
 // journalDay returns the UTC day a journal file name or time falls on, as YYYY-MM-DD.

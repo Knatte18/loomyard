@@ -62,6 +62,14 @@ type Store struct {
 	chaseWritten map[int64]int64
 	// chaseBase maps a message id whose chase step was already due when the store opened to the clock at that opening, the base its next step counts from.
 	chaseBase map[int64]time.Duration
+	// hubs reaches the other hubs of the machine; nil means a daemon that serves no other hub, and goos is the platform the daemon runs on.
+	hubs HubDirectory
+	goos string
+	// dropWindows maps the path of a sending hub to its window of drop notices; it is kept in memory alone.
+	dropWindows map[string]*dropWindow
+	// outboundHook is called with the path of a receiving hub whenever an outbound message to it is queued, and outboundWakes holds the paths a locked section signalled until the hook runs.
+	outboundHook  func(hubPath string)
+	outboundWakes []string
 }
 
 // paneLock returns the one mutex of receiver's pane.
@@ -118,7 +126,7 @@ func OpenStore(geom Geometry, delivery Delivery, clock Clock) (*Store, error) {
 		reserved: map[int64]string{}, waiters: map[waitKey][]*Waiter{}, agedWritten: map[int64]int64{},
 		stalls: map[string]stallNote{}, paneLocks: map[string]*sync.Mutex{}, flags: map[string]bool{}, stopBlocks: map[string]int{}, wakeMarks: map[string]wakeMark{},
 		echoes: map[string][]echoItem{}, opened: clock.Now(), waiterEnds: map[string]time.Time{},
-		chaseWritten: map[int64]int64{}, chaseBase: map[int64]time.Duration{},
+		chaseWritten: map[int64]int64{}, chaseBase: map[int64]time.Duration{}, dropWindows: map[string]*dropWindow{},
 	}
 	store.seedChaseClock()
 	if err := store.repairChases(); err != nil {
@@ -154,7 +162,7 @@ func (s *Store) SetWakeHook(hook func(receiver string)) {
 	s.wakeHook = hook
 }
 
-// do runs fn under the mutex, then calls the wake hook for every receiver fn signalled once the mutex is free.
+// do runs fn under the mutex, then calls the wake hook for every receiver fn signalled, and the outbound hook for every receiving hub, once the mutex is free.
 // When fn journaled a record, the strands' mail flags follow the pool before the mutex is freed, whether or not fn failed after it.
 func (s *Store) do(fn func() error) error {
 	s.mu.Lock()
@@ -164,7 +172,8 @@ func (s *Store) do(fn func() error) error {
 		s.syncFlagsLocked()
 	}
 	wakes, hook := s.wakes, s.wakeHook
-	s.wakes = nil
+	outboundWakes, outboundHook := s.outboundWakes, s.outboundHook
+	s.wakes, s.outboundWakes = nil, nil
 	s.mu.Unlock()
 	if hook != nil {
 		seen := map[string]bool{}
@@ -172,6 +181,15 @@ func (s *Store) do(fn func() error) error {
 			if !seen[receiver] {
 				seen[receiver] = true
 				hook(receiver)
+			}
+		}
+	}
+	if outboundHook != nil {
+		seen := map[string]bool{}
+		for _, hubPath := range outboundWakes {
+			if !seen[hubPath] {
+				seen[hubPath] = true
+				outboundHook(hubPath)
 			}
 		}
 	}
@@ -413,6 +431,21 @@ func (s *Store) answerLocked(key waitKey, outcome Outcome) int {
 func (s *Store) settledOutcomeLocked(key waitKey) (Outcome, bool, error) {
 	switch key.kind {
 	case waitReply:
+		if sent := s.state.outbound[key.id]; sent != nil {
+			var oldest *Message
+			for _, msg := range s.state.messages {
+				if msg.Kind == kindReply && msg.ReplyTo == key.id && (oldest == nil || msg.ID < oldest.ID) {
+					oldest = msg
+				}
+			}
+			switch {
+			case oldest != nil:
+				return Outcome{Kind: OutcomeReply, Message: *oldest}, true, nil
+			case sent.State == outboundReturned:
+				return Outcome{Kind: OutcomeReturned, Message: sent.message()}, true, nil
+			}
+			return Outcome{}, false, nil
+		}
 		var replies []*Message
 		for _, msg := range s.state.messages {
 			if msg.Kind == kindReply && msg.ReplyTo == key.id && msg.Status == StatusUndelivered && isExternalName(msg.Holder) {

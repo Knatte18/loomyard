@@ -41,15 +41,28 @@ func widestLine(from, body string) string {
 	return MessageLine(Message{ID: math.MaxInt64, From: from, Body: body, ExpectReply: true})
 }
 
-// validateLine refuses an empty body and one whose line does not fit one hook delivery.
-func validateLine(from, body string) error {
+// validateBodyPresent refuses an empty body.
+func validateBodyPresent(body string) error {
 	if strings.TrimSpace(body) == "" {
 		return errors.New("creel: the message body is empty")
+	}
+	return nil
+}
+
+// lineOverBudget is the refusal of a message whose widest line is over the bytes one hook delivery carries.
+func lineOverBudget(widest string) error {
+	return fmt.Errorf("creel: the message's line is %d bytes, over the %d-byte limit one hook delivery carries; write it to a file and mail the file's path", len(widest), boundaryClaimBudget)
+}
+
+// validateLine refuses an empty body and one whose line does not fit one hook delivery.
+func validateLine(from, body string) error {
+	if err := validateBodyPresent(body); err != nil {
+		return err
 	}
 	if LineFits(from, body) {
 		return nil
 	}
-	return fmt.Errorf("creel: the message's line is %d bytes, over the %d-byte limit one hook delivery carries; write it to a file and mail the file's path", len(widestLine(from, body)), boundaryClaimBudget)
+	return lineOverBudget(widestLine(from, body))
 }
 
 // lineOverHookField reports whether msg's line is longer than hookFieldCap UTF-16 units, so Claude Code would show a preview of it instead of the whole line.
@@ -139,6 +152,15 @@ func (s *Store) interruptBeforePost(sender Sender, receiver string) (bool, error
 }
 
 func (s *Store) post(sender Sender, receiver, body string, opts PostOptions) (int64, bool, *Waiter, error) {
+	if opts.Interrupt {
+		if err := s.refuseOtherHub(receiver, "post --interrupt"); err != nil {
+			return 0, false, nil, err
+		}
+	}
+	if shortname, other := s.otherHub(receiver); other && s.hubs != nil {
+		id, waiter, err := s.postOtherHub(sender, receiver, shortname, body, opts)
+		return id, false, waiter, err
+	}
 	if err := validateLine(sender.Name, body); err != nil {
 		return 0, false, nil, err
 	}
@@ -197,6 +219,7 @@ func (s *Store) storePost(sender Sender, receiver, body string, wait, expect boo
 // The caller must hold or have read the message.
 // A reply to an EXTERNAL sender is handed to the wait registered on id, and journaled undelivered when none is.
 // A reply to a chase answers the message the chase chases, and only from that message's holder.
+// A reply to a message from another hub posts nothing here: it is journaled as an outbound message to the sending strand, validated with the longer stamped line, and marks the original replied.
 // A sender notice from creel takes no reply, since creel holds no mailbox.
 func (s *Store) Reply(sender Sender, id int64, text string) (int64, error) {
 	var replyID int64
@@ -219,6 +242,21 @@ func (s *Store) Reply(sender Sender, id int64, text string) (int64, error) {
 			original, id = chased, chased.ID
 		} else if isChaserName(original.From) {
 			return fmt.Errorf("creel: message #%d is a creel notice and takes no reply; way forward: post to the strand it names with lym creel post <strand> \"<text>\"", id)
+		}
+		if original.SendingHub != "" {
+			if err := validateStampedLine(sender.Name, text); err != nil {
+				return err
+			}
+			answerID := s.state.newID()
+			if err := s.writer.append(record{
+				Event: eventOutbound, ID: answerID, From: sender.Name, To: original.From, ReceivingHub: original.SendingHub,
+				Kind: kindReply, Body: text, ReplyTo: original.SendingID, Answers: id,
+			}); err != nil {
+				return err
+			}
+			replyID = answerID
+			s.wakeOutboundLocked(original.SendingHub)
+			return nil
 		}
 		validate := validateBody
 		if !isExternalName(original.From) {
@@ -744,8 +782,13 @@ func (r *Reading) Release() {
 func (s *Store) WaitReply(sender Sender, id int64) (*Waiter, error) {
 	var waiter *Waiter
 	err := s.do(func() error {
-		msg := s.state.messages[id]
-		if msg == nil || msg.From != sender.Name {
+		from := ""
+		if sent := s.state.outbound[id]; sent != nil {
+			from = sent.From
+		} else if msg := s.state.messages[id]; msg != nil {
+			from = msg.From
+		}
+		if from != sender.Name {
 			return fmt.Errorf("creel: message #%d is not one you posted", id)
 		}
 		var err error
@@ -818,6 +861,7 @@ func (s *Store) Inbox(sender Sender) (InboxResult, error) {
 }
 
 // Forward moves an unread message the caller holds to receiver: the holder changes, From stays, and the caller joins the message's path.
+// A message from another hub is forwarded only to a strand of this hub.
 func (s *Store) Forward(sender Sender, id int64, receiver string) error {
 	strands, err := s.readStrands()
 	if err != nil {
@@ -836,6 +880,11 @@ func (s *Store) Forward(sender Sender, id int64, receiver string) error {
 			return fmt.Errorf("creel: message #%d is already read and cannot be forwarded", id)
 		case receiver == sender.Name:
 			return fmt.Errorf("creel: message #%d cannot be forwarded to yourself", id)
+		}
+		if msg.SendingHub != "" {
+			if _, other := s.otherHub(receiver); other || !isStrandName(receiver) {
+				return fmt.Errorf("creel: message #%d came from another hub and is forwarded only to a strand of this hub; way forward: post it anew with lym creel post %s \"<text>\"", id, receiver)
+			}
 		}
 		if err := s.checkReceiverLocked(strands, receiver); err != nil {
 			return err
@@ -907,6 +956,9 @@ func (s *Store) InjectCommand(sender Sender, receiver string, command Command, t
 }
 
 func (s *Store) inject(sender Sender, receiver, text string, command Command, ttl time.Duration, interrupt, wait bool) (InjectResult, *Waiter, error) {
+	if err := s.refuseOtherHub(receiver, "inject"); err != nil {
+		return InjectResult{}, nil, err
+	}
 	if strings.IndexFunc(text, unicode.IsControl) >= 0 {
 		return InjectResult{}, nil, errors.New("creel: an inject is a single line without control characters")
 	}
@@ -1021,6 +1073,9 @@ func (s *Store) checkMayAct(sender Sender, receiver, action string) error {
 // A receiver a pause covers is claimed into that pause and then interrupted, so the pause's resume gives it its resume line;
 // an unreadable pause record and another sender's hold refuse the interrupt.
 func (s *Store) Interrupt(sender Sender, receiver string) (bool, error) {
+	if err := s.refuseOtherHub(receiver, "interrupt"); err != nil {
+		return false, err
+	}
 	target, err := s.strandTarget(receiver)
 	if err != nil {
 		return false, err
@@ -1127,6 +1182,9 @@ type HoldResult struct {
 // The same owner holding again renews the hold; another sender's hold on a held receiver is refused.
 // An orch strand is held by a program only.
 func (s *Store) Hold(sender Sender, receiver string, duration time.Duration) (HoldResult, error) {
+	if err := s.refuseOtherHub(receiver, "hold"); err != nil {
+		return HoldResult{}, err
+	}
 	if duration <= 0 || duration > maxHoldDuration {
 		return HoldResult{}, fmt.Errorf("creel: a hold lasts at most %s", maxHoldDuration)
 	}
@@ -1207,6 +1265,9 @@ func (s *Store) Withdraw(sender Sender, receiver string) (WithdrawResult, error)
 // Release ends the caller's hold on receiver and reports whether there was one, even when the strand has since been removed.
 // Another sender's hold is refused; with no live hold, a name that is no existing strand is refused listing the strands that exist, and an existing strand changes nothing.
 func (s *Store) Release(sender Sender, receiver string) (bool, error) {
+	if err := s.refuseOtherHub(receiver, "release"); err != nil {
+		return false, err
+	}
 	var released, held bool
 	err := s.do(func() error {
 		hold := s.liveHoldLocked(receiver)

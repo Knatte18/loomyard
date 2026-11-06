@@ -7,6 +7,9 @@
 // resolve a relative one belongs at the CLI argument-parsing boundary, per the Cwd Resolution
 // Invariant, never inside this package.
 //
+// UserStateDir answers the per-user `lym` directory every state directory sits under, from the same environment Derive reads, and creates nothing.
+// A record that belongs to the machine and to no target, such as the list of hubs, lives there.
+//
 // Told-geometry tier: standalonestate is told its geometry — Derive takes an already-absolute
 // target from its caller and requires none of the three resolution tiers.
 // This property is machine-enforced by internal/standalonestate/leaf_enforcement_test.go's

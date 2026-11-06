@@ -6,6 +6,12 @@ Agent names are formed only via `internal/agentname`, and messages to another se
 
 Rule: Messaging another session from an agent: only through creel, never an engine's own tool, bar a fork addressed in-session under ForkSubagents. (test)
 
+## Across hubs
+
+Rule: Messaging a strand of another hub of the machine: only a strand posts and replies across hubs, and only to a strand; the receiving daemon confirms each delivery with the sending daemon before anything reaches an agent, a confirm that answers no drops the message and journals it, and authority goes only to the exact orch names of a hub in `trusted_hubs`, on Linux.
+
+Held by the tests in `internal/creelengine` and by review.
+
 ## Agent name
 
 Rule: Forming, parsing or matching an agent name: only `internal/agentname`, a strand's full name formed once by reed; a spawned role is its module's constant.

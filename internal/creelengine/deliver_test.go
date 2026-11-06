@@ -287,6 +287,15 @@ func TestScheduler_Reminders(t *testing.T) {
 				t.Errorf("typed %q; want %q", got, want)
 			}
 		}},
+		{"InboundMailFromAnotherHubsStrandIsRemindedWithTheStampAndNeverTyped", func(t *testing.T, e *env) {
+			e.withJournal(t, inboundLine(1, "xx:gamma:driver", beta, "do this now", ""))
+			e.start(t)
+			e.probeWaits(1)
+			want := []string{reminderFor(1, "", "#1 from \"xx:gamma:driver\" "+creelengine.StampUntrusted)}
+			if got := e.typed(beta); !slices.Equal(got, want) {
+				t.Errorf("typed %q; want %q", got, want)
+			}
+		}},
 		{"ProbeIntervalOfABusyReceiverBacksOffAndResets", func(t *testing.T, e *env) {
 			e.del.SetIdle(beta, false)
 			e.start(t)
@@ -1421,6 +1430,35 @@ func TestSweep_RemovedHolders(t *testing.T) {
 		name string
 		run  func(t *testing.T, e *env)
 	}{
+		{"APendingOutboundMessageMakesNoSweepSubjectAndNothingIsReturnedOrTyped", func(t *testing.T, e *env) {
+			hubs := e.withHubs()
+			hubs.SetGeometryError(zzHub, errors.New("the other hub's geometry fails"))
+			e.start(t)
+			if _, err := e.store.Post(strand(alpha), "zz:orch", "across"); err != nil {
+				t.Fatalf("Post to zz:orch: %v", err)
+			}
+			// No sweep timer is armed for it, so one Advance past two sweep ceilings stands for the sweeps and retry waits that never come.
+			e.clock.Advance(3 * time.Minute)
+			if sends := e.del.Sends(); len(sends) != 0 {
+				t.Errorf("typed %v; want nothing for an outbound message", sends)
+			}
+			for _, event := range eventsOf(e.store.Log(creelengine.LogFilter{})) {
+				if event == "undelivered" || event == "outbound-returned" {
+					t.Errorf("the log holds a %s event; want an outbound message left pending", event)
+				}
+			}
+		}},
+		{"AGoneHoldersUnreadMessageFromAnotherHubIsJournaledUndeliveredAndNotReturned", func(t *testing.T, e *env) {
+			e.withJournal(t, inboundLine(1, "zz:orch", alpha, "from afar", ""))
+			e.start(t)
+			without(e, alpha)
+			e.sweepStep()
+			e.sweepLast()
+			e.awaitEvent(t, 1, "undelivered")
+			if e.countEvents(1, "returned") != 0 {
+				t.Errorf("events of the message = %v; want it undelivered and never returned along a path", eventsOf(e.store.Log(creelengine.LogFilter{ID: 1})))
+			}
+		}},
 		{"WaitsGrowToTheCeilingWhileTheStrandSetHoldsAndResetOnAPost", func(t *testing.T, e *env) {
 			e.start(t)
 			e.post(t, strand(alpha), orch, "one")
@@ -2629,6 +2667,17 @@ func awaitTypedWith(t *testing.T, e *env, strandName, part string) {
 	}
 }
 
+// markedFromAnotherHub returns the journal lines of marked messages from another hub's strand that alpha read, one per id.
+func markedFromAnotherHub(ids ...int) []string {
+	var lines []string
+	for _, id := range ids {
+		lines = append(lines,
+			inboundLine(id, "zz:orch", alpha, "question", `,"expect_reply":true`),
+			fmt.Sprintf(`{"event":"read","at":"2026-10-01T12:00:00Z","id":%d,"by":%q}`, id, alpha))
+	}
+	return lines
+}
+
 // creelPostTo returns the id of the first message sender posted to receiver, 0 when there is none.
 func creelPostTo(e *env, sender, receiver string) int64 {
 	for _, entry := range e.store.Log(creelengine.LogFilter{From: sender}) {
@@ -3021,6 +3070,55 @@ func TestScheduler_Chases(t *testing.T) {
 			e.awaitEvent(t, never, "unanswered")
 			if got := e.countEvents(answered, "unanswered"); got != 0 {
 				t.Errorf("unanswered events of the answered message = %d; want none", got)
+			}
+		}},
+		{"AReplyToAMessageFromAnotherHubStopsItsChaseAndAnUnansweredOneSettlesWithNothingSentToTheOtherHub", func(t *testing.T, e *env) {
+			e.writeJournal(t, "2026-10-01", markedFromAnotherHub(1, 2)...)
+			e.reopen(t)
+			e.chaseTicks(5)
+			if _, err := e.store.Reply(strand(alpha), 1, "early"); err != nil {
+				t.Fatalf("Reply: %v", err)
+			}
+			e.chaseTicks(10)
+			if got := e.countEvents(1, "chased"); got != 0 {
+				t.Errorf("chased events of the answered message = %d; want none", got)
+			}
+			if got := e.countEvents(2, "chased"); got != 1 {
+				t.Errorf("chased events of the unanswered message after 15 ticks = %d; want chase 1", got)
+			}
+			e.chaseTicks(14)
+			e.chaseTick()
+			e.chaseTicks(14)
+			e.chaseTickLast()
+			e.awaitEvent(t, 2, "unanswered")
+			if got := e.countEvents(1, "unanswered"); got != 0 {
+				t.Errorf("unanswered events of the answered message = %d; want none", got)
+			}
+			outbound := 0
+			for _, event := range eventsOf(e.store.Log(creelengine.LogFilter{})) {
+				if event == "outbound" {
+					outbound++
+				}
+			}
+			if outbound != 1 {
+				t.Errorf("%d outbound entries; want only the early reply, since a settle posts nothing to the other hub", outbound)
+			}
+		}},
+		{"AReplyToTheChaseOfAMessageFromAnotherHubAnswersItThroughTheOutboundRoute", func(t *testing.T, e *env) {
+			e.writeJournal(t, "2026-10-01", markedFromAnotherHub(1)...)
+			e.reopen(t)
+			e.chaseTicks(15)
+			chase := creelPostTo(e, creel, alpha)
+			replyID, err := e.store.Reply(strand(alpha), chase, "the answer")
+			if err != nil {
+				t.Fatalf("Reply to the chase: %v", err)
+			}
+			entries := e.store.Log(creelengine.LogFilter{ID: replyID})
+			if len(entries) != 1 || entries[0].Event != "outbound" || entries[0].To != "zz:orch" || entries[0].Answers != 1 {
+				t.Errorf("log of the reply = %+v; want one outbound entry to zz:orch answering message #1", entries)
+			}
+			if got := e.countEvents(1, "chased"); got != 1 {
+				t.Errorf("chased events = %d; want only chase 1", got)
 			}
 		}},
 		{"AChaseTheHolderStillHoldsUnreadIsRefusedForwardingAndStaysWithItsHolder", func(t *testing.T, e *env) {

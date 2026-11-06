@@ -12,9 +12,9 @@ import (
 // RoleReplies counts the expected-reply traffic of one receiver role over the entries ComputeReplies read.
 type RoleReplies struct {
 	Role string `json:"role"`
-	// Expected counts the posts marked as expecting a reply that went to the role.
+	// Expected counts the posts, and the messages from another hub, marked as expecting a reply that went to the role.
 	Expected int `json:"expected"`
-	// Replied counts the replies the role sent to a marked message.
+	// Replied counts the replies the role sent to a marked message, one sent across hubs included.
 	Replied int `json:"replied"`
 	// Chased counts the chases sent to the role.
 	Chased int `json:"chased"`
@@ -25,10 +25,11 @@ type RoleReplies struct {
 // ComputeReplies counts expected replies, replies, chases and unanswered messages per receiver role over creel log entries, in role-name order.
 // A strand counts under its role and a program under its upper-case name; a name that is neither counts nowhere.
 // A reply counts only when its ReplyTo names a message the entries show as marked, so a reply to an unmarked message counts nowhere.
+// An `inbound` entry counts as a post to its receiver, and an `outbound` entry counts by its Answers: as a reply from its sender when that names a marked message, and as nothing otherwise.
 func ComputeReplies(entries []creelengine.LogEntry) []RoleReplies {
 	marked := map[int64]bool{}
 	for _, entry := range entries {
-		if entry.Event == "posted" && entry.ExpectReply {
+		if (entry.Event == "posted" || entry.Event == "inbound") && entry.ExpectReply {
 			marked[entry.ID] = true
 		}
 	}
@@ -50,6 +51,14 @@ func ComputeReplies(entries []creelengine.LogEntry) []RoleReplies {
 				count(entry.To).Expected++
 			}
 			if marked[entry.ReplyTo] {
+				count(entry.From).Replied++
+			}
+		case "inbound":
+			if entry.ExpectReply {
+				count(entry.To).Expected++
+			}
+		case "outbound":
+			if marked[entry.Answers] {
 				count(entry.From).Replied++
 			}
 		case "chased":

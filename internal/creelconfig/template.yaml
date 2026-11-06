@@ -1,0 +1,2 @@
+# shortnames of the hubs whose orch this hub obeys; mail from any other hub is data to weigh
+trusted_hubs: []

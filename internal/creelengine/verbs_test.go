@@ -59,6 +59,17 @@ func newEnv(t *testing.T) *env {
 	return &env{store: store, del: del, clock: clock, geom: geom}
 }
 
+// zzHub is the path of the other hub the fake Hubs of withHubs knows under the shortname zz.
+const zzHub = "/hubs/zz"
+
+// withHubs tells the env's store a fake directory that knows the hub zz, and returns it; the platform is linux.
+func (e *env) withHubs() *creelfake.Hubs {
+	hubs := creelfake.NewHubs()
+	hubs.Add("zz", creelengine.Geometry{HubPath: zzHub, Shortname: "zz"})
+	e.store.SetHubs(hubs, "linux")
+	return hubs
+}
+
 func strand(name string) creelengine.Sender { return creelengine.StrandSender(name) }
 
 func program(name string) creelengine.Sender { return creelengine.ProgramSender(name) }
@@ -222,6 +233,100 @@ func TestStore_Mail(t *testing.T) {
 			wantBodies(t, e.readBodies(t, strand(absentOrch), ""), line)
 			wantBodies(t, e.readBodies(t, strand(orch), ""), "prime line")
 			wantBodies(t, e.readBodies(t, strand(forwardOrch), ""), "to forward")
+		}},
+		{"Post_ToAStrandOfAnotherHubIsJournaledOutboundAndWaitsOpen", func(t *testing.T, e *env) {
+			e.withHubs()
+			id, waiter, err := e.store.PostWait(strand(alpha), "zz:orch", "hello across")
+			if err != nil || id <= 0 || waiter == nil {
+				t.Fatalf("PostWait to zz:orch = (%d, %v, %v); want an id and a waiter", id, waiter, err)
+			}
+			entries := e.store.Log(creelengine.LogFilter{ID: id})
+			if len(entries) != 1 || entries[0].Event != "outbound" || entries[0].ReceivingHub != zzHub || entries[0].To != "zz:orch" || !entries[0].ExpectReply {
+				t.Errorf("log of the post = %+v; want one marked outbound entry for zz:orch with the receiving hub's path", entries)
+			}
+			if inbox, err := e.store.Inbox(strand(alpha)); err != nil || len(inbox.Senders) != 0 {
+				t.Errorf("the sender's inbox = %+v, %v; want nothing, since an outbound message is held by no local strand", inbox, err)
+			}
+			select {
+			case outcome := <-waiter.C:
+				t.Errorf("the wait on a pending outbound message ended with %+v; want it open", outcome)
+			default:
+			}
+		}},
+		{"Post_ToAnotherHubIsRefusedWithItsWayForwardAndJournalsNothing", func(t *testing.T, e *env) {
+			hubs := e.withHubs()
+			hubs.Add("shared", creelengine.Geometry{HubPath: "/hubs/s1", Shortname: "shared"})
+			hubs.Add("shared", creelengine.Geometry{HubPath: "/hubs/s2", Shortname: "shared"})
+			hubs.Add("broken", creelengine.Geometry{HubPath: "/hubs/b", Shortname: "broken"})
+			hubs.SetLookupError("broken", errors.New("the machine record is unreadable"))
+			stampedOverhead := len(creelengine.MessageLine(creelengine.Message{ID: math.MaxInt64, From: alpha, ExpectReply: true, SendingHub: "hub"}))
+			tests := []struct {
+				name     string
+				sender   creelengine.Sender
+				receiver string
+				body     string
+				want     []string
+			}{
+				{"AProgramSender", program(batten), "zz:orch", "hi", []string{"only a strand posts to another hub", batten, "way forward"}},
+				{"AnExternalSender", external(), "zz:orch", "hi", []string{"only a strand posts to another hub", "way forward"}},
+				{"AProgramReceiver", strand(alpha), "zz:BATTEN", "hi", []string{"zz:BATTEN", "zz:orch", "way forward"}},
+				{"AnExternalReceiver", strand(alpha), "zz:EXTERNAL", "hi", []string{"zz:EXTERNAL", "zz:orch", "way forward"}},
+				{"AnUnknownShortname", strand(alpha), "qq:orch", "hi", []string{"no hub with the shortname", "lym creel inbox"}},
+				{"ASharedShortname", strand(alpha), "shared:orch", "hi", []string{"distinct shortnames", "/hubs/s1", "/hubs/s2"}},
+				{"AnUnreadableRecord", strand(alpha), "broken:orch", "hi", []string{"the machine record is unreadable"}},
+				{"ALineThatFitsLocallyButNotWithTheStamp", strand(alpha), "zz:orch", strings.Repeat("x", (8<<10)-stampedOverhead+1), []string{"write it to a file", "mail the file"}},
+				{"AnEmptyBody", strand(alpha), "zz:orch", "  ", []string{"empty"}},
+			}
+			for _, tt := range tests {
+				_, err := e.store.Post(tt.sender, tt.receiver, tt.body)
+				if err == nil {
+					t.Errorf("%s: Post to %s returned nil; want a refusal", tt.name, tt.receiver)
+					continue
+				}
+				for _, want := range tt.want {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("%s: refusal %q lacks %q", tt.name, err, want)
+					}
+				}
+			}
+			if entries := e.store.Log(creelengine.LogFilter{}); len(entries) != 0 {
+				t.Errorf("the refused posts journaled %v; want nothing", eventsOf(entries))
+			}
+		}},
+		{"WaitReply_OnAnOutboundMessageResumesForItsSenderAndAnswersReturnedAndStoredReplies", func(t *testing.T, e *env) {
+			const sender = `"from":"` + alpha + `","to":"zz:orch","receiving_hub":"/hubs/zz","kind":"mail","body":"hi","expect_reply":true`
+			e.writeJournal(t, "2026-10-01",
+				`{"event":"outbound","at":"2026-10-01T11:00:00Z","id":5,`+sender+`}`,
+				`{"event":"outbound","at":"2026-10-01T11:00:00Z","id":7,`+sender+`}`,
+				`{"event":"outbound-returned","at":"2026-10-01T11:01:00Z","id":7,"reason":"the hub is gone"}`,
+				`{"event":"outbound","at":"2026-10-01T11:00:00Z","id":8,`+sender+`}`,
+				`{"event":"inbound","at":"2026-10-01T11:02:00Z","id":9,"from":"zz:orch","to":"`+alpha+`","kind":"reply","reply_to":8,"body":"the answer","sending_hub":"/hubs/zz","sending_id":4,"delivered_to":"`+alpha+`"}`)
+			e.reopen(t)
+			outcomeOf := func(id int64) (creelengine.Outcome, bool) {
+				t.Helper()
+				waiter, err := e.store.WaitReply(strand(alpha), id)
+				if err != nil {
+					t.Fatalf("WaitReply(#%d) by its sender = %v; want a waiter", id, err)
+				}
+				defer waiter.Cancel()
+				select {
+				case outcome := <-waiter.C:
+					return outcome, true
+				default:
+					return creelengine.Outcome{}, false
+				}
+			}
+			if outcome, answered := outcomeOf(5); answered {
+				t.Errorf("a wait on the pending #5 answered %+v; want it open", outcome)
+			}
+			if outcome, answered := outcomeOf(7); !answered || outcome.Kind != creelengine.OutcomeReturned || outcome.Message.ID != 7 {
+				t.Errorf("a wait on the returned #7 = (%+v, %v); want OutcomeReturned carrying #7 at once", outcome, answered)
+			}
+			if outcome, answered := outcomeOf(8); !answered || outcome.Kind != creelengine.OutcomeReply || outcome.Message.Body != "the answer" {
+				t.Errorf("a wait on #8 with a stored reply = (%+v, %v); want OutcomeReply carrying the reply at once", outcome, answered)
+			}
+			_, err := e.store.WaitReply(strand(beta), 5)
+			wantErr(t, err, "not one you posted")
 		}},
 		{"Post_RefusesExternalReceiver", func(t *testing.T, e *env) {
 			_, err := e.store.Post(strand(alpha), "ly:EXTERNAL", "hi")
@@ -613,6 +718,58 @@ func TestStore_Mail(t *testing.T) {
 				t.Errorf("events of the reply = %v; want posted only", got)
 			}
 		}},
+		{"Reply_ToAMessageFromAnotherHubIsJournaledOutboundPostsNothingLocallyAndAlsoWorksForTheStrandItWasForwardedTo", func(t *testing.T, e *env) {
+			e.withJournal(t, inboundLine(1, "zz:orch", alpha, "question", `,"expect_reply":true`))
+			first, err := e.store.Reply(strand(alpha), 1, "answer")
+			if err != nil {
+				t.Fatalf("Reply: %v", err)
+			}
+			if err := e.store.Forward(strand(alpha), 1, beta); err != nil {
+				t.Fatalf("Forward: %v", err)
+			}
+			second, err := e.store.Reply(strand(beta), 1, "answer again")
+			if err != nil {
+				t.Fatalf("Reply by the strand it was forwarded to: %v", err)
+			}
+			for _, id := range []int64{first, second} {
+				entries := e.store.Log(creelengine.LogFilter{ID: id})
+				if len(entries) != 1 || entries[0].Event != "outbound" || entries[0].To != "zz:orch" || entries[0].ReceivingHub != "/hubs/xx" || entries[0].ReplyTo != 101 || entries[0].Answers != 1 {
+					t.Errorf("log of reply #%d = %+v; want one outbound entry to zz:orch through /hubs/xx answering sending id 101 and local id 1", id, entries)
+				}
+			}
+			for _, from := range []string{alpha, beta} {
+				if got := eventsOf(e.store.Log(creelengine.LogFilter{From: from})); !slices.Equal(got, []string{"outbound"}) {
+					t.Errorf("events from %s = %v; want its one outbound reply and no local post", from, got)
+				}
+			}
+		}},
+		{"Reply_ToAMessageFromAnotherHubIsRefusedWhenItsStampedLineWouldPassTheBudget", func(t *testing.T, e *env) {
+			e.withJournal(t, inboundLine(1, "zz:orch", alpha, "question", `,"expect_reply":true`))
+			const budget = 8 << 10
+			// The body fits the plain marked line a local reply would take, but not the line with the stamp.
+			overhead := len(creelengine.MessageLine(creelengine.Message{ID: math.MaxInt64, From: alpha, ExpectReply: true}))
+			before := len(e.store.Log(creelengine.LogFilter{}))
+			_, err := e.store.Reply(strand(alpha), 1, strings.Repeat("x", budget-overhead))
+			wantErr(t, err, "write it to a file", "mail the file")
+			if got := len(e.store.Log(creelengine.LogFilter{})); got != before {
+				t.Errorf("journal entries after the refused reply = %d; want %d", got, before)
+			}
+		}},
+		{"Forward_OfAMessageFromAnotherHubToAProgramOrAnotherHubIsRefusedNamingANewPostAndToALocalStrandWorks", func(t *testing.T, e *env) {
+			e.withJournal(t, inboundLine(1, "zz:orch", alpha, "question", ""))
+			before := len(e.store.Log(creelengine.LogFilter{}))
+			for _, receiver := range []string{batten, "zz:orch"} {
+				wantErr(t, e.store.Forward(strand(alpha), 1, receiver),
+					"message #1 came from another hub", "forwarded only to a strand of this hub", `way forward: post it anew with lym creel post `+receiver+` "<text>"`)
+			}
+			if got := len(e.store.Log(creelengine.LogFilter{})); got != before {
+				t.Errorf("journal entries after the refused forwards = %d; want %d", got, before)
+			}
+			if err := e.store.Forward(strand(alpha), 1, beta); err != nil {
+				t.Fatalf("Forward to a strand of this hub: %v", err)
+			}
+			wantBodies(t, e.readBodies(t, strand(beta), ""), "question")
+		}},
 		{"Log_FiltersAndNeverShowsABody", func(t *testing.T, e *env) {
 			first := e.post(t, strand(alpha), beta, "subject line\nsecret body")
 			e.clock.Advance(time.Hour)
@@ -675,6 +832,20 @@ func TestStore_InjectAndHold(t *testing.T) {
 			}
 			if sends := e.del.Sends(); len(sends) != 0 {
 				t.Errorf("Inject typed %v; the store only queues", sends)
+			}
+		}},
+		{"AnotherHubsNameIsRefusedByEveryVerbThatStaysInsideOneHub", func(t *testing.T, e *env) {
+			const other = "zz:orch"
+			_, injectErr := e.store.Inject(program(batten), other, "/clear", 0, false)
+			_, interruptErr := e.store.Interrupt(program(batten), other)
+			_, holdErr := e.store.Hold(program(batten), other, time.Minute)
+			_, releaseErr := e.store.Release(program(batten), other)
+			_, _, _, postInterruptErr := e.store.PostInterrupt(strand(alpha), other, "stop", false)
+			for name, err := range map[string]error{"inject": injectErr, "interrupt": interruptErr, "hold": holdErr, "release": releaseErr, "post --interrupt": postInterruptErr} {
+				wantErr(t, err, other, "another hub", name, "lym creel post "+other)
+			}
+			if entries := e.store.Log(creelengine.LogFilter{}); len(entries) != 0 || len(e.store.Queued(other)) != 0 || len(e.del.Interrupts()) != 0 {
+				t.Errorf("the refusals left the log %v, the queue %v and the interrupts %v; want nothing", eventsOf(entries), e.store.Queued(other), e.del.Interrupts())
 			}
 		}},
 		{"Inject_NonPrivilegedNeedsPost", func(t *testing.T, e *env) {
@@ -1121,6 +1292,28 @@ func TestStore_InjectAndHold(t *testing.T) {
 	}
 }
 
+// inboundLine renders the journal line of mail from another hub's strand id, delivered to the receiver; extra is more JSON members, such as `,"trusted":true`.
+func inboundLine(id int, from, to, body, extra string) string {
+	return fmt.Sprintf(`{"event":"inbound","at":"2026-10-01T12:00:00Z","id":%d,"from":%q,"to":%q,"body":%q,"sending_hub":"/hubs/xx","sending_id":%d,"delivered_to":%q%s}`, id, from, to, body, id+100, to, extra)
+}
+
+// withJournal writes lines as the journal of the epoch's day and replaces the env's store with one folded over them, as a daemon restarted over mail from another hub.
+func (e *env) withJournal(t *testing.T, lines ...string) {
+	t.Helper()
+	if err := os.MkdirAll(e.geom.JournalDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(journal): %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(e.geom.JournalDir, "2026-10-01.jsonl"), []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(journal): %v", err)
+	}
+	store, err := creelengine.OpenStore(e.geom, e.del, e.clock)
+	if err != nil {
+		t.Fatalf("OpenStore over the journal: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	e.store = store
+}
+
 func TestStore_ClaimAtBoundary(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1173,6 +1366,24 @@ func TestStore_ClaimAtBoundary(t *testing.T) {
 			want := []string{
 				"[creel] #1 from \"" + alpha + "\", expects a reply (lym creel post --reply 1 \"<text>\"): marked",
 				"[creel] #2 from \"" + alpha + "\": plain",
+			}
+			if !slices.Equal(lines, want) {
+				t.Errorf("claimed %q; want %q", lines, want)
+			}
+		}},
+		{"ClaimedLineOfMailFromAnotherHubCarriesTheStampAfterTheSenderAndALocalLineIsUnchanged", func(t *testing.T, e *env) {
+			e.withJournal(t,
+				inboundLine(1, "xx:orch", beta, "hello", `,"trusted":true`),
+				inboundLine(2, "xx:gamma:driver", beta, "plain", ""),
+				inboundLine(3, "xx:gamma:driver", beta, "question", `,"expect_reply":true`),
+			)
+			e.post(t, strand(alpha), beta, "local")
+			_, lines := claimLines(t, e, beta)
+			want := []string{
+				"[creel] #1 from \"xx:orch\" " + creelengine.StampTrusted + ": hello",
+				"[creel] #2 from \"xx:gamma:driver\" " + creelengine.StampUntrusted + ": plain",
+				"[creel] #3 from \"xx:gamma:driver\" " + creelengine.StampUntrusted + ", expects a reply (lym creel post --reply 3 \"<text>\"): question",
+				"[creel] #4 from \"" + alpha + "\": local",
 			}
 			if !slices.Equal(lines, want) {
 				t.Errorf("claimed %q; want %q", lines, want)

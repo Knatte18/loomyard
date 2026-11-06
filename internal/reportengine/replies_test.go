@@ -42,6 +42,16 @@ func TestComputeReplies(t *testing.T) {
 			{Event: "posted", ID: 1, From: orch, To: driver},
 			{Event: "posted", ID: 2, From: driver, To: orch, ReplyTo: 1},
 		}, []RoleReplies{}},
+		{"mail across hubs counts an inbound mark as expected, an outbound answer as a reply, and an outbound post and an inbound reply as nothing", []creelengine.LogEntry{
+			{Event: "inbound", ID: 1, From: "xx:orch", To: driver, ExpectReply: true},
+			{Event: "chased", ID: 1, To: driver, Chase: 1},
+			{Event: "unanswered", ID: 1, To: driver, Reason: creelengine.UnansweredNoReply},
+			{Event: "outbound", ID: 5, From: driver, To: "xx:orch", ReplyTo: 101, Answers: 1},
+			{Event: "outbound", ID: 6, From: driver, To: "xx:orch", ExpectReply: true},
+			{Event: "inbound", ID: 7, From: "xx:orch", To: driver, ReplyTo: 6},
+		}, []RoleReplies{
+			{Role: "driver", Expected: 1, Replied: 1, Chased: 1, Unanswered: 1},
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

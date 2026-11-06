@@ -32,12 +32,17 @@ func isNotice(msg *Message) bool {
 // MessageLine renders the one line that carries a message in full, as a notice typed into an idle pane or as mail handed over at a tool boundary:
 // its id, so the receiver can reply without a read, its sender and its body, with every run of control characters and line breaks turned into one space.
 // A message that expects a reply also carries the mark and the command that answers it.
+// A message from another hub carries its stamp after the sender.
 func MessageLine(msg Message) string {
 	body := strings.TrimSpace(strings.Join(strings.FieldsFunc(msg.Body, unicode.IsControl), " "))
-	if msg.ExpectReply {
-		return fmt.Sprintf("[creel] #%d from \"%s\", expects a reply (lym creel post --reply %d \"<text>\"): %s", msg.ID, msg.From, msg.ID, body)
+	sender := fmt.Sprintf("\"%s\"", msg.From)
+	if stamp := msg.HubStamp(); stamp != "" {
+		sender += " " + stamp
 	}
-	return fmt.Sprintf("[creel] #%d from \"%s\": %s", msg.ID, msg.From, body)
+	if msg.ExpectReply {
+		return fmt.Sprintf("[creel] #%d from %s, expects a reply (lym creel post --reply %d \"<text>\"): %s", msg.ID, sender, msg.ID, body)
+	}
+	return fmt.Sprintf("[creel] #%d from %s: %s", msg.ID, sender, body)
 }
 
 // reminderBackoff returns the wait after the reminder at the given step of an unchanged unread set: 5 minutes, doubling to the 1-hour ceiling.
@@ -67,7 +72,11 @@ func composeReminder(unread []Message, holdOwner string) string {
 		if i == maxReminderMessages {
 			break
 		}
-		listed = append(listed, fmt.Sprintf("#%d from \"%s\"", msg.ID, msg.From))
+		entry := fmt.Sprintf("#%d from \"%s\"", msg.ID, msg.From)
+		if stamp := msg.HubStamp(); stamp != "" {
+			entry += " " + stamp
+		}
+		listed = append(listed, entry)
 	}
 	if rest := len(unread) - len(listed); rest > 0 {
 		listed = append(listed, fmt.Sprintf("+%d more", rest))

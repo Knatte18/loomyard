@@ -34,6 +34,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/selfexec"
+	"github.com/Knatte18/loomyard/internal/standalonestate"
 )
 
 // Exit codes beyond 0 for success and 1 for a refusal: the ways a waiting verb ends without the outcome the caller asked for.
@@ -57,14 +58,16 @@ func (realClock) After(d time.Duration) <-chan time.Time { return time.After(d) 
 // clientSeam is the clock, daemon spawn and orch liveness predicate every verb's client is built with.
 // spawn starts the daemon for a hub with its stderr appended to the log file at logPath and answers the daemon's pid with the signal of its exit.
 // live reports whether the orch of a worktree is live, which `post --parent` resolves its receiver with.
+// registryDir answers the per-user state directory the machine record of hubs sits in.
 // A test replaces it, and so does not run in parallel.
 type clientSeam struct {
-	clock creelengine.Clock
-	spawn func(hubPath, logPath string) (creelengine.Spawn, error)
-	live  func(worktree *lymcwd.Location) (bool, error)
+	clock       creelengine.Clock
+	spawn       func(hubPath, logPath string) (creelengine.Spawn, error)
+	live        func(worktree *lymcwd.Location) (bool, error)
+	registryDir func() (string, error)
 }
 
-var seam = clientSeam{clock: realClock{}, spawn: spawnDaemon, live: orchroute.Live}
+var seam = clientSeam{clock: realClock{}, spawn: spawnDaemon, live: orchroute.Live, registryDir: standalonestate.UserStateDir}
 
 // Command returns the cobra command for `lym creel`: the bare group, its operator verbs and the hidden daemon.
 func Command() *cobra.Command {
@@ -79,8 +82,8 @@ with the message itself. Any other strand, a hand-added one or a session launche
 hooks included, gets a typed notice or reminder and reads the message with read.
 inject types a line into an idle strand at once, interrupt stops a running
 turn, forward passes a message on, hold keeps a receiver to one sender for a
-while, and inbox and log show the pool. The daemon starts by itself on the
-first verb.
+while, and inbox and log show the pool. hubs lists the other hubs of this
+machine that mail can reach. The daemon starts by itself on the first verb.
 
 To answer a message, run lym creel post --reply <id> "<text>" with the id after
 the #. Answer mail from EXTERNAL in your own reply text, since such a reply
@@ -88,7 +91,7 @@ reaches only a waiting post --wait-reply.`,
 		RunE: clihelp.GroupRunE,
 	}
 	creel.AddCommand(
-		postCmd(), injectCmd(), interruptCmd(), forwardCmd(), readCmd(), inboxCmd(), logCmd(), holdCmd(), releaseCmd(), daemonCmd(), hookReadCmd(), hookWaitCmd(),
+		postCmd(), injectCmd(), interruptCmd(), forwardCmd(), readCmd(), inboxCmd(), logCmd(), holdCmd(), releaseCmd(), hubsCmd(), daemonCmd(), hookReadCmd(), hookWaitCmd(),
 	)
 	// Creel reads no stencils, and the seed pass's log lines would mix into the stderr its verbs use for refusals and stall progress.
 	// The long-lived daemon must also never commit seed writes into the hub.
@@ -304,7 +307,20 @@ func messageFields(message creelengine.Message) map[string]any {
 		fields["ended_unread_by"] = message.EndedUnreadBy
 		fields["ended_unread_at"] = message.EndedUnreadAt
 	}
+	if message.SendingHub != "" {
+		fields["trust"] = trustField(message)
+		fields["sending_hub"] = message.SendingHub
+		fields["sending_id"] = message.SendingID
+	}
 	return fields
+}
+
+// trustField is the trust value of a message from another hub: trusted-orch or untrusted.
+func trustField(message creelengine.Message) string {
+	if message.Trusted {
+		return "trusted-orch"
+	}
+	return "untrusted"
 }
 
 // messagesFields renders messages, never nil so an empty read prints an empty list.
@@ -363,14 +379,14 @@ resolved strand as receiver.
 
 --interrupt stops the receiver's running turn first, so the message arrives as
 the input of the turn after it; it needs a receiver shuttle launched with
-creel's hooks, and answers whether a turn was stopped as interrupted. A
-receiver a pause covers is claimed into the pause and interrupted; an
-unreadable pause record and another sender's hold refuse it with nothing
-interrupted or posted.
+creel's hooks, and answers whether a turn was stopped as interrupted.
+
+A receiver may be a strand of another hub, by its full name from lym creel
+hubs; --interrupt is refused. The daemon delivers such a post, so --wait-reply
+may wait up to an hour, and an undeliverable one returns with a CREEL notice.
 
 Example:
   lym creel post ly:impl "the schema changed, rebase before you go on"
-  lym creel post --interrupt ly:impl "stop, the scope changed: drop the migration"
   lym creel post --parent "blocked: which schema do you want?"
   lym creel post --reply 12 "done"`,
 		Args: cobra.ArbitraryArgs,
@@ -562,6 +578,9 @@ and gets it through its hooks, or by its notice or reminder when it is a
 pane-mail strand; the message keeps its original sender and records who passed
 it on.
 
+A message from another hub is forwarded only to a strand of this hub; to reach
+another hub's strand, post anew with lym creel post.
+
 Example:
   lym creel forward 12 ly:reviewer`,
 		Args: cobra.ExactArgs(2),
@@ -597,6 +616,9 @@ func writeMessagesText(out io.Writer, messages []creelengine.Message, now time.T
 			text.WriteString("\n")
 		}
 		header := fmt.Sprintf("#%d from \"%s\"", message.ID, message.From)
+		if stamp := message.HubStamp(); stamp != "" {
+			header += " " + stamp
+		}
 		if message.ReplyTo != 0 {
 			header += fmt.Sprintf(", in reply to #%d", message.ReplyTo)
 		}
@@ -805,6 +827,18 @@ func logEntryFields(entry creelengine.LogEntry) map[string]any {
 	if entry.Chase != 0 {
 		fields["chase"] = entry.Chase
 	}
+	for key, value := range map[string]string{
+		"sending_hub": entry.SendingHub, "sending_shortname": entry.SendingShortname, "receiving_hub": entry.ReceivingHub,
+	} {
+		if value != "" {
+			fields[key] = value
+		}
+	}
+	for key, value := range map[string]int64{"sending_id": entry.SendingID, "remote_id": entry.RemoteID, "answers": entry.Answers} {
+		if value != 0 {
+			fields[key] = value
+		}
+	}
 	return fields
 }
 
@@ -962,6 +996,7 @@ func serveDaemon(ctx context.Context, hubPath string) error {
 	return creelengine.Run(ctx, creelengine.Options{
 		Geometry:  geometry,
 		Delivery:  newProductionHubDelivery(hubPath),
+		Hubs:      daemonHubs(hubPath, geometry.Shortname, root.Path()),
 		Clock:     realClock{},
 		ParentPID: proc.ParentPID,
 		GOOS:      runtime.GOOS,

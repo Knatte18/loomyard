@@ -48,6 +48,11 @@ type Scheduler struct {
 	wg       sync.WaitGroup
 	// sweepWake tells the removed-holder sweep that the pool changed.
 	sweepWake chan struct{}
+	// outbound holds the one worker of each receiving hub path with a pending outbound message.
+	outbound map[string]*outboundWorker
+	// hubStarts counts, per receiving hub path, the daemon starts since that hub's daemon last answered a call, and hubCapWarned marks the paths whose start-cap warning for the current episode is out.
+	hubStarts    map[string]int
+	hubCapWarned map[string]bool
 }
 
 // NewScheduler returns a Scheduler delivering the store's pool through delivery.
@@ -55,12 +60,14 @@ func NewScheduler(store *Store, delivery Delivery, clock Clock) *Scheduler {
 	return &Scheduler{
 		store: store, delivery: delivery, clock: clock,
 		workers: map[string]*worker{}, chasers: map[string]*chaser{}, stop: make(chan struct{}), sweepWake: make(chan struct{}, 1),
+		outbound: map[string]*outboundWorker{}, hubStarts: map[string]int{}, hubCapWarned: map[string]bool{},
 	}
 }
 
-// Start subscribes to the store's wake notifications, starts the removed-holder sweep, launches a worker for every receiver the pool already shows with a queued inject or unread mail, and a chaser for every holder of a chaseable message.
+// Start subscribes to the store's wake notifications, starts the removed-holder sweep, launches a worker for every receiver the pool already shows with a queued inject or unread mail, a chaser for every holder of a chaseable message, and an outbound worker for every hub with a pending outbound message.
 func (s *Scheduler) Start() {
 	s.store.SetWakeHook(s.wake)
+	s.store.SetOutboundHook(s.wakeOutbound)
 	s.wg.Add(1)
 	go s.sweepLoop()
 	for _, receiver := range s.store.pendingReceivers() {
@@ -68,6 +75,9 @@ func (s *Scheduler) Start() {
 	}
 	for _, holder := range s.store.chaseSubjects() {
 		s.wake(holder)
+	}
+	for _, hubPath := range s.store.outboundHubs() {
+		s.wakeOutbound(hubPath)
 	}
 }
 

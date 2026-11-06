@@ -79,6 +79,8 @@ type Request struct {
 	// TakesMail marks a hook-wait request's waiter as taking mail: its ring carries the claimed messages, which the client acknowledges.
 	// A daemon that predates it ignores the key and rings with no mail.
 	TakesMail bool `json:"takes_mail,omitempty"`
+	// Mail is the message a deliver offers and the tuple a confirm asks about; no other verb reads it.
+	Mail *HubMail `json:"mail,omitempty"`
 }
 
 // Response is what the daemon answers on a connection; every one carries the hub path.
@@ -118,6 +120,11 @@ type Response struct {
 	Released bool        `json:"released,omitempty"`
 	// Withdrawn is what a withdraw removed.
 	Withdrawn *WithdrawResult `json:"withdrawn,omitempty"`
+	// Delivery is a deliver's answer, accepted or refused, with the reason of a refusal in Reason and the receiver's id of an accepted message in ID.
+	Delivery string `json:"delivery,omitempty"`
+	Reason   string `json:"reason,omitempty"`
+	// Confirmed is a confirm's answer, yes or no.
+	Confirmed string `json:"confirmed,omitempty"`
 }
 
 // ackLine is the client's acknowledgement that it wrote the messages of a read.

@@ -40,6 +40,8 @@ type Options struct {
 	PollClock Clock
 	// Replaced reports whether the daemon's binary was replaced; nil never reports it.
 	Replaced func() bool
+	// Hubs reaches the other hubs of the machine and records this one; nil means a daemon that serves no other hub.
+	Hubs HubDirectory
 	// Ready, when set, is called once the daemon listens on its socket.
 	Ready func()
 	// beforeOutcomeWait, when set, is called with each waiting verb's waiter and the channel its close watch closes, after the interim response and ahead of the wait's select; a test seam, nil in production.
@@ -72,6 +74,8 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	defer func() { _ = held.Release() }()
 
+	srv := &daemon{opts: opts, done: make(chan struct{})}
+	srv.recordHub()
 	if err := removeUnansweredSocket(geom.SocketPath); err != nil {
 		return err
 	}
@@ -80,6 +84,8 @@ func Run(ctx context.Context, opts Options) error {
 		return err
 	}
 	defer func() { _ = store.Close() }()
+	store.SetHubs(opts.Hubs, opts.GOOS)
+	srv.store = store
 	if err := store.ReconcileFlags(); err != nil {
 		logger.Warn("creel daemon: could not reconcile the strands' mail flags", "error", err)
 	}
@@ -92,7 +98,6 @@ func Run(ctx context.Context, opts Options) error {
 	defer stop()
 	scheduler := NewScheduler(store, opts.Delivery, opts.Clock)
 	scheduler.Start()
-	srv := &daemon{opts: opts, store: store, done: make(chan struct{})}
 	srv.wg.Add(2)
 	go srv.accept(listener)
 	go srv.poll(runCtx, stop, journalDay(opts.Clock.Now()), opts.PollClock.After(pollInterval))
@@ -148,6 +153,8 @@ type daemon struct {
 	// done is closed when the daemon shuts down, which ends every waiting connection.
 	done chan struct{}
 	wg   sync.WaitGroup
+	// hubRecord is the daemon's record of having recorded its hub.
+	hubRecord hubRecordState
 }
 
 // poll asks once a second whether the binary was replaced, which ends the daemon, and whether the UTC day changed, which runs retention.
@@ -205,11 +212,18 @@ func (d *daemon) serve(conn *net.UnixConn) {
 		d.fail(conn, fmt.Errorf("creel: the request line is not valid JSON: %w", err))
 		return
 	}
+	if req.Verb == VerbDeliver || req.Verb == VerbConfirm {
+		if err := d.serveHubCall(conn, req); err != nil {
+			d.fail(conn, err)
+		}
+		return
+	}
 	sender, err := d.resolve(conn, req)
 	if err != nil {
 		d.fail(conn, err)
 		return
 	}
+	d.recordHub()
 	if err := d.dispatch(conn, reader, sender, req); err != nil {
 		d.fail(conn, err)
 	}

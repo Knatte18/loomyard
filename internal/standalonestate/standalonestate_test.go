@@ -6,6 +6,7 @@ package standalonestate
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -330,5 +331,41 @@ func TestDerive_SymlinkNormalization(t *testing.T) {
 	}
 	if realHash8 != linkHash8 {
 		t.Errorf("derive() hash8 real = %q, symlink = %q; want equal", realHash8, linkHash8)
+	}
+}
+
+// TestUserStateDir pins that UserStateDir answers the `lym` directory under an absolute XDG_STATE_HOME, and under HOME's .local/state when XDG_STATE_HOME is relative.
+// It sets process-global environment, so it is not parallel.
+func TestUserStateDir(t *testing.T) {
+	tiergate.Require(t, 0)
+
+	base := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("LOCALAPPDATA", base)
+	t.Setenv("HOME", home)
+
+	tests := []struct {
+		name         string
+		xdgStateHome string
+		want         string
+	}{
+		{"AbsoluteXDG", base, filepath.Join(base, "lym")},
+		{"RelativeXDGFallsBackToHome", ".relstate", filepath.Join(home, ".local", "state", "lym")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("XDG_STATE_HOME", tt.xdgStateHome)
+			want := tt.want
+			if runtime.GOOS == "windows" {
+				want = filepath.Join(base, "lym")
+			}
+			got, err := UserStateDir()
+			if err != nil {
+				t.Fatalf("UserStateDir() error = %v; want nil", err)
+			}
+			if got != want {
+				t.Errorf("UserStateDir() = %q; want %q", got, want)
+			}
+		})
 	}
 }

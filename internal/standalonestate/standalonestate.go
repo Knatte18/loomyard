@@ -143,6 +143,26 @@ func derive(goos, localAppData, xdgStateHome, home, target string) (stateDir str
 // repository in standalone mode.
 // The three bases answer a relative value differently only because their specifications do.
 func stateDirFor(goos, localAppData, xdgStateHome, home, hash8 string) (string, error) {
+	root, err := stateRootFor(goos, localAppData, xdgStateHome, home)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, hash8), nil
+}
+
+// UserStateDir returns the per-user `lym` state directory that every standalone state directory sits under, read from the same environment Derive reads.
+// It creates nothing, and answers an absolute path or an error.
+func UserStateDir() (string, error) {
+	goos := runtime.GOOS
+	var home string
+	if goos != "windows" {
+		home, _ = os.UserHomeDir()
+	}
+	return stateRootFor(goos, os.Getenv("LOCALAPPDATA"), os.Getenv("XDG_STATE_HOME"), home)
+}
+
+// stateRootFor holds the per-platform choice of the `lym` directory under the state base, the part of a state directory that does not depend on the target.
+func stateRootFor(goos, localAppData, xdgStateHome, home string) (string, error) {
 	if goos == "windows" {
 		if localAppData == "" {
 			return "", errMissingLocalAppData
@@ -150,7 +170,7 @@ func stateDirFor(goos, localAppData, xdgStateHome, home, hash8 string) (string, 
 		if !filepath.IsAbs(localAppData) {
 			return "", fmt.Errorf("%w: %q", errRelativeLocalAppData, localAppData)
 		}
-		return filepath.Join(localAppData, "lym", hash8), nil
+		return filepath.Join(localAppData, "lym"), nil
 	}
 
 	// A relative XDG_STATE_HOME is IGNORED rather than refused, because the XDG Base Directory
@@ -160,7 +180,7 @@ func stateDirFor(goos, localAppData, xdgStateHome, home, hash8 string) (string, 
 	// safer of the two answers -- the alternative, honoring it, is what wrote lym state into the
 	// operator's repository.
 	if filepath.IsAbs(xdgStateHome) {
-		return filepath.Join(xdgStateHome, "lym", hash8), nil
+		return filepath.Join(xdgStateHome, "lym"), nil
 	}
 	if home == "" {
 		return "", errMissingStateHome
@@ -168,5 +188,5 @@ func stateDirFor(goos, localAppData, xdgStateHome, home, hash8 string) (string, 
 	if !filepath.IsAbs(home) {
 		return "", fmt.Errorf("%w: %q", errRelativeHome, home)
 	}
-	return filepath.Join(home, ".local", "state", "lym", hash8), nil
+	return filepath.Join(home, ".local", "state", "lym"), nil
 }

@@ -62,6 +62,7 @@ var configStrictnessDegradingSet = map[string]bool{
 	"internal/envconfig":                  true,
 	"internal/ideconfig":                  true,
 	"internal/reportconfig":               true,
+	"internal/creelconfig":                true,
 	"internal/slackengine":                true,
 }
 

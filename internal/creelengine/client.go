@@ -68,6 +68,14 @@ func (e *connLostError) Error() string { return e.err.Error() }
 
 func (e *connLostError) Unwrap() error { return e.err }
 
+// daemonRefusal marks a refusal the daemon answered, as opposed to a connection that dropped or an answer that could not be read.
+// Its text is the daemon's message, and a refusal that carried a code also matches that code's sentinel under errors.Is.
+type daemonRefusal struct{ err error }
+
+func (e *daemonRefusal) Error() string { return e.err.Error() }
+
+func (e *daemonRefusal) Unwrap() error { return e.err }
+
 // connect dials the daemon's socket.
 // When nothing answers it starts the daemon once and retries up to ConnectAttempts times, sleeping on the told clock from one second between tries.
 // A spawned daemon that exits other than by a lost start race ends the wait after one last connect; a lost race keeps the backoff, since the winner may not answer yet.
@@ -247,11 +255,11 @@ func (c *Client) exchange(conn net.Conn, req Request, timer <-chan time.Time, st
 			if !resp.OK {
 				switch resp.Code {
 				case CodeStrandClaimOutsidePane:
-					return Response{}, &codedRefusal{message: resp.Error, sentinel: ErrStrandClaimOutsidePane}
+					return Response{}, &daemonRefusal{&codedRefusal{message: resp.Error, sentinel: ErrStrandClaimOutsidePane}}
 				case CodeProgramClaimInStrandPane:
-					return Response{}, &codedRefusal{message: resp.Error, sentinel: ErrProgramClaimInStrandPane}
+					return Response{}, &daemonRefusal{&codedRefusal{message: resp.Error, sentinel: ErrProgramClaimInStrandPane}}
 				}
-				return Response{}, errors.New(resp.Error)
+				return Response{}, &daemonRefusal{errors.New(resp.Error)}
 			}
 			if resp.Pending {
 				state.id = resp.ID

@@ -1,4 +1,4 @@
-// Package creelcli builds the `lym creel` group over internal/creelengine: `post`, `inject`, `interrupt`, `forward`, `read`, `inbox`, `log`, `hold`, `release` and the hidden `daemon`, `hook-read` and `hook-wait`.
+// Package creelcli builds the `lym creel` group over internal/creelengine: `post`, `inject`, `interrupt`, `forward`, `read`, `inbox`, `log`, `hold`, `release`, `hubs` and the hidden `daemon`, `hook-read` and `hook-wait`.
 // The design, the protocol and the delivery rules are documented in internal/creelengine; this package wires them to the hub, its worktrees and their agent panes.
 //
 // Every operator verb resolves the mode from its cwd and refuses a standalone directory, since creel needs a hub.
@@ -13,7 +13,9 @@
 // It also names the message a reply answers and the receiver a returned message ended unread at, and the posting time once the message is more than five minutes old by the client's clock.
 // A message that expects a reply has `, expects a reply` in its header, just before the reply command.
 // `read --envelope` prints the messages as one JSON envelope line with every field instead, for programs; a message that expects a reply carries `expect_reply: true`.
+// A message from another hub has its stamp after the sender in the read header, and in the envelope `from` stays the bare name beside `trust` (`trusted-orch` or `untrusted`), `sending_hub` and `sending_id`.
 // `log` entries carry `expect_reply: true` on an entry of a marked message, `reply_to`, the answered id, on a reply's entry and `chase`, the chase number, on a `chased` entry.
+// An entry of mail across hubs adds `sending_hub`, `sending_shortname`, `sending_id`, `receiving_hub`, `remote_id` and `answers` where set.
 // A `post --wait-reply` whose message creel recorded unanswered prints its envelope with `outcome: unanswered` and the message under `unanswered`, and exits 1 with a note whose way forward is `lym creel log --id <id>`.
 // The flag is not named `--json`, which would shadow the root's global `--json` help flag on a verb that marks mail read.
 // `read` acknowledges its messages only once its output was written, so output that cannot be written leaves them unread.
@@ -22,8 +24,12 @@
 // For post and inject the line names what they already stored, and for a forward, hold, release or interrupt it says the verb took effect.
 // The refusal fallback line opens with that statement too for a post or inject that stored before it refused.
 // `post --interrupt` stops the receiver's running turn before posting and adds `interrupted` to the envelope beside the id; with `--reply` it is refused before any call.
+// A receiver a pause covers is claimed into the pause and interrupted; an unreadable pause record and another sender's hold refuse it with nothing interrupted or posted.
 // The help of the `creel` group and of `post` carries the reply rule: answer mail with `lym creel post --reply <id>` using the id after the `#`, and answer mail from EXTERNAL in your own reply text, since such a reply reaches only a waiting `post --wait-reply`.
 // `post --expect-reply` marks the post as expecting a reply without waiting for it, and `--wait-reply` marks it too; with `--reply` it is refused before any call, since a reply is no question.
+// A receiver of `post` may be a strand of another hub by its full name: the post is queued in the sending hub's journal and answers its id at once, `--wait-reply` may wait up to an hour, and a post that cannot be delivered returns with a `CREEL` notice.
+// `post --interrupt` and `inject`, `interrupt`, `hold` and `release` refuse such a name, naming `lym creel post`.
+// `post --reply <id>` to a message from another hub answers its sending strand through the same route, and `forward` hands such a message only to a strand of this hub.
 // `post --parent <text>` takes no receiver and posts to the caller's parent orch, resolved at post time from the caller's worktree with orchroute.Asker, the rule a hold notice uses: from a pair the nearest live orch up from the pair's recorded parent, from a beam or the prime the walk starting at that worktree itself, the prime's orch at the end.
 // It adds `receiver`, the resolved strand name, to the envelope beside the id and sender, combines with `--wait-reply` and `--interrupt`, and is refused before any call with a receiver argument or with `--reply`.
 // A worktree whose resolved orch state records no strand is refused with nothing posted.
@@ -41,6 +47,11 @@
 // It exits 0 when no lines were written, a superseded wait, an unreachable daemon, any refusal, a ring from an older daemon that carries no mail and a failed write of the lines included, and when the acknowledgement could not be sent; any other end after the lines were written exits with the wake code, a refused or lost confirmation included, since the session shows mail the daemon may not have journaled.
 // A write of the lines that fails leaves the mail unread and the ring unanswered, and a wait is never resumed once a ring reached it.
 // A waiter costs one idle process per live strand, blocked on its socket.
+// The daemon is told a hub directory over the machine record of hubs in the per-user state directory, which the client seam names, the other hubs' geometries, the daemon spawn and the hub's creel.yaml, whose trusted_hubs list is read at each call.
+// A per-user state directory that cannot be read leaves the daemon serving its own strands, and a record or lookup then refuses naming the cause and the environment variables to set.
+// `hubs` prints `{"hubs":[{shortname, hub_path, daemon_answers, trusted}]}`, the hubs of the machine record whose shortname record still reads their shortname, in an empty list when it holds none.
+// `daemon_answers` dials the hub's socket and closes at once, so the verb starts no daemon and writes no record, and `trusted` says whether this hub's creel.yaml lists the shortname.
+// A corrupt record, an invalid creel.yaml and an unreadable per-user state directory each refuse with their own way forward.
 // GoClient is the one Go-side caller of creel, so no other module builds a creel request by hand.
 // NewProgramClient signs as `<shortname>:<PROGRAM>` and claims no strand, whatever `$LYM_STRAND_NAME` holds, and NewStrandClient claims a strand and no program; the daemon's identity rules still decide who the caller is.
 // Both refuse a location outside a hub with the way forward, start the daemon through the spawn seam when none answers, and connect on the first call.

@@ -207,7 +207,7 @@ func (s *Store) sweepSubjects() []string {
 
 // releaseGoneHolder moves what a removed strand held.
 // Each unread message goes one step back along its path, the last forwarder or else the sender, marked with the receiver that ended unread.
-// When that step is no strand, the message is journaled undelivered and a wait on it is answered that it returned undelivered.
+// When that step is no strand, or the sender of a message from another hub, which no strand of this hub holds, the message is journaled undelivered and a wait on it is answered that it returned undelivered.
 // Unread mail from a program to an orch of this hub that no strand forwarded is not returned: it stays for the orch's strand.
 // Each message the strand read and left unanswered while it expected a reply is settled unanswered, with no chase sent.
 // Each inject queued for the strand expires.
@@ -227,7 +227,7 @@ func (s *Store) releaseGoneHolder(holder string) error {
 			if n := len(msg.Path); n > 0 {
 				next = msg.Path[n-1]
 			}
-			if !isStrandName(next) {
+			if !isStrandName(next) || (len(msg.Path) == 0 && msg.SendingHub != "") {
 				if err := s.writer.append(record{Event: eventUndelivered, ID: id}); err != nil {
 					return err
 				}

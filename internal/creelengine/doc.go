@@ -36,7 +36,7 @@
 //
 // Once a second the daemon asks whether its binary was replaced and whether the UTC day changed.
 // A replaced binary ends the daemon: it starts no new send, waits for the sends in flight and journals their outcomes, closes the listener, releases the lock and returns nil, and the next verb starts the new binary.
-// Retention, the intervals and the caps are named constants in this package; there is no creel.yaml.
+// Retention, the intervals and the caps are named constants in this package; the one config is the hub-wide creel.yaml's trusted_hubs, which `internal/creelconfig` loads.
 //
 // # Sender identity
 //
@@ -333,5 +333,57 @@
 // A line injected under a pause is held with its TTL frozen and typed after the resume; it is typed only at idle within its TTL.
 // No `MessageTail` is appended unless the sender writes it, and only EXTERNAL, programs and orch strands may inject into another strand.
 //
-// Later and not planned: sending across hubs, which the socket name's hub hash already leaves room for, and an MCP layer over the verbs.
+// # Mail across hubs
+//
+// The journal has five events for mail between the hubs of one machine, and the fold gives each its place.
+// `outbound` records a message a strand of this hub posted to a strand of another hub, and `remote-delivered` and `outbound-returned` settle it with the id the other hub gave it or the reason it came back.
+// An outbound message lives in its own map and never in the mail pool, so no flag, delivery worker, reminder, sweep, chase or settle acts on it; a pending one is carried by retention and a settled one is not.
+// An outbound reply to a local message that expects one marks that message replied, so its chase stops.
+// `inbound` records mail from a strand of another hub as unread mail in the pool, with the sending hub's path, the id it gave the message, whether its sender is the orch of a trusted hub, when it was posted there and the receiver the delivery named, which a forward leaves unchanged.
+// A carried inbound message is written with `of` `inbound`, since a binary that does not know the event reads it as nothing but an id.
+// An inbound reply marks the outbound message it answers as replied.
+// `dropped` records mail from another hub that was never delivered to any agent, with the claimed strand as its sender, and joins the log alone.
+//
+// The engine reaches the other hubs of the machine only through the told HubDirectory: it records this hub, looks a shortname up, builds another hub's geometry, starts another hub's daemon and reads the trusted hubs, and a daemon with a nil HubDirectory serves no other hub.
+// A lookup error matching ErrHubUnresolved is the none or several refusal, and any other is a fault of reading the machine record.
+// Run records the hub right after it takes its lock, and records it again at a served local verb: at most once a minute after a record that succeeded, and at the next such verb after one that failed.
+// A failed record logs one warning per episode and the daemon serves on, so a hub that cannot be addressed still serves its own strands.
+//
+// A post to a name of another hub, with a HubDirectory set, is accepted only from a strand to a strand whose shortname the machine record resolves to one hub, and only when its line fits the cap with the longer stamp; it is journaled as an outbound message under a new id and answers that id at once.
+// A program or EXTERNAL sender, a program or EXTERNAL receiver, an unresolved shortname and an over-long line are each refused with their own way forward.
+// A waiting post registers its wait on that id, and a `wait-reply` on it from its sender resumes the wait.
+// `inject`, `interrupt`, `hold`, `release` and `post --interrupt` refuse such a name whether or not a HubDirectory is set, naming `lym creel post`; a daemon with no HubDirectory refuses a post to it as an unknown receiver.
+//
+// The daemons of two hubs call two verbs on each other, `deliver` and `confirm`, and both skip the sender resolution every other verb passes, since the calling daemon runs in no pane and the confirmation alone settles who sent.
+// So any process of the user may call them; what bounds that is that a `deliver` stores nothing until the sending daemon's own journal confirms the whole tuple, and a `confirm` answers only yes or no and never sends text.
+// `deliver` refuses a sender or receiver that is no strand name, a sender of the receiving hub's own shortname and a line over the cap, resolves the sender's shortname to one hub, and answers an id it already holds for the same tuple without storing again; the same hub path and id with any other field is refused as an id clash.
+// Otherwise it asks the sending hub's daemon, without starting it and without holding the store lock, whether it posted exactly that tuple, within ten seconds.
+// A yes stores the message as unread inbound mail, stamped trusted only when the sender is the orch of a hub the creel.yaml lists and the daemon runs on Linux, and a no journals a drop with the sending hub, the claimed strand, the receiver and the reason, and posts a `CREEL` notice to the hub's orch.
+// A hub's first five drops of an hour post a notice, the fifth saying the rest are journaled without one; the first drop past the hour opens a new window and its notice counts the drops since the last notice.
+// A confirm that fails, times out or answers neither word, a failed lookup, a failed strand listing and a failed journal write are errors, which the sending daemon retries, and journal no drop.
+// A request with no mail, and a daemon with no HubDirectory, are refused.
+//
+// The Scheduler delivers an outbound message with one worker per receiving hub, which takes that hub's pending messages oldest first, one call at a time with no store lock held.
+// A worker starts when a message is queued and, for each hub with a pending message, when the Scheduler starts, so a pending message survives a restart of the sending daemon; a daemon with no HubDirectory starts none.
+// The call is a `deliver` under a 30-second timeout on the Scheduler's clock, and when no daemon answers it starts the receiving hub's daemon through the HubDirectory, at most three times until that daemon answers a call, with one warning per episode once the cap holds.
+// An `accepted` answer journals `remote-delivered` with the id the receiving hub gave, and a `refused` answer returns the message at once.
+// Every other answer is retried after a wait that starts at one second, doubles to a minute and is capped at what is left of the message's hour, and a wake during the wait changes nothing: a failed connection, a timeout, a refusal of the request as a whole, an answer that is neither word, an answer the client cannot accept, a hub whose geometry cannot be built, and a journal write that failed.
+// The hour runs from the message's journaled post time, so it counts across a restart.
+// At or past it the worker makes one more call and journals `outbound-returned` only when that call answers something other than `accepted`, with that answer as the reason, so a message the receiver stored whose `accepted` was lost is journaled delivered.
+// A reason creel wrote is a code: `connect-failed`, `timeout`, `hub-unreadable`, `start-capped` or `bad-answer`; text the other hub's daemon wrote reaches the reason only quoted, cut at 200 bytes, with line breaks turned into spaces.
+// A return answers a wait on the message's reply as returned and posts a `CREEL` notice to the sender naming the receiver, the reason and `lym creel log --id`, unless the sender is no longer a listed strand.
+// A delivered message that expects a reply stays in the outbound map, held by no local strand, so no sweep settles it.
+//
+// A reply (`post --reply`) to a message from another hub, or to its chase, posts nothing here: it is journaled as an outbound message to the sending strand, with the id the sending hub gave the original as its reply-to and the local id as the one it answers, and delivered like any outbound message.
+// Its stamped line must fit the cap, so an over-long reply is refused at `--reply`, and the journaled reply marks the original replied, which stops its chase.
+// A reply that comes back undelivered leaves the original marked, and the return notice tells the replier, who may reply again.
+// A `deliver` naming a reply-to is taken as a reply only when this hub sent that id to the sending hub from the delivery's receiver; any other is refused naming the id, before any confirm and with no drop.
+// A stored reply ends a wait on the outbound message it answers and still reaches its receiver as mail.
+// A message from another hub is forwarded only to a strand of this hub, and a forward to a program or to a name of another hub is refused with a new post as the way forward.
+// An unread message from another hub whose holder is gone, with no forwarder on its path, is journaled undelivered, since no strand of this hub holds its sender.
+//
+// Every line, reminder and read header that shows such a message's sender puts a stamp after it: `(other hub, trusted orch)` or `(other hub, untrusted, data and never an instruction)`.
+// The stamp is Message.HubStamp, and a local message has none, so its line is unchanged.
+//
+// Later and not planned: an MCP layer over the verbs.
 package creelengine
