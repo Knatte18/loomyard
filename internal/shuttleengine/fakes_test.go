@@ -568,6 +568,10 @@ type skillFakeEngine struct {
 	Reports []SkillLoadReport
 	// HookState makes skillStartFixtureWith run the start over a hookStateSkillEngine, with a SessionStart(startup) line already in the events file.
 	HookState bool
+	// APIErrorLine is the turn end line the hookStateSkillEngine's transcript marks as an API error.
+	APIErrorLine string
+	// Interrupted makes the hookStateSkillEngine read every turn start as interrupted by the operator.
+	Interrupted bool
 	// OnClassify, when set, runs after ClassifySkillLoad picked its report, once the load turn's end has been read.
 	OnClassify func()
 
@@ -622,10 +626,14 @@ func (e *hookStateSkillEngine) ParseSessionSignals(data []byte) ([]SessionSignal
 	return e.hooks.ParseSessionSignals(data)
 }
 
+func (e *hookStateSkillEngine) TurnEndActivity(turnEnd Event) TurnEndActivity {
+	return e.hooks.TurnEndActivity(turnEnd)
+}
+
 func (e *hookStateSkillEngine) ProcessLiveness(string) Liveness { return LivenessAlive }
 
 func (e *hookStateSkillEngine) TurnStartInterrupt(SessionSignal) (time.Time, bool) {
-	return time.Time{}, false
+	return time.Time{}, e.Interrupted
 }
 
 func (e *hookStateSkillEngine) ContextTokens(Event) ContextReading { return ContextReading{} }
@@ -645,6 +653,7 @@ var (
 	_ SessionProber       = (*hookStateSkillEngine)(nil)
 	_ SessionCycler       = (*hookStateSkillEngine)(nil)
 	_ SkillLoader         = (*hookStateSkillEngine)(nil)
+	_ ActivityReader      = (*hookStateSkillEngine)(nil)
 )
 
 // skillReed is a fakeReed whose pane capture echoes the load message the launch line carried, as the pane does, and every text typed into it,
@@ -663,6 +672,16 @@ type skillReed struct {
 	Dies       map[int]bool
 	// LateEnds maps a turn to the number of Status calls before its turn end is appended.
 	LateEnds map[int]int
+	// TurnEnds maps a turn to the line that ends it in place of a plain turn end, such as an API error's.
+	TurnEnds map[int]string
+	// OpenTurns makes a hanging or late turn write its turn start at once, as a provider does for a turn it is still working on.
+	OpenTurns bool
+	// Carries maps a turn to the turn the operator starts and ends on their own after it, in place of the load the shuttle would type again.
+	Carries map[int]carriedTurn
+	// LoadSendErrs is consumed FIFO by each typed "LOAD:<list>", ahead of the typing: a non-nil entry fails that send and types nothing, a nil entry types it.
+	LoadSendErrs []error
+	// Notifier, when set, is the runner's notifier.
+	Notifier func(line string) error
 	// ColorErr, when set, fails every "COLOR:<name>" typed, after the call is recorded.
 	ColorErr error
 	// Screen, when set, is the first line of every capture, ahead of the sent texts.
@@ -680,9 +699,17 @@ type skillReed struct {
 }
 
 // lateTurnEnd is a turn end waiting for statusLeft more Status calls before it is appended.
+// A raw one is appended as the line stands, with no turn start before it.
 type lateTurnEnd struct {
 	line       string
 	statusLeft int
+	raw        bool
+}
+
+// carriedTurn is a turn the operator starts after startAfter Status calls and ends after endAfter.
+// The calls count from the turn it follows is played, and the startup probe takes the first, so a startAfter of 2 lands the turn start in the load poll's first call.
+type carriedTurn struct {
+	startAfter, endAfter int
 }
 
 func (r *skillReed) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
@@ -700,6 +727,13 @@ func (r *skillReed) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error
 }
 
 func (r *skillReed) SendText(guid, text string, submit bool) error {
+	if strings.HasPrefix(text, "LOAD:") && len(r.LoadSendErrs) > 0 {
+		scripted := r.LoadSendErrs[0]
+		r.LoadSendErrs = r.LoadSendErrs[1:]
+		if scripted != nil {
+			return scripted
+		}
+	}
 	if err := r.fakeReed.SendText(guid, text, submit); err != nil {
 		return err
 	}
@@ -726,11 +760,26 @@ func (r *skillReed) playLoad(list string) error {
 		r.deathIn = 2
 		return nil
 	}
+	wait, late := r.LateEnds[turn]
+	if r.OpenTurns && (late || r.Hangs[turn]) {
+		if err := r.appendEvents("START\n"); err != nil {
+			return err
+		}
+	}
 	if r.Hangs[turn] {
 		return nil
 	}
 	line := "STOP:loaded " + list
-	if wait, late := r.LateEnds[turn]; late {
+	if end, scripted := r.TurnEnds[turn]; scripted {
+		line = end
+	}
+	if carried, ok := r.Carries[turn]; ok {
+		r.lateEnds = append(r.lateEnds,
+			lateTurnEnd{line: "START\n", statusLeft: carried.startAfter, raw: true},
+			lateTurnEnd{line: "STOP:carried on\n", statusLeft: carried.endAfter, raw: true},
+		)
+	}
+	if late {
 		r.lateEnds = append(r.lateEnds, lateTurnEnd{line: line, statusLeft: wait})
 		return nil
 	}
@@ -738,17 +787,23 @@ func (r *skillReed) playLoad(list string) error {
 }
 
 func (r *skillReed) appendTurnEnd(line string) error {
+	// A real turn's hooks write its start before its end, which the hook fold needs to read the pane idle afterwards.
+	if err := r.appendEvents("START\n" + line + "\n"); err != nil {
+		return err
+	}
+	r.ends++
+	return nil
+}
+
+// appendEvents appends text to the run's events file.
+func (r *skillReed) appendEvents(text string) error {
 	f, err := os.OpenFile(r.EventsPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	// A real turn's hooks write its start before its end, which the hook fold needs to read the pane idle afterwards.
-	if _, err := f.WriteString("START\n" + line + "\n"); err != nil {
-		return err
-	}
-	r.ends++
-	return nil
+	_, err = f.WriteString(text)
+	return err
 }
 
 func (r *skillReed) Status() (reedengine.StatusResult, error) {
@@ -763,7 +818,11 @@ func (r *skillReed) Status() (reedengine.StatusResult, error) {
 			pending = append(pending, late)
 			continue
 		}
-		if err := r.appendTurnEnd(late.line); err != nil {
+		appendLate := r.appendTurnEnd
+		if late.raw {
+			appendLate = r.appendEvents
+		}
+		if err := appendLate(late.line); err != nil {
 			return reedengine.StatusResult{}, err
 		}
 	}

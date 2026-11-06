@@ -53,7 +53,7 @@ type Runner struct {
 	// run's reconstructed deadline, since Attach returns a Result rather than a *Run for a test to
 	// patch run.clock on afterwards.
 	clock Clock
-	// notifier receives the notice line of each held turn end of an autonomous run; nil, the default, holds silently.
+	// notifier receives the notice line of each held turn end of an autonomous run and the notice of a start held at its skill-load turn; nil, the default, holds silently.
 	notifier func(line string) error
 	// sessionEnd receives the report of each ended session; nil, the default, calls nothing.
 	sessionEnd func(SessionEnd)
@@ -90,7 +90,7 @@ func (r *Runner) holdFor(guid string) *turnStartHold {
 	return hold
 }
 
-// SetNotifier sets the function Wait calls once with a notice line for each held turn end of an autonomous run.
+// SetNotifier sets the function Wait calls once with a notice line for each held turn end of an autonomous run, and a start calls once when its skill-load turn is held on a lasting API error.
 // A nil notify, the default, holds silently.
 // A notify error is logged and never ends the run.
 func (r *Runner) SetNotifier(notify func(line string) error) {
@@ -343,7 +343,7 @@ type Run struct {
 	// offset is the byte offset already consumed from state.EventsPath.
 	offset int64
 	// deadline is the wall-clock time after which a run is classified OutcomeTimeout.
-	// Wait moves it later by the sleeps and pauses seen since createdAt.
+	// Wait moves it later by the sleeps and pauses seen since createdAt, and endLoadHold by the time a skill-load turn was held on an API error.
 	deadline time.Time
 	// createdAt is the run clock's time when the run was built, the start of the span whose sleeps and pauses move deadline.
 	createdAt time.Time
@@ -789,9 +789,11 @@ func (run *Run) typeStartupColor(color segmentcolor.Color) {
 // The launch line carries the first load turn of spec.Skills, so it awaits that turn and types nothing for it.
 // It then types color when non-empty, retries the skills the model did not load once with a typed load message, and delivers promptLine through the verified send path.
 // A spec with no skills types the color and then the prompt.
-// A skill the provider does not know, one still missing after the retry and one whose turn timed out are skipped with a logged warning,
+// A skill the provider does not know, one still missing after the retry, one whose turn no turn start was read for in time and one whose open turn was interrupted are skipped with a logged warning,
 // and an unreadable turn is confirmed unverified.
 // None of these fails or hangs the launch.
+// A turn still open when the run's deadline passes fails the start as OutcomeTimeout with no prompt typed.
+// A load turn the provider's API fails skips nothing: loadSkillTurn holds it, and the prompt waits, until a load turn ends.
 // The run's events offset and the persisted prompt offset are the events file's size at the moment before the prompt is sent.
 // That lies past every load turn end, the retry's included, and past any line appended after them.
 // So Wait never reads one as a held turn end of the run's own.
@@ -821,7 +823,7 @@ func (run *Run) loadSkillsThenPrompt(promptLine string, color segmentcolor.Color
 			}
 		}
 		if err != nil {
-			return run.abandonStartup(OutcomeDied, err)
+			return run.abandonLoad(err)
 		}
 		if died {
 			return run.abandonStartup(OutcomeDied, nil)
@@ -942,48 +944,6 @@ func (run *Run) settleLoadTurn(loader SkillLoader, skills []string, timeout time
 		logger.Warn("shuttle: skill skipped", "skill", skill, "cause", "not loaded", "strandGUID", guid)
 	}
 	return nil, false, nil
-}
-
-// loadSkillTurn is one load turn: when typed, it sends the engine's load message for skills through the verified send path; otherwise the launch line already carried the message.
-// It then polls the events file until the first turn end past the run's offset, which it returns, the pane dies, or timeout passes.
-// timeout is measured from the call's entry.
-// ended is false on a timeout,
-// and died is true when the strand's pane is no longer live.
-// The run's offset moves past every event read.
-func (run *Run) loadSkillTurn(loader SkillLoader, skills []string, timeout time.Duration, typed bool) (turnEnd Event, ended, died bool, err error) {
-	reed := run.runner.reed
-	guid := run.state.StrandGUID
-	if typed {
-		if err := run.sendThroughPause(run.newSendContext(), loader.SkillLoadMessage(skills)); err != nil {
-			return Event{}, false, false, fmt.Errorf("shuttle: load skills %v: %w", skills, err)
-		}
-	}
-	deadline := run.clock.Now().Add(timeout)
-	interval := pollInterval(run.runner.cfg)
-	for {
-		data, newOffset, err := readEventsFrom(run.state.EventsPath, run.offset)
-		if err == nil && len(data) > 0 {
-			events, perr := run.engine.ParseEvents(data)
-			if perr == nil {
-				run.offset = newOffset
-				for _, ev := range events {
-					if ev.Kind == EventStop || ev.Kind == EventWaiting {
-						return ev, true, false, nil
-					}
-				}
-			}
-		}
-
-		if status, serr := reed.Status(); serr == nil {
-			if strand, tracked := strandStatusByGUID(status.Strands, guid); !tracked || !strand.Live {
-				return Event{}, false, true, nil
-			}
-		}
-		if !run.clock.Now().Before(deadline) {
-			return Event{}, false, false, nil
-		}
-		run.clock.Sleep(interval)
-	}
 }
 
 // checkResume runs engine's SessionResumer check for a spec that resumes an existing session, against the runner's pane cwd.

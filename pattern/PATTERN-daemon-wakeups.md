@@ -22,6 +22,7 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
 - the current capture's lock wait in `internal/driftengine/capture.go`, which polls the capture lock from one second, takes it once free and doubles to thirty seconds while the lock stays held,
 - the pause hold in `internal/pauserecord/hold.go`, which polls from one second and doubles to five seconds while the covering entry is unchanged,
 - shuttle's `Wait`,
+- the load turn's API-error hold in `internal/shuttleengine/loadturn.go`, which wakes once per back-off, from 30 seconds doubling to five minutes while the API keeps failing the load, and between turns every `pollInterval` to read the events file and reed's status, floored at one second like every poll,
 - webster's long poll,
 - `lym shed status --watch`,
 - the gate test's CPU watchdog in `internal/gatecli/watchdog.go`, which samples once per period, 5 seconds in production, for as long as go test runs and spawns nothing,

@@ -30,8 +30,9 @@ const (
 	OutcomeDied Outcome = "died"
 	// OutcomeTimeout: wall-clock Timeout elapsed before output files written.
 	// A provider crash behind a still-live pane shell that nothing proves, such as an engine without liveness probing, also ends here.
+	// So does a start whose skill-load turn is still open when the run's deadline passes.
 	OutcomeTimeout Outcome = "timeout"
-	// OutcomeAPIError: the provider's API ended the agent's turn on an error past the re-sends Spec.APIErrorRetries allows, or at once on a model the provider rejected, before output files were written.
+	// OutcomeAPIError: the provider's API ended the agent's turn on an error past the re-sends Spec.APIErrorRetries allows, or at once on a model the provider rejected, a skill-load turn's included, before output files were written.
 	OutcomeAPIError Outcome = "api-error"
 )
 

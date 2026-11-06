@@ -137,6 +137,7 @@ type Spec struct {
 	// validate does not inspect it.
 	Skills []string
 	// SkillLoadTimeout bounds how long shuttle waits for one load turn to end, the first and the retry each, before skipping its skills.
+	// A turn still open at the timeout is awaited until it ends or the run's deadline passes, which fails the start as timeout, and a turn the provider's API fails is run again however long that takes, so neither skips a skill at this bound.
 	// Zero defers to the engine's DefaultSkillLoadTimeout; validate does not inspect it.
 	SkillLoadTimeout time.Duration
 	// ContextAfterCompaction, when non-empty, is a shell command whose standard output the provider adds to the session's context right after every compaction.

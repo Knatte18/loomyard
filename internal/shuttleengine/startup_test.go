@@ -1452,10 +1452,16 @@ func skillStartFixtureWith(t *testing.T, strand reedengine.Strand, spec Spec, re
 				t.Errorf("seed the events file: %v", err)
 			}
 		}
-		used = &hookStateSkillEngine{skillFakeEngine: engine}
+		hooked := &hookStateSkillEngine{skillFakeEngine: engine}
+		hooked.hooks.apiErrorLine = engine.APIErrorLine
+		hooked.Interrupted = engine.Interrupted
+		used = hooked
 	}
 	fx := newFixture(t, reed, used, withConfig(fastConfig), withClock(fc))
 	reed.EventsPath = func() string { return filepath.Join(soleStartupRunDir(t, fastConfig, fx.Anchor), eventsFileName) }
+	if reed.Notifier != nil {
+		fx.Runner.SetNotifier(reed.Notifier)
+	}
 	spec.Prompt = "x"
 	spec.OutputFiles = []string{filepath.Join(t.TempDir(), "out.md")}
 	start := fc.Now()
@@ -1683,6 +1689,288 @@ func TestStartup_SkillLoadTurns(t *testing.T) {
 				t.Errorf("persisted PromptOffset = %d; want %d", persisted.PromptOffset, run.offset)
 			}
 		})
+	}
+}
+
+// TestStartup_LoadTurnAPIError does not call t.Parallel: it asserts on the logger output,
+// which is process-global.
+func TestStartup_LoadTurnAPIError(t *testing.T) {
+	tiergate.Require(t, 0)
+	const (
+		failed = "APIERR:overloaded"
+		marked = "STOP:API Error"
+	)
+	loaded := func(skills ...string) SkillLoadReport { return SkillLoadReport{Verified: true, Loaded: skills} }
+	tests := []struct {
+		name         string
+		spec         Spec
+		reports      []SkillLoadReport
+		turnEnds     map[int]string
+		lateEnds     map[int]int
+		carries      map[int]carriedTurn
+		loadSendErrs []error
+		notifyErr    error
+		interrupted  bool
+		hangs        []int
+		dies         []int
+		apiErrorLine string
+		wantTyped    string
+		wantSkips    int
+		// wantHeld is the least virtual time the start took and the run's deadline moved, zero for a start that fails.
+		wantHeld time.Duration
+		// wantHeldAtMost is the most virtual time a start that succeeds took, zero for no limit.
+		wantHeldAtMost  time.Duration
+		wantNotices     int
+		wantFailed      bool
+		wantOutcome     string
+		wantFailedAfter time.Duration
+		wantHoldOver    bool
+	}{
+		{
+			name:      "a turn the API ended runs again after the back-off and the prompt follows it",
+			spec:      Spec{Skills: []string{"a"}},
+			reports:   []SkillLoadReport{loaded("a")},
+			turnEnds:  map[int]string{0: failed},
+			wantTyped: "LOAD:a|do the task",
+			wantHeld:  apiErrorRetryBackoff,
+		},
+		{
+			name:      "a turn past its timeout that then ends on an API error skips nothing",
+			spec:      Spec{Skills: []string{"a"}, SkillLoadTimeout: 50 * time.Millisecond},
+			reports:   []SkillLoadReport{loaded("a")},
+			turnEnds:  map[int]string{0: failed},
+			lateEnds:  map[int]int{0: 8},
+			wantTyped: "LOAD:a|do the task",
+			wantHeld:  apiErrorRetryBackoff,
+		},
+		{
+			name:         "a turn end the transcript marks an API error counts as one",
+			spec:         Spec{Skills: []string{"a"}},
+			reports:      []SkillLoadReport{loaded("a")},
+			turnEnds:     map[int]string{0: marked},
+			apiErrorLine: marked,
+			wantTyped:    "LOAD:a|do the task",
+			wantHeld:     apiErrorRetryBackoff,
+		},
+		{
+			name:        "each further API error doubles the wait and the parent hears once",
+			spec:        Spec{Skills: []string{"a"}},
+			reports:     []SkillLoadReport{loaded("a")},
+			turnEnds:    map[int]string{0: failed, 1: failed, 2: failed},
+			wantTyped:   "LOAD:a|LOAD:a|LOAD:a|do the task",
+			wantHeld:    7 * apiErrorRetryBackoff,
+			wantNotices: 1,
+		},
+		{
+			name:        "a retry turn the API ended spends no retry",
+			spec:        Spec{Skills: []string{"a", "b"}},
+			reports:     []SkillLoadReport{{Verified: true, Loaded: []string{"a"}, Missing: []string{"b"}}, loaded("b")},
+			turnEnds:    map[int]string{1: failed},
+			wantTyped:   "LOAD:b|LOAD:b|do the task",
+			wantHeld:    apiErrorRetryBackoff,
+			wantNotices: 0,
+		},
+		{
+			name:         "a pane that dies during the hold is a died startup",
+			spec:         Spec{Skills: []string{"a"}},
+			turnEnds:     map[int]string{0: failed},
+			dies:         []int{1},
+			wantTyped:    "LOAD:a",
+			wantFailed:   true,
+			wantOutcome:  "died",
+			wantHoldOver: true,
+		},
+		{
+			name:            "an open turn that never ends fails the start at the run deadline and types no prompt",
+			spec:            Spec{Skills: []string{"a"}, SkillLoadTimeout: 50 * time.Millisecond},
+			hangs:           []int{0},
+			wantFailed:      true,
+			wantOutcome:     "timeout",
+			wantFailedAfter: time.Hour,
+		},
+		{
+			name:        "an open turn the operator interrupted is skipped at once and the prompt follows",
+			spec:        Spec{Skills: []string{"a"}, SkillLoadTimeout: 50 * time.Millisecond},
+			hangs:       []int{0},
+			interrupted: true,
+			wantTyped:   "do the task",
+			wantSkips:   1,
+		},
+		{
+			name:      "a turn start read during the back-off takes the place of the typed load",
+			spec:      Spec{Skills: []string{"a"}},
+			reports:   []SkillLoadReport{loaded("a")},
+			turnEnds:  map[int]string{0: failed},
+			carries:   map[int]carriedTurn{0: {startAfter: 2, endAfter: 3}},
+			wantTyped: "do the task",
+			wantHeld:  apiErrorRetryBackoff,
+		},
+		{
+			name:         "a busy session moves the typed load to the next doubled back-off",
+			spec:         Spec{Skills: []string{"a"}},
+			reports:      []SkillLoadReport{loaded("a")},
+			turnEnds:     map[int]string{0: failed},
+			loadSendErrs: []error{fmt.Errorf("held: %w", ErrSessionBusy)},
+			wantTyped:    "LOAD:a|do the task",
+			wantHeld:     3 * apiErrorRetryBackoff,
+		},
+		{
+			name:         "a typed load that fails for another reason is a died startup",
+			spec:         Spec{Skills: []string{"a"}},
+			turnEnds:     map[int]string{0: failed},
+			loadSendErrs: []error{errors.New("reed is gone")},
+			wantTyped:    "",
+			wantFailed:   true,
+			wantOutcome:  "died",
+			wantHoldOver: true,
+		},
+		{
+			name:           "the wait stops doubling at the ceiling",
+			spec:           Spec{Skills: []string{"a"}},
+			reports:        []SkillLoadReport{loaded("a")},
+			turnEnds:       map[int]string{0: failed, 1: failed, 2: failed, 3: failed, 4: failed, 5: failed},
+			wantTyped:      "LOAD:a|LOAD:a|LOAD:a|LOAD:a|LOAD:a|LOAD:a|do the task",
+			wantHeld:       apiErrorRetryBackoff*(1+2+4+8) + 2*loadHoldBackoffCeiling,
+			wantHeldAtMost: 25 * time.Minute,
+			wantNotices:    1,
+		},
+		{
+			name:        "an interactive run holds with no notice",
+			spec:        Spec{Skills: []string{"a"}, Interactive: true},
+			reports:     []SkillLoadReport{loaded("a")},
+			turnEnds:    map[int]string{0: failed, 1: failed},
+			wantTyped:   "LOAD:a|LOAD:a|do the task",
+			wantHeld:    3 * apiErrorRetryBackoff,
+			wantNotices: 0,
+		},
+		{
+			name:        "a notifier that fails does not fail the start",
+			spec:        Spec{Skills: []string{"a"}},
+			reports:     []SkillLoadReport{loaded("a")},
+			turnEnds:    map[int]string{0: failed, 1: failed},
+			notifyErr:   errors.New("queue full"),
+			wantTyped:   "LOAD:a|LOAD:a|do the task",
+			wantHeld:    3 * apiErrorRetryBackoff,
+			wantNotices: 1,
+		},
+		{
+			name:         "a turn end marking the model rejected ends the start with no load typed again",
+			spec:         Spec{Skills: []string{"a"}},
+			turnEnds:     map[int]string{0: "REJECT:model_not_found"},
+			wantTyped:    "",
+			wantFailed:   true,
+			wantOutcome:  "api-error",
+			wantHoldOver: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			buf := logcapture.CaptureVerbose(t)
+			var notices []string
+			tt.spec.Timeout = time.Hour
+			run, reed, elapsed, err := skillStartFixtureWith(t, reedengine.Strand{GUID: "strand-1"}, tt.spec, tt.reports, tt.hangs, tt.dies, func(reed *skillReed, engine *skillFakeEngine) {
+				reed.Screen = "the ready screen"
+				reed.TurnEnds = tt.turnEnds
+				reed.LateEnds = tt.lateEnds
+				reed.Carries = tt.carries
+				reed.LoadSendErrs = tt.loadSendErrs
+				reed.OpenTurns = true
+				reed.Notifier = func(line string) error {
+					notices = append(notices, line)
+					return tt.notifyErr
+				}
+				engine.HookState = true
+				engine.Interrupted = tt.interrupted
+				engine.APIErrorLine = tt.apiErrorLine
+			})
+			if got := strings.Join(typedTexts(reed), "|"); got != tt.wantTyped {
+				t.Errorf("typed = %q; want %q", got, tt.wantTyped)
+			}
+			if got := strings.Count(buf.String(), "skill skipped"); got != tt.wantSkips {
+				t.Errorf("skill skipped warnings = %d; want %d; log:\n%s", got, tt.wantSkips, buf.String())
+			}
+			if len(notices) != tt.wantNotices {
+				t.Errorf("notices = %q; want %d", notices, tt.wantNotices)
+			}
+			if tt.wantFailed {
+				if !errors.Is(err, ErrNotStarted) {
+					t.Fatalf("Start() error = %v; want one wrapping ErrNotStarted", err)
+				}
+				if want := `outcome "` + tt.wantOutcome + `"`; !strings.Contains(err.Error(), want) {
+					t.Errorf("Start() error = %v; want it to name %s", err, want)
+				}
+				if elapsed < tt.wantFailedAfter {
+					t.Errorf("virtual elapsed = %s; want at least %s", elapsed, tt.wantFailedAfter)
+				}
+				if got := strings.Contains(buf.String(), "load turn hold over"); got != tt.wantHoldOver {
+					t.Errorf("log holds the hold-over line = %v; want %v; log:\n%s", got, tt.wantHoldOver, buf.String())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Start() error = %v", err)
+			}
+			if elapsed < tt.wantHeld {
+				t.Errorf("virtual elapsed = %s; want at least %s", elapsed, tt.wantHeld)
+			}
+			if tt.wantHeldAtMost > 0 && elapsed > tt.wantHeldAtMost {
+				t.Errorf("virtual elapsed = %s; want at most %s", elapsed, tt.wantHeldAtMost)
+			}
+			if moved := run.deadline.Sub(run.createdAt) - tt.spec.Timeout; moved < tt.wantHeld {
+				t.Errorf("deadline moved %s; want at least %s", moved, tt.wantHeld)
+			}
+			// The prompt offset lies past every load turn, the re-typed ones included.
+			// So Wait never reads one of them as the prompt's turn.
+			info, err := os.Stat(run.state.EventsPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if run.offset != info.Size() || run.offset == 0 {
+				t.Errorf("offset = %d; want the events file's size %d", run.offset, info.Size())
+			}
+			persisted, _, err := loadRunState(run.runDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if persisted.PromptOffset != run.offset {
+				t.Errorf("persisted PromptOffset = %d; want %d", persisted.PromptOffset, run.offset)
+			}
+		})
+	}
+}
+
+func TestRun_LoadTurnModelRejectedEndsTheStart(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	base := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}, StatusQueue: liveStrandStatus(true)}
+	engine := &skillFakeEngine{
+		fakeEngine: &fakeEngine{
+			PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1", PromptLine: "do the task"},
+			StartupScript: []StartupState{StartupReady},
+		},
+		Timeout: time.Minute,
+	}
+	engine.PrepareHook = func(runDir string) {
+		if err := os.WriteFile(filepath.Join(runDir, eventsFileName), []byte("SESSIONSTART:startup\n"), 0o644); err != nil {
+			t.Errorf("seed the events file: %v", err)
+		}
+	}
+	reed := &skillReed{fakeReed: base, Hangs: map[int]bool{}, Dies: map[int]bool{}, TurnEnds: map[int]string{0: "REJECT:model_not_found"}}
+	fx := newFixture(t, reed, &hookStateSkillEngine{skillFakeEngine: engine}, withConfig(fastConfig), withClock(newFakeClock(time.Now())))
+	reed.EventsPath = func() string { return filepath.Join(soleStartupRunDir(t, fastConfig, fx.Anchor), eventsFileName) }
+
+	result, err := fx.Runner.Run(Spec{Prompt: "x", OutputFiles: []string{filepath.Join(t.TempDir(), "out.md")}, Skills: []string{"a"}})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if result.Outcome != OutcomeAPIError || result.APIError != "model_not_found" || !result.NotStarted {
+		t.Errorf("Run() outcome, API error, not started = %q, %q, %v; want %q, %q, true", result.Outcome, result.APIError, result.NotStarted, OutcomeAPIError, "model_not_found")
+	}
+	if got := typedTexts(reed); len(got) != 0 {
+		t.Errorf("typed = %q; want nothing", got)
+	}
+	if len(base.RemoveStrandCalls) != 1 {
+		t.Errorf("RemoveStrand calls = %d; want 1", len(base.RemoveStrandCalls))
 	}
 }
 

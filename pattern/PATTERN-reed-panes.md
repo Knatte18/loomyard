@@ -93,6 +93,20 @@ Typing a line into a session a pause covers: shuttle's send refuses with `ErrPau
 
 Review discipline and the shuttle runner's send tests; no scan enforces it.
 
+### An API error holds the prompt
+
+Rule: A start's own prompt line is not typed behind a skill-load turn the API failed: the load runs again after a back-off until a load turn ends. (test)
+
+A start's prompt line is not typed behind a skill-load turn the provider's API failed: shuttle runs the load again after a back-off until a load turn ends, and only then types the prompt.
+
+- A skipped skill stays what the skill's own state says: not installed, or still missing after the retry. An API error says nothing about the skill.
+- The typed load line is the probe of the API, and goes through the same verified send, so a pause holds it too.
+- Bound: an attach delivers a pending prompt without judging the API.
+
+#### Enforcement
+
+`TestStartup_LoadTurnAPIError` in `internal/shuttleengine`.
+
 ### The orch pane
 
 Only creel types into the orch session from Go, through its `Delivery` seam.

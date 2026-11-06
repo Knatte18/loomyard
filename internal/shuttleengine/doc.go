@@ -181,7 +181,7 @@
 //
 // # Awake deadline
 //
-// The run deadline counts awake, unpaused time.
+// The run deadline counts awake, unpaused time, and no time a start's skill-load turn is held on an API error.
 // A Clock that is also an AwakeClock feeds the run's sleep watch each tick, and the deadline moves later by the union of the detected sleeps and the coverage's paused intervals since the run was created.
 // A clock without Awake detects no sleep.
 //
@@ -318,16 +318,26 @@
 // Skill loading: Spec.Skills names provider-neutral skills that shuttle loads into a fresh session, all in one turn, before the prompt.
 // It needs the optional SkillLoader capability, and a spec that names skills on an engine without it is refused before any run directory exists.
 // An engine that realizes skills carries its one load message for the whole list on the launch line, so the first load turn is the session's first turn and is never typed, and returns the prompt pointer as Launch.PromptLine;
-// once the provider is ready, shuttle polls until the first turn end reaches the events file or Spec.SkillLoadTimeout passes (zero means the engine's DefaultSkillLoadTimeout), measured from the end of the startup probe.
-// The launch-carried message skips the verified send's landing check; a turn end in the events file proves it landed, and a turn that never starts or ends is bounded by the timeout.
+// once the provider is ready, shuttle polls until the first turn end reaches the events file or Spec.SkillLoadTimeout passes with no turn start read (zero means the engine's DefaultSkillLoadTimeout), measured from the first poll.
+// The launch-carried message skips the verified send's landing check; a turn end in the events file proves it landed, and a turn that never starts is bounded by the timeout.
 // The color follows the first turn, then any retry turn, then the prompt.
 // The engine classifies that turn end into a SkillLoadReport: each unknown skill is skipped at once with a logged warning,
 // and the missing ones are asked for once more in a second, typed load turn naming only them,
 // whose still-missing skills are skipped with a logged warning.
 // A turn whose evidence the engine could not read is confirmed unverified with one logged warning and no retry,
-// and a turn that never ends skips its skills at the timeout with no retry.
-// So a launch runs at most two load turns, each bounded by the timeout,
-// and a skipped skill never fails or hangs it.
+// and a turn no turn start is read for skips its skills with no retry at the timeout.
+// A turn start read with no turn end after it is awaited until its end, the pane's death or the run's deadline, since a provider retries a failing API inside the turn for minutes;
+// a deadline passing first ends the start as timeout with the prompt never typed.
+// An open turn an engine with SessionProber reads as interrupted skips its skills at once with no retry, since an interrupt writes no turn end.
+// So a launch runs at most two load turns the API does not fail,
+// and a skipped skill never fails or hangs it, which only a turn still open at the run's deadline does.
+// A load turn that ends on an API error, by the signal or by the transcript's marker on a turn end, skips nothing and spends no retry, since the error says nothing about the skills.
+// Shuttle holds the launch as a pause holds a send: it waits a back-off that starts at apiErrorRetryBackoff and doubles to loadHoldBackoffCeiling, then types the same load message through the verified send path, and goes on so until a load turn ends, since that typed turn is the only probe of the API a session has.
+// So the prompt line is never typed into a session whose load turn the API failed.
+// A turn start read during the back-off takes the place of the typed line, a busy session moves the line to the next back-off, and a pane that dies ends the hold as a died startup.
+// The hold has no bound of its own and moves the run's deadline later by its length; at the second API error it sends the run's parent one notifier line, skipped for an interactive run.
+// A turn end the engine marks ModelRejected ends the start at once, api-error with Result.APIError naming the error, as no further turn changes the model.
+// Bound: an attached run delivers a pending prompt without judging the API, so a driver that died during a hold has its prompt typed by the attach.
 // Then PromptLine goes out through the verified send path.
 // Every verified send first waits for an idle session, for at most `send_ready_timeout_s` and never past the run's deadline, and types nothing until then.
 // For an engine with the optional SessionCycler idle reading, every poll takes the readiness reading, built on the hook-derived session state.

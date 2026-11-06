@@ -37,6 +37,7 @@ var unboundedWaitFiles = []string{
 	"internal/driftengine/wait.go",
 	"internal/pauserecord/hold.go",
 	"internal/shuttleengine/wait.go",
+	"internal/shuttleengine/loadturn.go",
 	"internal/verifytree/verify.go",
 	"internal/websterengine/poll.go",
 	"internal/shedverbs/status.go",
