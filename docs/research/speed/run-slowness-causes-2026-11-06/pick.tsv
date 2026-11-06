@@ -1,0 +1,41 @@
+slug	tag	recipe	start	end	period	band	lines	active
+turn-batching	archive/turn-batching/6e168d660793	darn	2026-10-28T13:54:34Z	2026-10-28T14:13:07Z	before	1: under 100	57	1113
+gate-rule-stated-once	archive/gate-rule-stated-once/0beab8b66bd5	darn	2026-11-01T06:57:41Z	2026-11-01T07:08:23Z	before	1: under 100	34	642
+dead-driver-false-notice	archive/dead-driver-false-notice/9f5a2fd8bccf	darn	2026-11-01T07:20:45Z	2026-11-01T07:37:53Z	before	1: under 100	66	1028
+pattern-design-principles	archive/pattern-design-principles/d2196271429f	darn	2026-11-01T14:58:15Z	2026-11-01T15:09:38Z	before	1: under 100	29	683
+resume-fixes	archive/resume-fixes/4f46076423bd	darn	2026-10-28T11:41:38Z	2026-10-28T12:16:57Z	before	2: 100 to 299	196	2119
+board-push-race	archive/board-push-race/13b260d4f3ca	darn	2026-10-31T14:14:18Z	2026-10-31T14:48:16Z	before	2: 100 to 299	218	2038
+teardown-retry-no-pair	archive/teardown-retry-no-pair/45b1eaf20ca3	darn	2026-10-31T18:22:58Z	2026-10-31T18:42:46Z	before	2: 100 to 299	173	1188
+seed-starts-at-start	archive/seed-starts-at-start/f8c9d2f6432f	darn	2026-11-01T06:57:30Z	2026-11-01T07:21:33Z	before	2: 100 to 299	185	1443
+gate-robustness	archive/gate-robustness/ce21b18bc812	darn	2026-10-28T11:40:59Z	2026-10-28T12:31:36Z	before	3: 300 to 999	641	3037
+usage-limit-wake	archive/usage-limit-wake/1b23ca535caf	darn	2026-10-28T13:51:01Z	2026-10-28T14:30:34Z	before	3: 300 to 999	647	2373
+adopt-check-visible	archive/adopt-check-visible/f437beea8ca3	darn	2026-10-31T14:22:09Z	2026-10-31T14:52:31Z	before	3: 300 to 999	660	1822
+kde-window-placement	archive/kde-window-placement/fa1f4b982607	darn	2026-11-01T11:30:43Z	2026-11-01T12:04:10Z	before	3: 300 to 999	623	2007
+creel-hook-delivery	archive/creel-hook-delivery/c5386e26d871	darn	2026-10-27T15:16:07Z	2026-10-27T15:57:53Z	before	4: 1000 and over	1188	2506
+ide-seed-current-worktree	archive/ide-seed-current-worktree/c83190937675	darn	2026-10-28T09:29:58Z	2026-10-28T10:19:14Z	before	4: 1000 and over	1331	2956
+pawl-loom-recipe	archive/pawl-loom-recipe/a512ebc95b49	darn	2026-10-31T18:44:43Z	2026-10-31T19:23:41Z	before	4: 1000 and over	1852	2338
+finalize-fix-in-place	archive/finalize-fix-in-place/f03636e670bb	darn	2026-11-01T06:57:54Z	2026-11-01T07:34:01Z	before	4: 1000 and over	1240	2167
+codex-greet-finish	archive/codex-greet-finish/5b33479c5f69	darn	2026-11-05T12:05:27Z	2026-11-05T14:19:11Z	late	1: under 100	59	8024
+codex-idle-wake-extra-reminder	archive/codex-idle-wake-extra-reminder/4017f55e336f	darn	2026-11-05T19:08:43Z	2026-11-05T19:37:35Z	late	1: under 100	54	1732
+codex-writer-cannot-commit	archive/codex-writer-cannot-commit/8f85a8e98426	darn	2026-11-05T10:53:54Z	2026-11-05T11:18:55Z	late	2: 100 to 299	225	1501
+arbiter-settles-escalations	archive/arbiter-settles-escalations/2ab90f1b4318	darn	2026-11-05T17:13:48Z	2026-11-05T17:38:50Z	late	2: 100 to 299	191	1502
+clone-reset-deletes-first	archive/clone-reset-deletes-first/6abc7cf76545	darn	2026-11-05T19:00:36Z	2026-11-05T20:16:14Z	late	3: 300 to 999	608	4538
+decision-withdraw-pattern	archive/decision-withdraw-pattern/4908435aec8a	darn	2026-11-06T08:57:23Z	2026-11-06T09:40:19Z	late	3: 300 to 999	616	2576
+branch-name-recorded	archive/branch-name-recorded/a7cb9ad114e0	darn	2026-11-05T08:10:56Z	2026-11-05T09:44:47Z	late	4: 1000 and over	1039	5631
+pattern-distill	archive/pattern-distill/6b4cb36cb795	darn	2026-11-05T13:43:38Z	2026-11-05T14:05:47Z	late	4: 1000 and over	1033	1329
+sampler-lacks-pattern-directive	archive/sampler-lacks-pattern-directive/897dcd33874a	darn	2026-11-02T18:57:41Z	2026-11-02T19:27:53Z	mid	1: under 100	54	1812
+preflight-own-state-dirty	archive/preflight-own-state-dirty/35fa06c48415	darn	2026-11-03T16:52:22Z	2026-11-03T17:20:46Z	mid	1: under 100	50	1704
+weaving-glossary	archive/weaving-glossary/0a999cd01430	darn	2026-11-03T07:59:31Z	2026-11-03T08:06:52Z	mid	2: 100 to 299	215	441
+drift-child-error-in-halt	archive/drift-child-error-in-halt/0554519eb909	darn	2026-11-03T09:01:32Z	2026-11-03T09:26:20Z	mid	2: 100 to 299	187	1488
+reconcile-migrates-profiles	archive/reconcile-migrates-profiles/7552f05e084c	darn	2026-11-03T09:16:40Z	2026-11-03T10:06:34Z	mid	3: 300 to 999	599	2994
+depends-on-any-entry	archive/depends-on-any-entry/5cc9f694783a	darn	2026-11-03T16:21:55Z	2026-11-03T17:30:31Z	mid	3: 300 to 999	604	4116
+hibernate-in-dobby	archive/hibernate-in-dobby/7eb80e275ff2	darn	2026-11-03T15:46:13Z	2026-11-03T16:36:23Z	mid	4: 1000 and over	1403	3010
+beam-pr-lifecycle	archive/beam-pr-lifecycle/6004d6da8f93	darn	2026-11-04T11:15:42Z	2026-11-04T12:52:28Z	mid	4: 1000 and over	1444	5806
+shed-sub-run-block	archive/shed-sub-run-block/9da250dbef8f	tapestry	2026-11-03T07:21:23Z	2026-11-03T09:32:37Z	after	-	2775	7284
+batten-remote-order	archive/batten-remote-order/97fbdaa4673b	tapestry	2026-11-03T07:28:27Z	2026-11-03T12:25:23Z	after	-	5261	17765
+pawl-orch-landing	archive/pawl-orch-landing/e932758758bf	tapestry	2026-11-05T07:10:54Z	2026-11-05T10:56:48Z	after	-	8484	13524
+raddle-recipe	archive/raddle-recipe/ab4b96f42fcd	tapestry	2026-11-05T08:32:55Z	2026-11-05T13:44:52Z	after	-	11648	18635
+run-verbs-shared	archive/run-verbs-shared/100f752e28ed	tapestry	2026-10-31T14:10:09Z	2026-10-31T18:24:02Z	before	-	9150	15170
+warp-visibility	archive/warp-visibility/9d6f960b829b	tapestry	2026-11-01T07:07:43Z	2026-11-01T10:28:39Z	before	-	7365	12039
+reed-status-buttons	archive/reed-status-buttons/c6fffccc4634	tapestry	2026-11-01T12:03:45Z	2026-11-01T14:41:38Z	before	-	2695	9249
+gate-run-keeps-cache-warm	archive/gate-run-keeps-cache-warm/bee88ec60e57	tapestry	2026-11-01T12:21:10Z	2026-11-01T15:22:40Z	before	-	5068	10845

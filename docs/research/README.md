@@ -123,6 +123,7 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [gate-fewer-binaries-trial-2026-11-01](speed/gate-fewer-binaries-trial-2026-11-01/report.md) — trials of fewer new test binaries per gate run.
 - [fabric-test-speed-survey-2026-11-03.md](speed/fabric-test-speed-survey-2026-11-03.md) — where `internal/fabricengine` test time goes, and how to cut it.
 - [task-runtime-before-after-2026-11-06](speed/task-runtime-before-after-2026-11-06/report.md) — whether darn and tapestry runs take less active time since turn-savings, and how much of it P1 can claim.
+- [run-slowness-causes-2026-11-06](speed/run-slowness-causes-2026-11-06/report.md) — where a run's wall time goes, what made darn runs slower, and the changes that would cut it, ranked.
 
 ## tokens — token use, cost and models
 
