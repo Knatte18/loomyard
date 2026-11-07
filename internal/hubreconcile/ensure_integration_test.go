@@ -93,7 +93,7 @@ const differingBatcherBudget = "budget: 450001"
 // The file is the template with the retired key in place of orientation.
 // It also sets one key to a value that differs from the repo default.
 // It survives the sparse strip non-empty, so the test can read the retired key after the walk.
-func seedRetiredKey(t *testing.T, recordsRoot string) {
+func seedRetiredKey(t testing.TB, recordsRoot string) {
 	t.Helper()
 
 	module, _ := configreg.Lookup("batcher")
@@ -110,7 +110,7 @@ func seedRetiredKey(t *testing.T, recordsRoot string) {
 const differingLoomBounces = "review_max_bounces: 99"
 
 // replaceOnce returns content with the first old replaced by replacement, failing the test when content holds no old.
-func replaceOnce(t *testing.T, module, content, old, replacement string) string {
+func replaceOnce(t testing.TB, module, content, old, replacement string) string {
 	t.Helper()
 
 	if !strings.Contains(content, old) {
@@ -272,7 +272,7 @@ func commitRetiredKeys(t *testing.T, boardDir string) {
 // Loom's file differs from the repo default in one key and holds its former discussion_lenses.
 // Shed's file holds its former driver_kind.
 // It also deletes the sparse marker, so the walk finds an unmigrated worktree with something to strip.
-func commitPreMigrationFiles(t *testing.T, recordsRoot string) {
+func commitPreMigrationFiles(t testing.TB, recordsRoot string) {
 	t.Helper()
 
 	for _, module := range configreg.Modules() {
@@ -386,18 +386,24 @@ func markForeignMerge(t *testing.T, codeDir string) (clear func()) {
 	}
 }
 
-// newStaleHub builds a hub with a pair whose records worktrees lack the sparse marker.
+// staleHub is a hub with the pair pair-a whose records worktrees lack the sparse marker.
 // Each records worktree holds a full pre-migration file set with the retired key committed, and the hub has no stamp.
-func newStaleHub(t *testing.T, slug string) *hubforge.Hub {
-	t.Helper()
+// The build commits only in the records worktrees, so the board stays at its upstream tip.
+var staleHub = &hubforge.Registration{
+	Key:  "hubreconcile-stale",
+	Base: hubforge.Shape{Anchor: ".", Pairs: []string{"pair-a"}},
+	Build: func(tb testing.TB, h *hubforge.Hub) {
+		commitPreMigrationFiles(tb, h.PrimeRecords())
+		commitPreMigrationFiles(tb, h.PairRecordsSibling("pair-a"))
+		seedRetiredKey(tb, h.PrimeRecords())
+		seedRetiredKey(tb, h.PairRecordsSibling("pair-a"))
+	},
+}
 
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	hubforge.AddPair(t, h, slug)
-	commitPreMigrationFiles(t, h.PrimeRecords())
-	commitPreMigrationFiles(t, h.PairRecordsSibling(slug))
-	seedRetiredKey(t, h.PrimeRecords())
-	seedRetiredKey(t, h.PairRecordsSibling(slug))
-	return h
+// newStaleHub returns the test's own copy of the staleHub template.
+func newStaleHub(t *testing.T) *hubforge.Hub {
+	t.Helper()
+	return hubforge.CopyRegistered(t, staleHub)
 }
 
 // newerHubWideKey is a fabric key the running template lacks and no retired key covers, as a newer binary writes.
@@ -503,7 +509,7 @@ func runStaleBuildReconcile(t *testing.T, run staleRun) {
 	t.Helper()
 	boardBehind, loomDefaultGone := run.boardBehind, run.loomDefaultGone
 
-	h := newStaleHub(t, "pair-a")
+	h := newStaleHub(t)
 	geom := geometryOf(h)
 	pair := h.PairCodeWorktree("pair-a")
 	var modelsBefore []byte
@@ -767,7 +773,7 @@ func TestEnsure_CurrentStampLeavesConfigAlone(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h := newStaleHub(t, "pair-a")
+	h := newStaleHub(t)
 	geom := geometryOf(h)
 	writeCurrentStamp(t, geom)
 	before := commitCount(t, h.PrimeRecords())
@@ -799,7 +805,7 @@ func TestEnsure_MidMergePairIsLeftAloneAndRetried(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			h := newStaleHub(t, "pair-a")
+			h := newStaleHub(t)
 			geom := geometryOf(h)
 			pair := h.PairCodeWorktree("pair-a")
 			pairFile := configengine.ConfigFile(pair, "batcher")
@@ -856,7 +862,7 @@ func TestEnsure_MergeBeginningBeforeCommitRestoresTheFiles(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h := newStaleHub(t, "pair-a")
+	h := newStaleHub(t)
 	geom := geometryOf(h)
 	pair := h.PairCodeWorktree("pair-a")
 	pairFile := configengine.ConfigFile(pair, "batcher")
@@ -1046,7 +1052,7 @@ func TestEnsure_FailedWalkNamesTheFileAndLeavesTheTreeAsItWas(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			h := newStaleHub(t, "pair-a")
+			h := newStaleHub(t)
 			geom := geometryOf(h)
 			worktree, repo, file := tc.breakConfig(t, h)
 			statusBefore := gitkit.GitStatusPorcelain(t, repo)
@@ -1126,32 +1132,6 @@ func TestEnsure_FailedWalkNamesTheFileAndLeavesTheTreeAsItWas(t *testing.T) {
 	}
 }
 
-func TestEnsure_HeldLockTimesOutWithoutStamping(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	geom := geometryOf(h)
-	if err := os.MkdirAll(filepath.Dir(geom.LockPath()), 0o755); err != nil {
-		t.Fatalf("mkdir lock dir: %v", err)
-	}
-	held, err := lock.AcquireWriteLock(geom.LockPath())
-	if err != nil {
-		t.Fatalf("hold lock: %v", err)
-	}
-	defer func() { _ = held.Release() }()
-
-	err = hubreconcile.Ensure(geom, hubreconcile.Options{LockWait: 50 * time.Millisecond})
-
-	var timeoutErr *hubreconcile.LockTimeoutError
-	if !errors.As(err, &timeoutErr) || timeoutErr.Path != geom.LockPath() {
-		t.Fatalf("Ensure error = %v; want *LockTimeoutError for %s", err, geom.LockPath())
-	}
-	if _, found := stampKey(t, geom); found {
-		t.Errorf("stamp written without the lock")
-	}
-}
-
 // The logger's output is process-global, so this test does not call t.Parallel.
 func TestEnsureOrWarn_WarnsWithTheWayForward(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -1188,8 +1168,8 @@ func TestEnsureOrWarn_WarnsWithTheWayForward(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			h := newStaleHub(t)
 			logs := logcapture.Capture(t)
-			h := newStaleHub(t, "pair-a")
 			geom := geometryOf(h)
 			opts, wantNamed, repair := tt.setup(t, h, geom)
 
@@ -1225,7 +1205,7 @@ func TestEnsure_ConcurrentCallsLandOneCommitPerBranch(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h := newStaleHub(t, "pair-a")
+	h := newStaleHub(t)
 	geom := geometryOf(h)
 	primeBefore, pairBefore := commitCount(t, h.PrimeRecords()), commitCount(t, h.PairRecordsSibling("pair-a"))
 
@@ -1282,7 +1262,7 @@ func TestEnsure_PairDirectoryDeletedIsSkippedAsRemoved(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h := newStaleHub(t, "pair-a")
+	h := newStaleHub(t)
 	geom := geometryOf(h)
 	if err := os.RemoveAll(h.PairCodeWorktree("pair-a")); err != nil {
 		t.Fatalf("remove pair: %v", err)
@@ -1301,7 +1281,7 @@ func TestEnsure_UnwiredPairIsLeftUnwrittenAndStampIsWritten(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h := newStaleHub(t, "pair-a")
+	h := newStaleHub(t)
 	geom := geometryOf(h)
 	junction := filepath.Join(h.PairCodeWorktree("pair-a"), "_lym")
 	if err := os.Remove(junction); err != nil {
@@ -1327,9 +1307,9 @@ func TestEnsure_UnwiredPairIsLeftUnwrittenAndStampIsWritten(t *testing.T) {
 // The logger's output is process-global, so this test does not call t.Parallel.
 func TestEnsure_UnreachableBoardRemoteSkipsHubWideConfigAndLeavesStampAbsent(t *testing.T) {
 	tiergate.Require(t, 1)
-	logs := logcapture.Capture(t)
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	logs := logcapture.Capture(t)
 	geom := geometryOf(h)
 	seedRetiredHubWideKey(t, h)
 	gitkit.Git(t, h.BoardDir(), "remote", "set-url", "origin", filepath.Join(t.TempDir(), "missing.git"))
@@ -1354,7 +1334,7 @@ func TestEnsure_UnreachableBoardRemoteSkipsHubWideConfigAndLeavesStampAbsent(t *
 // The detached board sync is package-global, so this test does not call t.Parallel.
 func TestEnsure_BoardWithNoRemoteCommitsHubWideConfigAndWritesStamp(t *testing.T) {
 	tiergate.Require(t, 1)
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	geom := geometryOf(h)
 	seedRetiredHubWideKey(t, h)
 	gitkit.Git(t, h.BoardDir(), "remote", "remove", "origin")
@@ -1381,7 +1361,7 @@ func TestEnsure_BoardWithNoRemoteCommitsHubWideConfigAndWritesStamp(t *testing.T
 func TestEnsure_CarriesATemplateChangeIntoASeedOnlyConfigFile(t *testing.T) {
 	tiergate.Require(t, 1)
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	geom := geometryOf(h)
 	const lightDarn = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2}\n"
 	const lightDarnSolo = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: \"\"}\n"
@@ -1463,14 +1443,13 @@ type unpushedHubWide struct {
 	before      int
 }
 
-// arrangeUnpushedHubWide builds an unpushedHubWide by running the walk twice.
+// arrangeUnpushedHubWide brings the fresh hub h to an unpushedHubWide by running the walk twice.
 // Each run stamps the build and asks for the board's detached sync.
 // The second run, with nothing new to commit, still asks for the sync, so an earlier unpushed commit is pushed too.
 // The stamp is removed after each run.
-func arrangeUnpushedHubWide(t *testing.T) *unpushedHubWide {
+func arrangeUnpushedHubWide(t *testing.T, h *hubforge.Hub) *unpushedHubWide {
 	t.Helper()
 
-	h := hubforge.NewHub(t, ".")
 	geom := geometryOf(h)
 	board := h.BoardDir()
 	seedRetiredHubWideKey(t, h)
@@ -1533,10 +1512,13 @@ func (u *unpushedHubWide) moveUpstream(t *testing.T, rel, content string) {
 // The logger's output is process-global, so this test does not call t.Parallel.
 func TestEnsure_UnpushedHubWideCommitOverMovedUpstreamLeavesStampAbsent(t *testing.T) {
 	tiergate.Require(t, 1)
+	// The copies are taken before the Bolt replayer is installed, so no template build runs under it.
+	replayedHub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	divergedHub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	boardkit.InstallReplay(t)
 
 	t.Run("an upstream moved on other paths is replayed under the commit and the stamp is written", func(t *testing.T) {
-		u := arrangeUnpushedHubWide(t)
+		u := arrangeUnpushedHubWide(t, replayedHub)
 		u.moveUpstream(t, "moved-upstream.txt", "moved\n")
 
 		if err := hubreconcile.Ensure(u.geom, hubreconcile.Options{}); err != nil {
@@ -1553,7 +1535,7 @@ func TestEnsure_UnpushedHubWideCommitOverMovedUpstreamLeavesStampAbsent(t *testi
 
 	t.Run("an upstream that changed the same config file skips with the stamp absent", func(t *testing.T) {
 		logs := logcapture.Capture(t)
-		u := arrangeUnpushedHubWide(t)
+		u := arrangeUnpushedHubWide(t, divergedHub)
 		u.moveUpstream(t, u.hubWidePath, "fixer_timeout_min: 7\n")
 
 		if err := hubreconcile.Ensure(u.geom, hubreconcile.Options{}); err != nil {
@@ -1578,7 +1560,7 @@ func TestEnsure_PairCallReconcilesDespiteAFreshStamp(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h := newStaleHub(t, "pair-a")
+	h := newStaleHub(t)
 	geom := geometryOf(h)
 	writeCurrentStamp(t, geom)
 	pair := filepath.Join(h.Path, "pair-a")

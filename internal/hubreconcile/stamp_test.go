@@ -1,13 +1,18 @@
-// stamp_test.go covers the build key, the stamp file round trip and the stamp and lock paths.
+// stamp_test.go covers the build key, the stamp file round trip, the stamp and lock paths,
+// and a walk that times out on a held hub lock.
 
 package hubreconcile
 
 import (
+	"errors"
+	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -71,5 +76,33 @@ func TestGeometry_Paths(t *testing.T) {
 	}
 	if got, want := geom.LockPath(), filepath.Join("hub", fabricengine.BoltDirName, ".lym", "config", "reconcile.lock"); got != want {
 		t.Errorf("LockPath = %q, want %q", got, want)
+	}
+}
+
+// TestEnsure_HeldLockTimesOutWithoutStamping verifies that a walk with the hub lock held times out.
+// The walk returns *LockTimeoutError naming the lock.
+// It writes no stamp.
+func TestEnsure_HeldLockTimesOutWithoutStamping(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	geom := Geometry{BoardDir: t.TempDir(), WorktreePath: t.TempDir()}
+	if err := os.MkdirAll(filepath.Dir(geom.LockPath()), 0o755); err != nil {
+		t.Fatalf("mkdir lock dir: %v", err)
+	}
+	held, err := lock.AcquireWriteLock(geom.LockPath())
+	if err != nil {
+		t.Fatalf("hold lock: %v", err)
+	}
+	t.Cleanup(func() { _ = held.Release() })
+
+	err = Ensure(geom, Options{LockWait: 50 * time.Millisecond})
+
+	var timeoutErr *LockTimeoutError
+	if !errors.As(err, &timeoutErr) || timeoutErr.Path != geom.LockPath() {
+		t.Fatalf("Ensure error = %v; want *LockTimeoutError for %s", err, geom.LockPath())
+	}
+	if _, found, err := readStamp(geom.StampPath()); found || err != nil {
+		t.Errorf("readStamp after the timeout = found %v, err %v; want no stamp written without the lock", found, err)
 	}
 }
