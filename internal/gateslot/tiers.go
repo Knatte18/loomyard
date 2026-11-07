@@ -104,7 +104,8 @@ const (
 
 // Lint step names a gate key's lints may hold.
 const (
-	// LintComments is the comment line-break lint: it flags fixed-column wraps added to `//` blocks versus HEAD.
+	// LintComments is the comment line lint.
+	// It flags fixed-column wraps and over-long lines added to `//` blocks versus HEAD.
 	LintComments = "comments"
 	// LintPattern is the PATTERN headroom lint: it flags PATTERN.md growth past its headroom line versus HEAD.
 	LintPattern = "pattern"

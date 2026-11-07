@@ -1,22 +1,42 @@
-// lint.go declares Lint and the classification of a comment block's line breaks over a base and a new text of one file.
+// lint.go declares Lint, its Finding, and the classification of a comment block's line breaks over two texts of one file.
 
 package commentlint
 
 import (
+	"fmt"
 	"go/scanner"
 	"go/token"
 	"regexp"
+	"slices"
 	"strings"
 )
 
-// Finding is one line of a `//` comment block that ends at a fixed-column wrap.
+// Rule names the comment line rule a Finding breaks.
+type Rule string
+
+// The comment line rules Lint checks.
+const (
+	// RuleWrappedBreak is a line that ends at a fixed-column wrap instead of a sentence or clause boundary.
+	RuleWrappedBreak Rule = "wrapped break"
+	// RuleLineLength is a line whose text reaches LineLengthLimit characters.
+	RuleLineLength Rule = "line length"
+)
+
+// Finding is one line of a `//` comment block that breaks a comment line rule.
 type Finding struct {
 	// File is the slash-separated path relative to the worktree.
 	File string
 	// Line is the 1-based line number in the new text.
 	Line int
+	// Rule is the rule the line breaks.
+	Rule Rule
 	// Text is the comment line, `//` included, without surrounding whitespace.
 	Text string
+}
+
+// String renders the finding as `file:line: rule: text`.
+func (f Finding) String() string {
+	return fmt.Sprintf("%s:%d: %s: %s", f.File, f.Line, f.Rule, f.Text)
 }
 
 var (
@@ -39,7 +59,9 @@ func wordSet(words ...string) map[string]bool {
 	return set
 }
 
-// Lint returns the new fixed-column-wrapped breaks in `//` comment blocks of the `.go` files that differ in worktree.
+// Lint returns the comment line findings of the `.go` files that differ in worktree:
+// the new fixed-column-wrapped breaks in their `//` comment blocks,
+// and the new or changed comment lines whose text reaches LineLengthLimit.
 // An empty base compares the working tree, untracked files included, against HEAD;
 // a base commit compares it against HEAD.
 // Findings are ordered by file path, then line.
@@ -54,9 +76,20 @@ func Lint(worktree, base string) ([]Finding, error) {
 		if err != nil {
 			return nil, err
 		}
-		findings = append(findings, findNewWrappedBreaks(change.path, baseText, newText)...)
+		findings = append(findings, findFileFindings(change.path, baseText, newText)...)
 	}
 	return findings, nil
+}
+
+// findFileFindings returns the findings of every rule in path's new text against its base text, ordered by line.
+// It returns nil for a generated file.
+func findFileFindings(path, baseText, newText string) []Finding {
+	if generatedPattern.MatchString(newText) {
+		return nil
+	}
+	findings := append(findNewWrappedBreaks(path, baseText, newText), findNewLongLines(path, baseText, newText)...)
+	slices.SortStableFunc(findings, func(a, b Finding) int { return a.Line - b.Line })
+	return findings
 }
 
 // commentLine is one `//` line of a comment block.
@@ -285,11 +318,7 @@ func isFiniteVerbCandidate(word string) bool {
 
 // findNewWrappedBreaks returns the lines of path's new text that end at a break:
 // a break that is not semantic and does not carry over from baseText.
-// It returns nil for a generated file.
 func findNewWrappedBreaks(path, baseText, newText string) []Finding {
-	if generatedPattern.MatchString(newText) {
-		return nil
-	}
 	known := newBaseBreaks(baseText)
 	var findings []Finding
 	for _, block := range commentBlocks(newText) {
@@ -302,7 +331,7 @@ func findNewWrappedBreaks(path, baseText, newText string) []Finding {
 				if endsSemanticBreak(before, after) || known.carriesOver(before, after) {
 					continue
 				}
-				findings = append(findings, Finding{File: path, Line: before.number, Text: strings.TrimSpace(before.literal)})
+				findings = append(findings, Finding{File: path, Line: before.number, Rule: RuleWrappedBreak, Text: strings.TrimSpace(before.literal)})
 			}
 		}
 	}

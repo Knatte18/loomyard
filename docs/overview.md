@@ -396,7 +396,7 @@ github.com/Knatte18/loomyard/
 ├── internal/friction/            the Tier 2 friction-note directive leaf, consumed by webster, burler, and loom
 ├── internal/shell/               provider-invariant pane-shell mechanics leaf (pwsh + posix)
 ├── internal/shellguard/          the one neutral table of the guards lym installs against shell commands, rendered by each engine
-├── internal/commentlint/        the comment line-break lint: fixed-column wraps in the `//` comment blocks a diff creates, over a told worktree and base
+├── internal/commentlint/        the comment line lint: fixed-column wraps and over-long lines in the `//` comment blocks a diff creates, over a told worktree and base
 ├── internal/patternlint/        the PATTERN headroom lint: growth of the overview past its headroom line, over a told worktree and base
 ├── internal/impactset/          the impacted-set command a gate key's `diff` scope runs: the packages a diff reaches over the import graph, plus the `//lym:guard` tests, or a fallback reason to run the full verify
 ├── internal/dotnetimpact/       the `dotnet` scoper's derivation: the test projects and test classes a C# diff or a card's targets reach, by type-name closure over the source, or a fallback reason to run the tier whole
@@ -1142,7 +1142,7 @@ User-facing modules each get one `lym <module>` namespace:
   `validate-description` runs the same checks the `Describe` row's `description` gate runs, standalone.
   It checks `_lym/landing/summary.md`, with the same exit-code and findings-envelope contract.
   `lint-comments [--base <commit>]` runs `internal/commentlint` over the worktree:
-  it reports the fixed-column-wrapped breaks in `//` comment blocks that the working tree creates.
+  it reports the fixed-column-wrapped breaks and the over-long lines in `//` comment blocks that the working tree creates.
   With `--base` it reports those that the range from `--base` to HEAD creates.
   `lint-pattern [--base <commit>]` runs `internal/patternlint` over the worktree:
   it compares `PATTERN.md` at HEAD with the working tree's, or at `--base` with HEAD's.

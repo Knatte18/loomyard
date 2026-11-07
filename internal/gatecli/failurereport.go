@@ -38,7 +38,7 @@ const (
 
 // lintWayForward is the fix each lint step's findings call for.
 var lintWayForward = map[string]string{
-	gateslot.LintComments: "break each such comment at its sentence boundaries, one sentence per line",
+	gateslot.LintComments: "break each wrapped comment at its sentence boundaries, one sentence per line, and split each over-long one into shorter sentences",
 	gateslot.LintPattern:  patternlint.WayForward,
 }
 
@@ -117,7 +117,7 @@ func runLints(root string, names []string) []failedRun {
 			var found []commentlint.Finding
 			found, err = commentlint.Lint(root, "")
 			for _, finding := range found {
-				findings = append(findings, fmt.Sprintf("%s:%d: %s", finding.File, finding.Line, finding.Text))
+				findings = append(findings, finding.String())
 			}
 		case gateslot.LintPattern:
 			finding, found, lintErr := patternlint.Lint(root, "")

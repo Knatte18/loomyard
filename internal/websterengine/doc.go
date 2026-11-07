@@ -116,7 +116,7 @@
 // The prompt carries it as one step, `lym gate test --gate card --card <card id>`, from `gateslot.Config.AgentGateCall`.
 // The call carries no `--wait` since an agent runs it.
 // The call itself runs the lint steps the hub's `card` key lists:
-// the template's are the comment line-break lint and the PATTERN headroom lint.
+// the template's are the comment line lint and the PATTERN headroom lint.
 // The gate call computes the card's packages and runs the guard step itself.
 // Go therefore renders no package list and scans for no guard test.
 // The batch gate is the hub's `batch` gate call, `lym gate test --gate batch`.

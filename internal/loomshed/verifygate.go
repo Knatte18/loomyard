@@ -130,7 +130,7 @@ func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase
 				return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: lint the comments: %w", err)
 			}
 			if len(commentFindings) > 0 {
-				logger.Warn("loomshed: verify gate found fixed-column comment wraps", "gate", siteLabel, "attempt", attempt, "count", len(commentFindings))
+				logger.Warn("loomshed: verify gate found comment line findings", "gate", siteLabel, "attempt", attempt, "count", len(commentFindings))
 				return shuttleengine.GateResult{Passed: false, Findings: commentLintFindings(commentFindings)}, nil
 			}
 		}
@@ -183,9 +183,11 @@ func headroomFindings(f pattern.Finding) string {
 // commentLintFindings renders the comment lint's findings as one line each, file and line first.
 func commentLintFindings(findings []commentlint.Finding) string {
 	var b strings.Builder
-	b.WriteString("The round added fixed-column-wrapped comment lines, so no test ran. Break each comment at sentence boundaries, one sentence per line:\n\n")
+	fmt.Fprintf(&b, "The round added comment lines that wrap at a fixed column or reach %d characters, so no test ran. "+
+		"Break each wrapped comment at sentence boundaries, one sentence per line, "+
+		"and split each over-long line at a clause boundary or rewrite it as shorter sentences:\n\n", commentlint.LineLengthLimit)
 	for _, f := range findings {
-		fmt.Fprintf(&b, "%s:%d: %s\n", f.File, f.Line, f.Text)
+		fmt.Fprintln(&b, f.String())
 	}
 	return b.String()
 }

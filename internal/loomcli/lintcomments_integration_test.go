@@ -64,7 +64,7 @@ func TestLintCommentsCmd_OverARepository(t *testing.T) {
 			t.Fatalf("exit code = %d, ok = %v; want 1, false", exitCode, env.OK)
 		}
 		findings, _ := env.Raw["findings"].([]any)
-		if want := []any{"wrapped.go:3: // a comment that wraps in the"}; !slices.Equal(findings, want) {
+		if want := []any{"wrapped.go:3: wrapped break: // a comment that wraps in the"}; !slices.Equal(findings, want) {
 			t.Errorf("findings = %v; want %v", findings, want)
 		}
 	})

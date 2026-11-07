@@ -1458,7 +1458,7 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 		for _, want := range []string{
 			"lint comments (1 finding); way forward: " + lintWayForward[gateslot.LintComments] + ":",
-			"  wrapped.go:3: // a fresh comment that wraps in the",
+			"  wrapped.go:3: wrapped break: // a fresh comment that wraps in the",
 			gateslot.FailedRunsPrefix + "lint comments (1 finding); the exit code is lint comments's",
 		} {
 			if !strings.Contains(stdout, want) {
