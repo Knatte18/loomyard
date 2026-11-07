@@ -263,7 +263,7 @@ func NewHub(tb testing.TB, anchor string) *Hub {
 	// LIFO cleanup then runs junction removal before Go's tb.TempDir() cleanup removes the container.
 	// A junction still wired when os.RemoveAll walks into it is a Win11 correctness bug, not a POSIX one.
 	// The order must hold on every platform, even though only Windows can observe it directly.
-	registerTeardown(tb, hub.Path)
+	RegisterTeardown(tb, hub.Path)
 
 	return hub
 }
@@ -279,7 +279,7 @@ func CloneSecond(tb testing.TB, h *Hub) *Hub {
 
 	container := tb.TempDir()
 	second, _ := cloneHub(tb, h.Anchor, h.CodeBare, h.RecordsBare, container)
-	registerTeardown(tb, second.Path)
+	RegisterTeardown(tb, second.Path)
 	return second
 }
 
@@ -361,7 +361,7 @@ func forgetCloneCorrespondence(tb testing.TB, weftBase string, loc *lymcwd.Locat
 	}
 }
 
-// registerTeardown installs a tb.Cleanup that removes every junction under hubPath.
+// RegisterTeardown installs a tb.Cleanup that removes every junction under hubPath.
 // The cleanup runs before Go's own tb.TempDir() cleanup removes the container directory the hub lives in.
 // It walks the hub root with filepath.WalkDir, calling fslink.IsLink on every entry.
 // fslink.Remove removes each link found.
@@ -375,7 +375,7 @@ func forgetCloneCorrespondence(tb testing.TB, weftBase string, loc *lymcwd.Locat
 //
 // Errors from WalkDir, IsLink and Remove are reported with tb.Logf and never with tb.Fatalf or tb.Errorf:
 // teardown must not fail a test that already passed.
-func registerTeardown(tb testing.TB, hubPath string) {
+func RegisterTeardown(tb testing.TB, hubPath string) {
 	tb.Helper()
 
 	tb.Cleanup(func() {

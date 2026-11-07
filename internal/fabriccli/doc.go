@@ -20,6 +20,9 @@
 // The shortname is recorded the same way (`fabricengine.ShortnameFileName`).
 // A recorded shortname is adopted and a differing `--shortname` is refused.
 // A bound weft with no record clones with a warning.
+// A failed render of heddle's files into the prime never fails the clone:
+// its warning is the envelope's `seam_warning`, naming `lym heddle render` in the prime as the way forward.
+// When the hub walk then fails, the failure's error carries the warning instead.
 //
 // `--reset` tears down only a real fabric hub, one holding a Bolt checkout entry or a weft sibling.
 // The hub name is derived rather than typed.

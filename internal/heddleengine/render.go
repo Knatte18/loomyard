@@ -51,10 +51,12 @@ type RenderRequest struct {
 }
 
 // Report lists the files a render wrote and removed, as anchor-relative paths, and the warnings it raised.
+// Unwritten lists the files of the targets that held text and were left unwritten, each with a warning.
 type Report struct {
-	Written  []string
-	Removed  []string
-	Warnings []string
+	Written   []string
+	Removed   []string
+	Unwritten []string
+	Warnings  []string
 }
 
 // Renderer renders and reads the store.
@@ -127,12 +129,16 @@ func (r Renderer) Render(req RenderRequest) (Report, error) {
 		}
 		switch {
 		case blocked:
+			report.Unwritten = append(report.Unwritten, target.File)
 		case !slices.Contains(req.Excluded, target.File):
 			report.warn(fabricengine.ExcludeWayForward(target.File))
+			report.Unwritten = append(report.Unwritten, target.File)
 		case !slices.Contains(req.Excluded, tempDirName):
 			report.warn(fabricengine.ExcludeWayForward(tempDirName))
+			report.Unwritten = append(report.Unwritten, target.File)
 		case err == nil && !marked:
 			report.warn(fmt.Sprintf("%s exists and was not rendered by heddle, so it is left untouched; way forward: move or remove it, then run `%s`", path, renderVerb))
+			report.Unwritten = append(report.Unwritten, target.File)
 		default:
 			if err := writeRendered(tempDir, target.File, path, text); err != nil {
 				return report, err

@@ -413,7 +413,7 @@ func TestNewHub_TeardownRemovesJunctionsKeepsTargets(t *testing.T) {
 		if err != nil {
 			t.Fatalf("CloneAndWire: %v", err)
 		}
-		registerTeardown(t, res.HubPath)
+		RegisterTeardown(t, res.HubPath)
 
 		loc, err := lymcwd.Resolve(res.PrimeCwd)
 		if err != nil {

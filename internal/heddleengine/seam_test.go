@@ -87,6 +87,20 @@ func TestSeam(t *testing.T) {
 		}
 	})
 
+	t.Run("MadeNamesTheWarningsWhenItWritesNothing", func(t *testing.T) {
+		t.Parallel()
+		f := newSeamFixture(t, ".")
+		event := f.event
+		event.Excluded = nil
+		err := (Seam{}).Made(event)
+		if want := fabricengine.ExcludeWayForward("CLAUDE.local.md"); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Made() with no exclude lines = %v; want an error naming %q", err, want)
+		}
+		if f.anchorHas("CLAUDE.local.md") || f.anchorHas("AGENTS.override.md") {
+			t.Error("Made wrote a file target that the exclude list does not cover")
+		}
+	})
+
 	t.Run("TookInRendersTheTargetsBuiltFromAChangedPath", func(t *testing.T) {
 		t.Parallel()
 		tests := []struct {

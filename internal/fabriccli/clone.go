@@ -5,6 +5,7 @@ package fabriccli
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -22,6 +23,8 @@ import (
 // It materializes the hub-wide config, then commits it on weft:main and pushes it.
 // It then wires the warp junctions and reconciles the per-worktree configs.
 // It commits the resulting per-worktree module configs on the weft primary branch, with no push.
+// It then tells the worktree seam that the prime was made.
+// A failed event's warning goes in SeamWarning, or in the error when the walk that follows fails.
 // The anchor marker is already committed on the prime's weft branch when the wiring starts.
 //
 // Keeping the sequence in one place stops a second copy from drifting away from it.
@@ -98,10 +101,6 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 	if err := fabricengine.WireJunctionsWith(rec, l, filepath.Base(l.WorktreePath()), names); err != nil {
 		return fabricengine.CloneResult{}, err
 	}
-	// The prime is wired, its exclude lines seeded and the Bolt checkout present;
-	// a seam failure is logged by the call and never fails the clone.
-	fabricengine.NotifyWorktreeMade(l)
-
 	// .lym is excluded through the warp's .git/info/exclude by WireJunctionsWith above, not a .gitignore entry.
 	// A committed .gitignore entry in the user's own repo would advertise that LYM is in use,
 	// and a warp→weft junction must never leave a tracked artifact behind in the user's repo.
@@ -131,6 +130,13 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 		return fabricengine.CloneResult{}, err
 	}
 
+	// The prime is now set up as an added pair is when its seam fires:
+	// wired, its exclude lines seeded, the Bolt checkout present and its module configs committed.
+	// The render reads only the Bolt checkout's heddle store and the shipped layer, so it needs nothing the walk writes.
+	// A seam failure never fails the clone; its warning reaches the operator with the render verb that repairs it.
+	// A walk failure below returns that warning in its error, since the failure envelope has no field for it.
+	res.SeamWarning = fabricengine.NotifyWorktreeMade(l)
+
 	// A new hub has no build stamp, so the walk seeds every absent per-worktree repo default sparse.
 	// The header-only base comes from the template, and the prime's non-template units come from the prime.
 	// The walk commits them on the board and pushes it.
@@ -139,6 +145,9 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 	absentDefaults := absentRepoDefaults(res.BoardDir)
 	markerBefore := fileExists(configengine.SparseMarker(res.WeftBase))
 	if err := hubreconcile.Ensure(hubreconcile.Geometry{BoardDir: res.BoardDir, WorktreePath: l.WorktreePath()}, hubreconcile.Options{}); err != nil {
+		if res.SeamWarning != "" {
+			err = fmt.Errorf("%w; the prime was not rendered: %s", err, res.SeamWarning)
+		}
 		return fabricengine.CloneResult{}, err
 	}
 	for _, module := range absentDefaults {
@@ -192,6 +201,7 @@ func absentRepoDefaults(boardDir string) []string {
 // "shortname" is the effective repo shortname.
 // "shortname_recorded" reports whether this clone wrote the .lym-shortname record.
 // "warning" is empty when there is none.
+// "seam_warning" is the warning of a failed render into the prime, naming `lym heddle render` there; empty when none.
 // Every field is always present, so a consumer never has to tell an absent field from a false one.
 func runCloneWithReset(ctx context.Context, out io.Writer, args []string, reset bool, subpath string, forceBootstrap bool, into string, shortname string) int {
 	// Nothing has been mutated yet at cwd resolution: a bare output.Err carries no record.
@@ -246,5 +256,6 @@ func runCloneWithReset(ctx context.Context, out io.Writer, args []string, reset 
 		"shortname":             res.Shortname,
 		"shortname_recorded":    res.ShortnameRecorded,
 		"warning":               res.Warning,
+		"seam_warning":          res.SeamWarning,
 	})
 }

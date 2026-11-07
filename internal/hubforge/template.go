@@ -232,7 +232,7 @@ func hubAt(tb testing.TB, root string, shape Shape) *Hub {
 		tb.Fatalf("hubAt: lymcwd.Resolve(%s): %v", rebase(template.primeCwd), err)
 	}
 
-	registerTeardown(tb, rebase(template.hub.Path))
+	RegisterTeardown(tb, rebase(template.hub.Path))
 
 	return &Hub{
 		Path:        rebase(template.hub.Path),

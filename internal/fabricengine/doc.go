@@ -520,7 +520,9 @@
 // `InstallWorktreeSeam` stores one process-wide `WorktreeSeam`, and with none installed no event fires.
 // "Made" fires through `NotifyWorktreeMade` once a worktree is fully set up:
 // wired, with its exclude lines seeded and the Bolt checkout present.
-// It fires last in `Topology.add` and right after the prime's junctions in the clone's wiring sequence.
+// It fires last in `Topology.add`.
+// In the clone's wiring sequence it fires once the prime's per-worktree module configs are committed, before the walk.
+// The render reads only the Bolt checkout's heddle store and the shipped layer, so it needs nothing the walk writes.
 // "Took in commits" fires with the paths that differ between the old and new head.
 // It fires from a warp pull's fast-forward and its re-anchor resets.
 // It also fires from the parent-pair fast-forward and from the origin reconcile's fast-forward of a pair's code branch.
@@ -529,6 +531,8 @@
 // Every writer of the listed files therefore writes only after their lines are in place.
 // A seam failure never fails a verb.
 // It is logged at Warn and returned as warning text in the verb's result, such as `PullResult.SeamWarning`.
+// The clone returns it as `CloneResult.SeamWarning`, which `lym fabric clone` prints as `seam_warning`.
+// A clone whose walk then fails carries the warning in its error instead.
 // Events fire with no Bolt write lock held, since the seam's render takes it.
 //
 // The lym-anchor subpath (for example `backend`, or `.`) is recorded per worktree.

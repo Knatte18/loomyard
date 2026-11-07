@@ -9,6 +9,7 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -24,8 +25,17 @@ type Seam struct {
 var _ fabricengine.WorktreeSeam = Seam{}
 
 // Made renders every file target into the event's anchor.
+// It returns an error naming the render's warnings when a target's text stayed unwritten and no file was written.
+// A worktree made with no rendered file has nothing else to tell its operator.
 func (s Seam) Made(ev fabricengine.WorktreeEvent) error {
-	return s.render(requestOf(ev, nil))
+	report, err := s.render(requestOf(ev, nil))
+	if err != nil {
+		return err
+	}
+	if len(report.Written) == 0 && len(report.Unwritten) > 0 {
+		return fmt.Errorf("the render wrote no file: %s", strings.Join(report.Warnings, "; "))
+	}
+	return nil
 }
 
 // TookIn renders the file targets whose re-render paths match one of the event's root-relative paths.
@@ -49,16 +59,18 @@ func (s Seam) TookIn(ev fabricengine.WorktreeEvent) error {
 	if len(selected) == 0 {
 		return nil
 	}
-	return s.render(requestOf(ev, selected))
+	_, err = s.render(requestOf(ev, selected))
+	return err
 }
 
 // render runs the render and logs each of its warnings at Warn, naming the anchor.
-func (s Seam) render(req RenderRequest) error {
+// It returns the render's report with its error.
+func (s Seam) render(req RenderRequest) (Report, error) {
 	report, err := s.Renderer.Render(req)
 	for _, warning := range report.Warnings {
 		logger.Warn("heddleengine: render warning (non-fatal)", "anchor", req.Anchor, "warning", warning)
 	}
-	return err
+	return report, err
 }
 
 // requestOf copies the event's anchor, scratch directory, Bolt checkout and exclude list into a render request.

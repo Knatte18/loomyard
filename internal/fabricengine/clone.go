@@ -81,6 +81,10 @@ type CloneResult struct {
 	ShortnameRecorded bool
 	// Warning is non-empty when the clone succeeded but left something the operator must do.
 	Warning string
+	// SeamWarning is the warning text of a failed worktree event for the prime, naming the render verb that repairs it.
+	// CloneHub leaves it empty; the wiring that follows the clone fires the event and sets it.
+	// A clone that fails after the event returns no result, so the warning then travels in the error.
+	SeamWarning string
 }
 
 // CloneHub clones the warp and weft repositories into a new hub directory and returns the resolved geometry.
