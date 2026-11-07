@@ -216,35 +216,45 @@ func seedLLMDriver(t *testing.T, loc *lymcwd.Location) {
 	}
 }
 
-// newBadReedUpFixture builds a hub whose reed config carries an invalid mouse value, so reed Up fails.
-// It seeds the pair with seed and returns the resolved location and the worktree path.
+// badReedUpSlug is the pair the bad-reed-config template holds.
+const badReedUpSlug = "loom-smoke-task"
+
+// badReedUpRegistration is the template of a hub whose reed config carries an invalid mouse value, so reed Up fails.
+// Its config is otherwise the providerless config every smoke fixture seeds, and it holds the pair badReedUpSlug.
+var badReedUpRegistration = &hubforge.Registration{
+	Key:  "loomcli-bad-reed-up",
+	Base: hubforge.Shape{Anchor: "."},
+	Build: func(tb testing.TB, h *hubforge.Hub) {
+		var lines []string
+		replaced := false
+		for _, line := range strings.Split(reedengine.ConfigTemplate(), "\n") {
+			if strings.HasPrefix(line, "mouse:") {
+				line = "mouse: not-a-mouse-value"
+				replaced = true
+			}
+			lines = append(lines, line)
+		}
+		if !replaced {
+			tb.Fatalf("reed config template drift: no mouse: line found")
+		}
+
+		hubforge.SeedConfig(tb, h, map[string]string{
+			"claude":  claudeConfigWithBinary(providerlessBinary),
+			"loom":    fastDeadlineLoomConfig(),
+			"reed":    strings.Join(lines, "\n"),
+			"shuttle": providerlessShuttleConfig(),
+			"webster": websterengine.ConfigTemplate(),
+		})
+		hubforge.AddPair(tb, h, badReedUpSlug)
+	},
+}
+
+// newBadReedUpFixture copies the bad-reed-config template, whose reed config makes reed Up fail.
+// It seeds the copy's pair with seed and returns the resolved location and the worktree path.
 func newBadReedUpFixture(t *testing.T, seed func(*testing.T, *lymcwd.Location)) (*lymcwd.Location, string) {
 	t.Helper()
-	reedCfg := reedengine.ConfigTemplate()
-	var lines []string
-	replaced := false
-	for _, line := range strings.Split(reedCfg, "\n") {
-		if strings.HasPrefix(line, "mouse:") {
-			line = "mouse: not-a-mouse-value"
-			replaced = true
-		}
-		lines = append(lines, line)
-	}
-	if !replaced {
-		t.Fatalf("reed config template drift: no mouse: line found")
-	}
-
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	hubforge.SeedConfig(t, h, map[string]string{
-		"claude":  claudeConfigWithBinary(providerlessBinary),
-		"loom":    fastDeadlineLoomConfig(),
-		"reed":    strings.Join(lines, "\n"),
-		"shuttle": providerlessShuttleConfig(),
-		"webster": websterengine.ConfigTemplate(),
-	})
-	const slug = "loom-smoke-task"
-	hubforge.AddPair(t, h, slug)
-	worktree := h.PairCodeWorktree(slug)
+	h := hubforge.CopyRegistered(t, badReedUpRegistration)
+	worktree := h.PairCodeWorktree(badReedUpSlug)
 	loc, err := lymcwd.Resolve(worktree)
 	if err != nil {
 		t.Fatalf("lymcwd.Resolve(%s): %v", worktree, err)

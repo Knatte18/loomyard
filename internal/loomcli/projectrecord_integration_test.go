@@ -24,26 +24,37 @@ const (
 	testShort = "tst"
 )
 
-// beamHub forges a hub holding the beam pair testBeam and two pairs forked from it.
+// beamHubRegistration is the template of a hub holding the beam pair testBeam and two pairs forked from it.
+// Its board file lists the beam, a member with a pair and a member with none.
+// Its board holds the shortname testShort.
+// Both board files stay uncommitted.
+var beamHubRegistration = &hubforge.Registration{
+	Key:  "loomcli-beam-hub",
+	Base: hubforge.Shape{Anchor: "."},
+	Build: func(tb testing.TB, hub *hubforge.Hub) {
+		hubforge.AddPair(tb, hub, testBeam)
+		hubforge.AddPairWith(tb, hub, "member-with-pair", fabricengine.AddOptions{Parent: testBeam})
+		hubforge.AddPairWith(tb, hub, "forked-child", fabricengine.AddOptions{Parent: testBeam})
+
+		// A board write cannot make a beam, so the entries are written to the board file directly.
+		board := `{"version":1,"entries":[` +
+			`{"id":1,"slug":"` + testBeam + `","title":"Beam","kind":"project","labels":["bug"],"beam":true},` +
+			`{"id":2,"slug":"member-with-pair","title":"With pair","kind":"task","labels":["bug"],"project":"` + testBeam + `"},` +
+			`{"id":3,"slug":"member-no-pair","title":"No pair","kind":"task","labels":["bug"],"project":"` + testBeam + `"}]}`
+		if err := os.WriteFile(filepath.Join(hub.BoardDir(), "board.json"), []byte(board), 0o644); err != nil {
+			tb.Fatalf("write board.json: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(hub.BoardDir(), fabricengine.ShortnameFileName), []byte(testShort+"\n"), 0o644); err != nil {
+			tb.Fatalf("write the shortname record: %v", err)
+		}
+	},
+}
+
+// beamHub copies the beam hub template into the test's own temp directory.
 // It returns the hub and a location lookup by worktree name.
 func beamHub(t *testing.T) (hub *hubforge.Hub, location func(name string) *lymcwd.Location) {
 	t.Helper()
-	hub = hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	hubforge.AddPair(t, hub, testBeam)
-	hubforge.AddPairWith(t, hub, "member-with-pair", fabricengine.AddOptions{Parent: testBeam})
-	hubforge.AddPairWith(t, hub, "forked-child", fabricengine.AddOptions{Parent: testBeam})
-
-	// A board write cannot make a beam, so the entries are written to the board file directly.
-	board := `{"version":1,"entries":[` +
-		`{"id":1,"slug":"` + testBeam + `","title":"Beam","kind":"project","labels":["bug"],"beam":true},` +
-		`{"id":2,"slug":"member-with-pair","title":"With pair","kind":"task","labels":["bug"],"project":"` + testBeam + `"},` +
-		`{"id":3,"slug":"member-no-pair","title":"No pair","kind":"task","labels":["bug"],"project":"` + testBeam + `"}]}`
-	if err := os.WriteFile(filepath.Join(hub.BoardDir(), "board.json"), []byte(board), 0o644); err != nil {
-		t.Fatalf("write board.json: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(hub.BoardDir(), fabricengine.ShortnameFileName), []byte(testShort+"\n"), 0o644); err != nil {
-		t.Fatalf("write the shortname record: %v", err)
-	}
+	hub = hubforge.CopyRegistered(t, beamHubRegistration)
 	location = func(name string) *lymcwd.Location {
 		t.Helper()
 		loc, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(name))
