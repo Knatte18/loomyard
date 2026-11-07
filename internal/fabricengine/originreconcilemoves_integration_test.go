@@ -559,6 +559,9 @@ func TestReconcileOrigin_Moves(t *testing.T) {
 	})
 
 	t.Run("An entry origin's Bolt gives to another machine is owned_elsewhere with its owner, way forward and summary line, in a run and a judge-only hub scope", func(t *testing.T) {
+		// Only OwnerOf's reply varies and no origin moves, so no reconcile leaves state the next one reads:
+		// every reply and scope runs on one pair.
+		pair := newMovesPair(t)
 		for _, row := range []struct {
 			name        string
 			subject     string
@@ -571,7 +574,6 @@ func TestReconcileOrigin_Moves(t *testing.T) {
 			wantWayForward := "`lym adopt " + row.wantSubject + "` from this machine's prime takes it over"
 			wantLine := "owned elsewhere: task by other-machine; `lym adopt " + row.wantSubject + "` takes it over"
 			for _, scope := range []fabricengine.ReconcileScope{{Run: "task"}, {JudgeOnly: true}} {
-				pair := newMovesPair(t)
 				var asked []string
 				seams := fabricengine.OriginSeams{OwnerOf: func(_ string, _ []byte, slug string) (string, string, bool, error) {
 					asked = append(asked, slug)

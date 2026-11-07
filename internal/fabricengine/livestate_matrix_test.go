@@ -7,6 +7,7 @@
 package fabricengine_test
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -191,8 +192,30 @@ func assertSurvivesIfUnpermitted(t *testing.T, h *hubforge.Hub, abs string, perm
 	check()
 }
 
+// assertArrangePreconditions fails t when an Arrange left a fixture that would make its verb's column vacuous.
+// Each check keys on a fixture field only the arranging verb sets, so the loop stays free of per-verb branches:
+// A launcher blocker that is not a directory lets Add proceed.
+// A checkout branch equal to the original makes Checkout a no-op.
+// An unadvanced warp bare makes Pull return before its dirty check.
+func assertArrangePreconditions(t *testing.T, fixture VerbFixture) {
+	t.Helper()
+
+	if fixture.LauncherBlocker != "" {
+		if info, err := os.Lstat(fixture.LauncherBlocker); err != nil || !info.IsDir() {
+			t.Errorf("Arrange: launcher blocker %s is not a directory (err %v)", fixture.LauncherBlocker, err)
+		}
+	}
+	if fixture.CheckoutBranch != "" && fixture.CheckoutBranch == fixture.OriginalBranch {
+		t.Errorf("Arrange: CheckoutBranch %q is not distinct from the branch already checked out", fixture.CheckoutBranch)
+	}
+	if fixture.AdvancedToSHA != "" && fixture.AdvancedFromSHA == fixture.AdvancedToSHA {
+		t.Errorf("Arrange: warp bare was not advanced (from == to == %s)", fixture.AdvancedFromSHA)
+	}
+}
+
 // runCell drives one non-omitted cell through five phases in a fixed order:
 // build, arrange, state, capture before, then run and capture after.
+// Right after arrange it checks the fixture's preconditions, before the state can disturb them.
 // It then asserts against the state-derived Expectation: the declared Kind, and the cell's Effect when it names one.
 // exp.Effect runs whenever it is present, for refusal and Proceeds kinds alike, not only for one Kind.
 // For a Proceeds kind it also checks planted-content survival.
@@ -206,6 +229,7 @@ func runCell(t *testing.T, anchor string, state State, vc VerbCase) {
 
 	// Arrange: the verb's own fixture.
 	fixture := vc.Arrange(t, h)
+	assertArrangePreconditions(t, fixture)
 
 	// State: the hostile or dirty condition, planted against the fixture's own resolved target.
 	state.Apply(t, h, fixture.Target)

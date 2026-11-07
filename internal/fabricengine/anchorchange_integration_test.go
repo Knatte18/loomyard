@@ -161,6 +161,42 @@ func requireMovedToSub(t *testing.T, h *hubforge.Hub, slug string) {
 	requireNoMoveRecord(t, weft)
 }
 
+// requireAnchorRefusal begins the change of slug's anchor to target and fails the test unless it is refused.
+// The refusal must carry every string in want, and leave slug's weft, its wiring at "." and its move record as they were.
+// record reports that a move record stood before the attempt and must stay as it was.
+func requireAnchorRefusal(t *testing.T, h *hubforge.Hub, slug, target string, want []string, record bool) {
+	t.Helper()
+
+	weft := h.PairRecordsSibling(slug)
+	head, status := gitkit.RevParse(t, weft, "HEAD"), gitkit.GitStatusPorcelain(t, weft)
+	recordBefore, foundBefore, _ := fabricengine.ReadMoveRecord(weft)
+
+	c, err := beginAnchorChange(t, h, slug, target)
+
+	if err == nil {
+		c.Close()
+		t.Fatalf("BeginAnchorChange() succeeded; want a refusal")
+	}
+	for _, want := range want {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("BeginAnchorChange() error = %q; want it to contain %q", err, want)
+		}
+	}
+	if got := gitkit.RevParse(t, weft, "HEAD"); got != head {
+		t.Errorf("weft HEAD = %s; want %s unchanged", got, head)
+	}
+	if got := gitkit.GitStatusPorcelain(t, weft); got != status {
+		t.Errorf("weft status = %q; want %q unchanged", got, status)
+	}
+	if !wiredAt(t, h, slug, ".", lymdirs.LymDirName) {
+		t.Errorf("the pair's %s junction is gone after the refusal", lymdirs.LymDirName)
+	}
+	recordAfter, foundAfter, _ := fabricengine.ReadMoveRecord(weft)
+	if foundAfter != foundBefore || (record && recordAfter.A != recordBefore.A) || (!record && foundAfter) {
+		t.Errorf("move record after the refusal = (%+v, %v); want it as before (%+v, %v)", recordAfter, foundAfter, recordBefore, foundBefore)
+	}
+}
+
 func TestAnchorChange(t *testing.T) {
 	tiergate.Require(t, 1)
 	// Not parallel: the failure hook is process-global, so every subtest that sets it runs in turn;
@@ -268,6 +304,39 @@ func TestAnchorChange(t *testing.T) {
 	})
 
 	t.Run("Each refusal names its next step and leaves the weft, the wiring and the record as they were", func(t *testing.T) {
+		t.Run("Targets refused with no setup, on one shared hub", func(t *testing.T) {
+			t.Parallel()
+			// Each row only refuses, which changes nothing, so the rows share one hub;
+			// they run in turn on it rather than in parallel.
+			h := newAnchorHub(t)
+			hubforge.AddPair(t, h, mover)
+			for _, tt := range []struct {
+				name   string
+				target string
+				want   []string
+			}{
+				{
+					name:   "A target the anchor validator rejects",
+					target: "../out",
+					want:   []string{"must stay inside the worktree", "choose another directory of the warp checkout"},
+				},
+				{
+					name:   "A target with a reserved segment",
+					target: ".scratch",
+					want:   []string{"reserves", "choose another directory of the warp checkout"},
+				},
+				{
+					name:   "A directory neither the warp's HEAD nor its upstream tracks",
+					target: "nowhere",
+					want:   []string{"tracked neither", "commit the directory in the warp checkout first", "shared by every machine that checks it out"},
+				},
+			} {
+				t.Run(tt.name, func(t *testing.T) {
+					requireAnchorRefusal(t, h, mover, tt.target, tt.want, false)
+				})
+			}
+		})
+
 		tests := []struct {
 			name   string
 			target string
@@ -285,16 +354,6 @@ func TestAnchorChange(t *testing.T) {
 				want: []string{lymcwd.AnchorFileName, "is empty"},
 			},
 			{
-				name:   "A target the anchor validator rejects",
-				target: "../out",
-				want:   []string{"must stay inside the worktree", "choose another directory of the warp checkout"},
-			},
-			{
-				name:   "A target with a reserved segment",
-				target: ".scratch",
-				want:   []string{"reserves", "choose another directory of the warp checkout"},
-			},
-			{
 				name:   "A target that passes through a link",
 				target: "ln",
 				setup: func(t *testing.T, h *hubforge.Hub, weft, warp string) {
@@ -303,11 +362,6 @@ func TestAnchorChange(t *testing.T) {
 					}
 				},
 				want: []string{"passes through the link", "choose another directory of the warp checkout"},
-			},
-			{
-				name:   "A directory neither the warp's HEAD nor its upstream tracks",
-				target: "nowhere",
-				want:   []string{"tracked neither", "commit the directory in the warp checkout first", "shared by every machine that checks it out"},
 			},
 			{
 				name:   "A directory only the warp's fetched upstream tracks",
@@ -397,37 +451,8 @@ func TestAnchorChange(t *testing.T) {
 				t.Parallel()
 				h := newAnchorHub(t)
 				hubforge.AddPair(t, h, mover)
-				weft, warp := h.PairRecordsSibling(mover), h.PairCodeWorktree(mover)
-				if tt.setup != nil {
-					tt.setup(t, h, weft, warp)
-				}
-				head, status := gitkit.RevParse(t, weft, "HEAD"), gitkit.GitStatusPorcelain(t, weft)
-				recordBefore, foundBefore, _ := fabricengine.ReadMoveRecord(weft)
-
-				c, err := beginAnchorChange(t, h, mover, tt.target)
-
-				if err == nil {
-					c.Close()
-					t.Fatalf("BeginAnchorChange() succeeded; want a refusal")
-				}
-				for _, want := range tt.want {
-					if !strings.Contains(err.Error(), want) {
-						t.Errorf("BeginAnchorChange() error = %q; want it to contain %q", err, want)
-					}
-				}
-				if got := gitkit.RevParse(t, weft, "HEAD"); got != head {
-					t.Errorf("weft HEAD = %s; want %s unchanged", got, head)
-				}
-				if got := gitkit.GitStatusPorcelain(t, weft); got != status {
-					t.Errorf("weft status = %q; want %q unchanged", got, status)
-				}
-				if !wiredAt(t, h, mover, ".", lymdirs.LymDirName) {
-					t.Errorf("the pair's %s junction is gone after the refusal", lymdirs.LymDirName)
-				}
-				recordAfter, foundAfter, _ := fabricengine.ReadMoveRecord(weft)
-				if foundAfter != foundBefore || (tt.record && recordAfter.A != recordBefore.A) || (!tt.record && foundAfter) {
-					t.Errorf("move record after the refusal = (%+v, %v); want it as before (%+v, %v)", recordAfter, foundAfter, recordBefore, foundBefore)
-				}
+				tt.setup(t, h, h.PairRecordsSibling(mover), h.PairCodeWorktree(mover))
+				requireAnchorRefusal(t, h, mover, tt.target, tt.want, tt.record)
 			})
 		}
 	})

@@ -142,24 +142,9 @@ func TestStoreHousekeeping(t *testing.T) {
 		requireHousekeepingKeys(t, records, true)
 	})
 
-	t.Run("Remove packs a store above the lowered threshold", func(t *testing.T) {
-		fabricengine.SetGCAutoThresholdForTest(t, 1)
-		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-		hubforge.AddPair(t, h, slug)
-		code, _ := hubStorePaths(t, h)
-		fillSampledLooseObjects(t, code)
-
-		if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
-			t.Fatalf("Remove: %v", err)
-		}
-
-		if n := sampledLooseObjects(t, code); n != 0 {
-			t.Errorf("objects/17 still holds %d loose objects after Remove; want them packed", n)
-		}
-	})
-
 	// The probe answers for the pair being removed.
-	// Sessions of other pairs or an error skip the gc and keep the keys; an empty answer packs.
+	// Sessions of other pairs or an error skip the gc and keep the keys;
+	// an empty answer packs the stores, like the nil probe the default-probe subtest below runs on.
 	for _, tc := range []struct {
 		name     string
 		probe    fabricengine.InFlightProbe
@@ -172,14 +157,14 @@ func TestStoreHousekeeping(t *testing.T) {
 			wantLog: "other-pair-session",
 		},
 		{
+			name:     "an empty answer packs the stores",
+			probe:    func(string) ([]string, error) { return nil, nil },
+			wantPack: true,
+		},
+		{
 			name:    "a failing probe skips the gc",
 			probe:   func(string) ([]string, error) { return nil, fmt.Errorf("probe-boom") },
 			wantLog: "probe-boom",
-		},
-		{
-			name:     "an empty answer packs",
-			probe:    func(string) ([]string, error) { return nil, nil },
-			wantPack: true,
 		},
 	} {
 		t.Run("the in-flight probe: "+tc.name, func(t *testing.T) {
@@ -207,11 +192,13 @@ func TestStoreHousekeeping(t *testing.T) {
 		})
 	}
 
-	t.Run("gc prunes unreachable loose objects older than a day and keeps younger ones", func(t *testing.T) {
+	t.Run("Remove on the default nil probe packs the stores, pruning unreachable loose objects older than a day and keeping younger ones", func(t *testing.T) {
 		fabricengine.SetGCAutoThresholdForTest(t, 1)
 		h := hubforge.NewHub(t, ".")
 		hubforge.AddPair(t, h, slug)
-		code, _ := hubStorePaths(t, h)
+		code, records := hubStorePaths(t, h)
+		unsetHousekeepingKeys(t, code)
+		unsetHousekeepingKeys(t, records)
 		fillSampledLooseObjects(t, code)
 		oldObject := writeUnreachableObject(t, code, "unreachable and two days old\n")
 		youngObject := writeUnreachableObject(t, code, "unreachable and fresh\n")
@@ -224,6 +211,11 @@ func TestStoreHousekeeping(t *testing.T) {
 			t.Fatalf("Remove: %v", err)
 		}
 
+		requireHousekeepingKeys(t, code, true)
+		requireHousekeepingKeys(t, records, true)
+		if n := sampledLooseObjects(t, code); n != 0 {
+			t.Errorf("objects/17 still holds %d loose objects after Remove; want them packed", n)
+		}
 		if _, err := os.Stat(oldObject); !os.IsNotExist(err) {
 			t.Errorf("stat of the two-day-old unreachable object = %v; want it pruned", err)
 		}

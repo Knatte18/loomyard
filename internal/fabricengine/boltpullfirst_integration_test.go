@@ -121,83 +121,141 @@ func TestBolt_PullThenCommitWritten(t *testing.T) {
 
 	stencilPath := fabricengine.StencilsSubtreeRel() + "/loom/s.md"
 
-	t.Run("behind only fast-forwards then commits", func(t *testing.T) {
+	t.Run("a board only behind fast-forwards, then lands each write as its own commit", func(t *testing.T) {
 		t.Parallel()
-		f := newBoltFixture(t)
-		upstream := f.moveUpstream("notes/up.md", "up\n")
-		var runs int
-		rec := fabricengine.NewMutations(f.hub.Path)
+		tests := []struct {
+			name string
+			// writes names each write: write n puts notes/n.md under the message "write n".
+			writes []string
+			check  func(t *testing.T, f *boltFixture, res fabricengine.BoltWriteResult, rec *fabricengine.Mutations)
+		}{
+			{
+				name:   "one write records the advance, the file and the commit",
+				writes: []string{"a"},
+				check: func(t *testing.T, f *boltFixture, res fabricengine.BoltWriteResult, rec *fabricengine.Mutations) {
+					want := []fabricengine.Kind{fabricengine.KindRepoAdvanced, fabricengine.KindFileWritten, fabricengine.KindCommitCreated}
+					if got := kindsOf(rec); !slices.Equal(got, want) {
+						t.Errorf("record kinds = %v, want %v", got, want)
+					}
+					if got := res.Mutations.Len(); got != len(want) {
+						t.Errorf("result record holds %d entries, want %d", got, len(want))
+					}
+				},
+			},
+			{
+				name:   "two writes land as two commits behind one pull",
+				writes: []string{"a", "b"},
+				check: func(t *testing.T, f *boltFixture, res fabricengine.BoltWriteResult, rec *fabricengine.Mutations) {
+					if got := gitkit.Git(t, f.board, "log", "--format=%s", "-2"); strings.TrimSpace(got) != "write b\nwrite a" {
+						t.Errorf("commit subjects = %q, want write b over write a", got)
+					}
+				},
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				f := newBoltFixture(t)
+				upstream := f.moveUpstream("notes/up.md", "up\n")
+				var runs int
+				var writes []fabricengine.BoltWrite
+				for _, name := range tt.writes {
+					writes = append(writes, f.writeOf("notes/"+name+".md", name+"\n", "write "+name, &runs))
+				}
+				rec := fabricengine.NewMutations(f.hub.Path)
 
-		res, err := f.bolt.PullThenCommitWritten([]fabricengine.BoltWrite{f.writeOf("notes/a.md", "a\n", "write a", &runs)}, rec)
-		if err != nil {
-			t.Fatalf("PullThenCommitWritten: %v", err)
-		}
-		if res.Skipped != "" || !res.Committed || len(res.SHAs) != 1 || res.SHAs[0] != f.head() {
-			t.Errorf("result = %+v, head %s; want one landed commit at head and no skip", res, f.head())
-		}
-		if !gitkit.IsAncestor(t, f.board, upstream, "HEAD") {
-			t.Errorf("upstream %s is not under the board's HEAD", upstream)
-		}
-		want := []fabricengine.Kind{fabricengine.KindRepoAdvanced, fabricengine.KindFileWritten, fabricengine.KindCommitCreated}
-		if got := kindsOf(rec); !slices.Equal(got, want) {
-			t.Errorf("record kinds = %v, want %v", got, want)
-		}
-		if got := res.Mutations.Len(); got != len(want) {
-			t.Errorf("result record holds %d entries, want %d", got, len(want))
+				res, err := f.bolt.PullThenCommitWritten(writes, rec)
+				if err != nil {
+					t.Fatalf("PullThenCommitWritten: %v", err)
+				}
+				if res.Skipped != "" || !res.Committed || len(res.SHAs) != len(tt.writes) || runs != len(tt.writes) {
+					t.Fatalf("result = %+v after %d write runs, want %d landed commits and no skip", res, runs, len(tt.writes))
+				}
+				if last := res.SHAs[len(res.SHAs)-1]; last != f.head() {
+					t.Errorf("last landed commit = %s, want it at head %s", last, f.head())
+				}
+				if !gitkit.IsAncestor(t, f.board, upstream, "HEAD") {
+					t.Errorf("upstream %s is not under the board's HEAD", upstream)
+				}
+				tt.check(t, f, res, rec)
+			})
 		}
 	})
 
-	t.Run("two writes land as two commits behind one pull", func(t *testing.T) {
+	t.Run("seed commits ahead of a moved upstream are dropped and the write runs on the pulled copy", func(t *testing.T) {
 		t.Parallel()
-		f := newBoltFixture(t)
-		f.moveUpstream("notes/up.md", "up\n")
-		var runs int
-		writes := []fabricengine.BoltWrite{
-			f.writeOf("notes/a.md", "a\n", "write a", &runs),
-			f.writeOf("notes/b.md", "b\n", "write b", &runs),
+		tests := []struct {
+			name string
+			// arrange commits what the row adds on the board over the old seed commit.
+			arrange func(f *boltFixture)
+			// write is the row's one write.
+			write func(f *boltFixture, runs *int) fabricengine.BoltWrite
+			check func(t *testing.T, f *boltFixture, res fabricengine.BoltWriteResult, rec *fabricengine.Mutations, oldSeed, upstream string)
+		}{
+			{
+				name:    "a rewritten seed path lands as the one commit past upstream and the drop is recorded",
+				arrange: func(*boltFixture) {},
+				write: func(f *boltFixture, runs *int) fabricengine.BoltWrite {
+					return f.writeOf(stencilPath, "new\n", fabricengine.SeedCommitMessage("stencils", boltTestLabel), runs)
+				},
+				check: func(t *testing.T, f *boltFixture, res fabricengine.BoltWriteResult, rec *fabricengine.Mutations, oldSeed, upstream string) {
+					if len(res.SHAs) != 1 {
+						t.Errorf("result = %+v, want one landed commit", res)
+					}
+					if got := gitkit.RevListCount(t, f.board, upstream+"..HEAD"); got != 1 {
+						t.Errorf("board is %d commits past upstream, want only the rewritten seed commit", got)
+					}
+					var dropped []string
+					for _, m := range rec.Snapshot().Entries() {
+						if m.Kind == fabricengine.KindCommitsDropped {
+							dropped = append(dropped, m.Detail)
+						}
+					}
+					if !slices.Equal(dropped, []string{oldSeed}) {
+						t.Errorf("commits_dropped details = %v, want [%s]", dropped, oldSeed)
+					}
+				},
+			},
+			{
+				name: "a labelled seed message touching a path outside the subtrees is kept and replayed",
+				arrange: func(f *boltFixture) {
+					gitkit.CommitFile(f.t, f.board, "notes/x.md", "x\n", fabricengine.SeedCommitMessage("stencils", boltTestLabel))
+				},
+				write: func(f *boltFixture, runs *int) fabricengine.BoltWrite {
+					return f.writeOf("notes/a.md", "a\n", "write a", runs)
+				},
+				check: func(t *testing.T, f *boltFixture, res fabricengine.BoltWriteResult, rec *fabricengine.Mutations, oldSeed, upstream string) {
+					if got := gitkit.Git(t, f.board, "log", "--format=%s", upstream+"..HEAD"); !strings.Contains(got, fabricengine.SeedCommitMessage("stencils", boltTestLabel)) {
+						t.Errorf("commits past upstream = %q, want the out-of-subtree commit replayed under its message", got)
+					}
+					if got, _ := os.ReadFile(filepath.Join(f.board, "notes", "x.md")); string(got) != "x\n" {
+						t.Errorf("notes/x.md = %q, want the replayed commit's content", got)
+					}
+				},
+			},
 		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				f := newBoltFixture(t)
+				oldSeed := f.seedCommitLocal(stencilPath, "old\n")
+				tt.arrange(f)
+				upstream := f.moveUpstream("notes/up.md", "up\n")
+				var runs int
+				rec := fabricengine.NewMutations(f.hub.Path)
 
-		res, err := f.bolt.PullThenCommitWritten(writes, fabricengine.NewMutations(f.hub.Path))
-		if err != nil {
-			t.Fatalf("PullThenCommitWritten: %v", err)
-		}
-		if len(res.SHAs) != 2 || runs != 2 {
-			t.Fatalf("landed %d commits over %d writes, want 2 and 2", len(res.SHAs), runs)
-		}
-		if got := gitkit.Git(t, f.board, "log", "--format=%s", "-2"); strings.TrimSpace(got) != "write b\nwrite a" {
-			t.Errorf("commit subjects = %q, want write b over write a", got)
-		}
-	})
-
-	t.Run("seed commits ahead are dropped and the write reruns on the pulled copy", func(t *testing.T) {
-		t.Parallel()
-		f := newBoltFixture(t)
-		oldSeed := f.seedCommitLocal(stencilPath, "old\n")
-		upstream := f.moveUpstream("notes/up.md", "up\n")
-		var runs int
-		rec := fabricengine.NewMutations(f.hub.Path)
-
-		res, err := f.bolt.PullThenCommitWritten([]fabricengine.BoltWrite{f.writeOf(stencilPath, "new\n", fabricengine.SeedCommitMessage("stencils", boltTestLabel), &runs)}, rec)
-		if err != nil {
-			t.Fatalf("PullThenCommitWritten: %v", err)
-		}
-		if res.Skipped != "" || len(res.SHAs) != 1 || runs != 1 {
-			t.Fatalf("result = %+v after %d write runs, want one landed commit and no skip", res, runs)
-		}
-		if gitkit.IsAncestor(t, f.board, oldSeed, "HEAD") {
-			t.Errorf("the old seed commit %s survived the drop", oldSeed)
-		}
-		if got := gitkit.RevListCount(t, f.board, upstream+"..HEAD"); got != 1 {
-			t.Errorf("board is %d commits past upstream, want only the rewritten seed commit", got)
-		}
-		var dropped []string
-		for _, m := range rec.Snapshot().Entries() {
-			if m.Kind == fabricengine.KindCommitsDropped {
-				dropped = append(dropped, m.Detail)
-			}
-		}
-		if !slices.Equal(dropped, []string{oldSeed}) {
-			t.Errorf("commits_dropped details = %v, want [%s]", dropped, oldSeed)
+				res, err := f.bolt.PullThenCommitWritten([]fabricengine.BoltWrite{tt.write(f, &runs)}, rec)
+				if err != nil {
+					t.Fatalf("PullThenCommitWritten: %v", err)
+				}
+				if res.Skipped != "" || runs != 1 {
+					t.Fatalf("result = %+v after %d write runs, want the seed commit dropped, one write run and no skip", res, runs)
+				}
+				if gitkit.IsAncestor(t, f.board, oldSeed, "HEAD") {
+					t.Errorf("the old seed commit %s survived the drop", oldSeed)
+				}
+				tt.check(t, f, res, rec, oldSeed, upstream)
+			})
 		}
 	})
 
@@ -244,31 +302,60 @@ func TestBolt_PullThenCommitWritten(t *testing.T) {
 		}
 	})
 
-	t.Run("a non-board commit conflicting with origin skips diverged naming the path and the way forward", func(t *testing.T) {
+	t.Run("a local commit conflicting with origin skips diverged with the board restored at its tip", func(t *testing.T) {
 		t.Parallel()
-		f := newBoltFixture(t)
-		tip := gitkit.CommitFile(t, f.board, "notes/c.md", "local\n", "local work")
-		f.moveUpstream("notes/c.md", "remote\n")
-		var runs int
+		tests := []struct {
+			name string
+			// seed puts a seed commit under the conflicting commit, so the replay drops it and must restore it.
+			seed bool
+			// wantWayForward reports that the row checks the detail's way forward, which names every commit ahead.
+			wantWayForward bool
+		}{
+			{name: "a non-board commit names the path and the way forward", wantWayForward: true},
+			{name: "a replay over a seed commit restores the original tip", seed: true},
+		}
+		// One capture serves both rows: the logger's sink is global, so a capture per parallel row would replace the other's.
 		logs := logcapture.Capture(t)
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				f := newBoltFixture(t)
+				if tt.seed {
+					f.seedCommitLocal(stencilPath, "seed\n")
+				}
+				tip := gitkit.CommitFile(t, f.board, "notes/c.md", "local\n", "local work")
+				f.moveUpstream("notes/c.md", "remote\n")
+				var runs int
+				rec := fabricengine.NewMutations(f.hub.Path)
 
-		res, err := f.bolt.PullThenCommitWritten([]fabricengine.BoltWrite{f.writeOf("notes/a.md", "a\n", "write a", &runs)}, fabricengine.NewMutations(f.hub.Path))
-		if err != nil {
-			t.Fatalf("PullThenCommitWritten: %v", err)
-		}
-		if res.Skipped != fabricengine.BoltSkipDiverged || runs != 0 || f.head() != tip {
-			t.Errorf("skipped %q, %d writes run, head %s; want diverged, none run, head %s", res.Skipped, runs, f.head(), tip)
-		}
-		wayForward := fabricengine.RecordsConflictWayForwardForTest(f.board, f.branch, []string{"notes/c.md"}, []string{tip}, fabricengine.PushStepForTest(fabricengine.FailedPush{Repo: "bolt"}))
-		if !strings.Contains(res.SkipDetail, wayForward) {
-			t.Errorf("detail %q does not carry the way forward %q", res.SkipDetail, wayForward)
-		}
-		if strings.Contains(res.SkipDetail, "pull --rebase") {
-			t.Errorf("detail %q still names pull --rebase", res.SkipDetail)
-		}
-		// Other parallel tests write to the same sink, so the count is of this board's own detail.
-		if got := strings.Count(logs.String(), res.SkipDetail); got != 1 {
-			t.Errorf("detail logged %d times, want once", got)
+				res, err := f.bolt.PullThenCommitWritten([]fabricengine.BoltWrite{f.writeOf("notes/a.md", "a\n", "write a", &runs)}, rec)
+				if err != nil {
+					t.Fatalf("PullThenCommitWritten: %v", err)
+				}
+				if res.Skipped != fabricengine.BoltSkipDiverged || runs != 0 || f.head() != tip {
+					t.Errorf("skipped %q, %d writes run, head %s; want diverged, none run, head %s", res.Skipped, runs, f.head(), tip)
+				}
+				if status := gitkit.GitStatusPorcelain(t, f.board); strings.TrimSpace(status) != "" {
+					t.Errorf("board is left dirty after the restore: %q", status)
+				}
+				if rec.Snapshot().Len() != 0 {
+					t.Errorf("a restored replay recorded %v", kindsOf(rec))
+				}
+				if !tt.wantWayForward {
+					return
+				}
+				// Other parallel tests write to the same sink, so the count is of this board's own detail.
+				if got := strings.Count(logs.String(), res.SkipDetail); got != 1 {
+					t.Errorf("detail logged %d times, want once", got)
+				}
+				wayForward := fabricengine.RecordsConflictWayForwardForTest(f.board, f.branch, []string{"notes/c.md"}, []string{tip}, fabricengine.PushStepForTest(fabricengine.FailedPush{Repo: "bolt"}))
+				if !strings.Contains(res.SkipDetail, wayForward) {
+					t.Errorf("detail %q does not carry the way forward %q", res.SkipDetail, wayForward)
+				}
+				if strings.Contains(res.SkipDetail, "pull --rebase") {
+					t.Errorf("detail %q still names pull --rebase", res.SkipDetail)
+				}
+			})
 		}
 	})
 
@@ -379,33 +466,6 @@ func TestBolt_PullThenCommitWritten(t *testing.T) {
 		}
 	})
 
-	t.Run("a replay conflict restores the original tip", func(t *testing.T) {
-		t.Parallel()
-		f := newBoltFixture(t)
-		f.seedCommitLocal(stencilPath, "seed\n")
-		tip := gitkit.CommitFile(t, f.board, "notes/c.md", "local\n", "local work")
-		f.moveUpstream("notes/c.md", "remote\n")
-		var runs int
-		rec := fabricengine.NewMutations(f.hub.Path)
-
-		res, err := f.bolt.PullThenCommitWritten([]fabricengine.BoltWrite{f.writeOf("notes/a.md", "a\n", "write a", &runs)}, rec)
-		if err != nil {
-			t.Fatalf("PullThenCommitWritten: %v", err)
-		}
-		if res.Skipped != fabricengine.BoltSkipDiverged || runs != 0 {
-			t.Errorf("skipped %q after %d write runs, want diverged and none", res.Skipped, runs)
-		}
-		if f.head() != tip {
-			t.Errorf("head = %s, want the original tip %s", f.head(), tip)
-		}
-		if status := gitkit.GitStatusPorcelain(t, f.board); strings.TrimSpace(status) != "" {
-			t.Errorf("board is left dirty after the restore: %q", status)
-		}
-		if rec.Snapshot().Len() != 0 {
-			t.Errorf("a restored drop recorded %v", kindsOf(rec))
-		}
-	})
-
 	t.Run("a dirty file outside the touched paths is carried across the drop", func(t *testing.T) {
 		t.Parallel()
 		f := newBoltFixture(t)
@@ -451,32 +511,6 @@ func TestBolt_PullThenCommitWritten(t *testing.T) {
 		}
 		if !strings.Contains(res.SkipDetail, "lym board sync") {
 			t.Errorf("detail %q does not name lym board sync", res.SkipDetail)
-		}
-	})
-
-	t.Run("a labelled seed message touching a path outside the subtrees is kept and replayed", func(t *testing.T) {
-		t.Parallel()
-		f := newBoltFixture(t)
-		oldSeed := f.seedCommitLocal(stencilPath, "old\n")
-		gitkit.CommitFile(t, f.board, "notes/x.md", "x\n", fabricengine.SeedCommitMessage("stencils", boltTestLabel))
-		upstream := f.moveUpstream("notes/up.md", "up\n")
-		var runs int
-
-		res, err := f.bolt.PullThenCommitWritten([]fabricengine.BoltWrite{f.writeOf("notes/a.md", "a\n", "write a", &runs)}, fabricengine.NewMutations(f.hub.Path))
-		if err != nil {
-			t.Fatalf("PullThenCommitWritten: %v", err)
-		}
-		if res.Skipped != "" {
-			t.Fatalf("skipped %q, want the genuine seed commit dropped and the write to run", res.Skipped)
-		}
-		if gitkit.IsAncestor(t, f.board, oldSeed, "HEAD") {
-			t.Errorf("the genuine seed commit %s survived", oldSeed)
-		}
-		if got := gitkit.Git(t, f.board, "log", "--format=%s", upstream+"..HEAD"); !strings.Contains(got, fabricengine.SeedCommitMessage("stencils", boltTestLabel)) {
-			t.Errorf("commits past upstream = %q, want the out-of-subtree commit replayed under its message", got)
-		}
-		if got, _ := os.ReadFile(filepath.Join(f.board, "notes", "x.md")); string(got) != "x\n" {
-			t.Errorf("notes/x.md = %q, want the replayed commit's content", got)
 		}
 	})
 
