@@ -452,16 +452,15 @@ func OpenFabric(tb testing.TB, h *Hub) *fabricengine.Fabric {
 	return f
 }
 
-// initScratchRepo initializes a git repository at dir on branch main.
-// It disables fsmonitor and auto-maintenance, as gitkit.initRepo does.
+// initScratchRepo initializes a git repository at dir on branch main, with a commit identity.
+// It disables fsmonitor and auto-maintenance, and panics on failure.
 func initScratchRepo(dir string) {
 	mustGit(dir, "init", "-b", "main")
-	mustGit(dir, "config", "user.email", "test@test.com")
-	mustGit(dir, "config", "user.name", "Test")
-	mustGit(dir, "config", "core.fsmonitor", "false")
-	mustGit(dir, "config", "maintenance.auto", "false")
-	mustGit(dir, "config", "gc.auto", "0")
-	stripHookSamples(filepath.Join(dir, ".git", "hooks"))
+	gitDir := filepath.Join(dir, ".git")
+	if err := gitkit.WriteFixtureGitConfig(gitDir, false); err != nil {
+		panic(err)
+	}
+	stripHookSamples(filepath.Join(gitDir, "hooks"))
 }
 
 // initBareRepo initializes a bare git repository at dir with fsmonitor and auto-maintenance disabled.
@@ -471,9 +470,9 @@ func initBareRepo(dir string) {
 		panic(err)
 	}
 	mustGit(dir, "init", "--bare")
-	mustGit(dir, "config", "core.fsmonitor", "false")
-	mustGit(dir, "config", "maintenance.auto", "false")
-	mustGit(dir, "config", "gc.auto", "0")
+	if err := gitkit.WriteFixtureGitConfig(dir, true); err != nil {
+		panic(err)
+	}
 	stripHookSamples(filepath.Join(dir, "hooks"))
 }
 

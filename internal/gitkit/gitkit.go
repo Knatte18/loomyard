@@ -125,17 +125,56 @@ func stripHookSamples(hooksDir string) {
 	}
 }
 
+// gitConfigFileName is the name of a repository's config file inside its git directory.
+const gitConfigFileName = "config"
+
+// fixtureQuietConfig keeps git from starting fsmonitor, auto-maintenance or auto-gc in a fixture repository.
+const fixtureQuietConfig = "[core]\n" +
+	"\tfsmonitor = false\n" +
+	"[maintenance]\n" +
+	"\tauto = false\n" +
+	"[gc]\n" +
+	"\tauto = 0\n"
+
+// fixtureIdentityConfig gives a fixture repository with a work tree a commit identity of its own.
+const fixtureIdentityConfig = "[user]\n" +
+	"\tname = Test\n" +
+	"\temail = test@test.com\n"
+
+// WriteFixtureGitConfig appends the fixture keys to the config file in gitDir, the git directory of a new repository.
+// Every repository gets core.fsmonitor=false, maintenance.auto=false and gc.auto=0.
+// Those keys keep git from starting background work in it.
+// A non-bare repository also gets user.name and user.email.
+// A commit there therefore needs no identity from another config layer.
+// The keys go in one file write, with no git process.
+func WriteFixtureGitConfig(gitDir string, bare bool) error {
+	content := fixtureQuietConfig
+	if !bare {
+		content = fixtureIdentityConfig + content
+	}
+
+	path := filepath.Join(gitDir, gitConfigFileName)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		return fmt.Errorf("open git config: %w", err)
+	}
+	if _, err := f.WriteString(content); err != nil {
+		f.Close()
+		return fmt.Errorf("append fixture keys to %s: %w", path, err)
+	}
+	return f.Close()
+}
+
 // initRepo initializes a git repository at dir on branch main, disabling fsmonitor and auto-maintenance.
 // Copies inherit .git/config, so these settings reach every copy.
 // It panics on failure.
 func initRepo(dir string) {
 	mustGit(dir, "init", "-b", "main")
-	mustGit(dir, "config", "user.email", "test@test.com")
-	mustGit(dir, "config", "user.name", "Test")
-	mustGit(dir, "config", "core.fsmonitor", "false")
-	mustGit(dir, "config", "maintenance.auto", "false")
-	mustGit(dir, "config", "gc.auto", "0")
-	stripHookSamples(filepath.Join(dir, ".git", "hooks"))
+	gitDir := filepath.Join(dir, ".git")
+	if err := WriteFixtureGitConfig(gitDir, false); err != nil {
+		panic(err)
+	}
+	stripHookSamples(filepath.Join(gitDir, "hooks"))
 }
 
 // commitAll stages every change in dir and creates a commit (panics on failure).
@@ -151,9 +190,9 @@ func initBareRemote(dir, repoDir string) {
 		panic(err)
 	}
 	mustGit(dir, "init", "--bare")
-	mustGit(dir, "config", "core.fsmonitor", "false")
-	mustGit(dir, "config", "maintenance.auto", "false")
-	mustGit(dir, "config", "gc.auto", "0")
+	if err := WriteFixtureGitConfig(dir, true); err != nil {
+		panic(err)
+	}
 	stripHookSamples(filepath.Join(dir, "hooks"))
 	mustGit(repoDir, "remote", "add", "origin", dir)
 }

@@ -85,10 +85,35 @@ func TestCopiedRepoScenario(t *testing.T) {
 		return
 	}
 
-	// Layer A: Copy* fixtures carry quiet git settings in their own .git/config, independent of the hermetic env.
-	if !t.Run("template quiet config", func(t *testing.T) {
-		if got := Git(t, repo, "config", "--local", "core.fsmonitor"); got != "false" {
-			t.Errorf("--local core.fsmonitor = %q; want %q", got, "false")
+	// Layer A: Copy* fixtures carry the fixture keys in their own config, independent of the hermetic env.
+	if !t.Run("fixture config keys", func(t *testing.T) {
+		tests := []struct {
+			dir  string
+			key  string
+			want string
+		}{
+			{repo, "user.name", "Test"},
+			{repo, "user.email", "test@test.com"},
+			{repo, "core.fsmonitor", "false"},
+			{repo, "maintenance.auto", "false"},
+			{repo, "gc.auto", "0"},
+			{fixture.Bare, "core.fsmonitor", "false"},
+			{fixture.Bare, "maintenance.auto", "false"},
+			{fixture.Bare, "gc.auto", "0"},
+		}
+		for _, tt := range tests {
+			if got := Git(t, tt.dir, "config", "--local", "--get", tt.key); got != tt.want {
+				t.Errorf("git config --local --get %s in %s = %q; want %q", tt.key, tt.dir, got, tt.want)
+			}
+		}
+
+		// A bare repository takes no commits, so it gets no identity.
+		out, code, err := gitExit(fixture.Bare, "config", "--local", "--get", "user.name")
+		if err != nil {
+			t.Fatalf("git config --local --get user.name in %s: %v", fixture.Bare, err)
+		}
+		if code != 1 {
+			t.Errorf("git config --local --get user.name in %s exited %d with %q; want exit 1", fixture.Bare, code, out)
 		}
 	}) {
 		return

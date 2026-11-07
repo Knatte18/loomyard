@@ -36,6 +36,8 @@
 // It keeps git-spawning tests from depending on the operator's global or system gitconfig.
 // Layer A (template quiet-config) applies at build time to every template repo:
 // it sets core.fsmonitor=false, maintenance.auto=false, and gc.auto=0.
+// WriteFixtureGitConfig appends those keys, and a non-bare repository's identity, to the config file from Go.
+// A fixture initialiser calls it once after git init, so no git config process runs per key.
 // Fixtures built by initRepo/initBareRemote and their Copy* copies are therefore quiet by construction.
 // Layer B (HermeticGitEnv, hermetic.go) is a process-wide override a package's TestMain calls before m.Run().
 // It points GIT_CONFIG_GLOBAL at a neutral config and sets GIT_CONFIG_NOSYSTEM=1.

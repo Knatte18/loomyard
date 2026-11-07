@@ -8,8 +8,10 @@ package hubforge
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -29,6 +31,71 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
+
+// TestInitRepos_WriteFixtureConfigKeys verifies each repository initialiser's fixture keys.
+// Every key must sit in the new repository's own config.
+func TestInitRepos_WriteFixtureConfigKeys(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// dirExists is whether the initialiser expects its directory to exist already.
+		dirExists bool
+		init      func(dir string)
+		want      map[string]string
+		// absent lists keys the repository's own config must not hold.
+		absent []string
+	}{
+		{
+			name:      "Scratch",
+			dirExists: true,
+			init:      initScratchRepo,
+			want: map[string]string{
+				"user.name":        "Test",
+				"user.email":       "test@test.com",
+				"core.fsmonitor":   "false",
+				"maintenance.auto": "false",
+				"gc.auto":          "0",
+			},
+		},
+		{
+			name: "Bare",
+			init: initBareRepo,
+			want: map[string]string{
+				"core.fsmonitor":   "false",
+				"maintenance.auto": "false",
+				"gc.auto":          "0",
+			},
+			absent: []string{"user.name", "user.email"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			if !tt.dirExists {
+				dir = filepath.Join(dir, "repo")
+			}
+			tt.init(dir)
+
+			for key, want := range tt.want {
+				if got := gitkit.Git(t, dir, "config", "--local", "--get", key); got != want {
+					t.Errorf("git config --local --get %s = %q; want %q", key, got, want)
+				}
+			}
+			for _, key := range tt.absent {
+				// git config --get exits 1 when the key is unset.
+				err := exec.Command("git", "-C", dir, "config", "--local", "--get", key).Run()
+				var exitErr *exec.ExitError
+				if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+					t.Errorf("git config --local --get %s err = %v; want exit status 1 (key unset)", key, err)
+				}
+			}
+		})
+	}
+}
 
 func TestBuildBareTemplate(t *testing.T) {
 	tiergate.Require(t, 1)
