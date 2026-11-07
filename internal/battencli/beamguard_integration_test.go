@@ -21,14 +21,22 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// beamHub returns a hub with a marked beam "b" and a member "m" forked from it.
-// It adds a pair "p" forked from the prime and returns the prime's worktree name.
+// beamTemplate is the prime-anchored hub with a marked beam "b", a member "m" forked from it,
+// and a pair "p" forked from the prime, none of them pushed.
+var beamTemplate = hubforge.Registration{
+	Key:  "battencli-beam",
+	Base: hubforge.Shape{Anchor: "."},
+	Build: func(tb testing.TB, h *hubforge.Hub) {
+		hubforge.AddPairWith(tb, h, "b", fabricengine.AddOptions{SkipPush: true, Beam: true})
+		hubforge.AddPairWith(tb, h, "m", fabricengine.AddOptions{SkipPush: true, Parent: "b"})
+		hubforge.AddPairWith(tb, h, "p", fabricengine.AddOptions{SkipPush: true})
+	},
+}
+
+// beamHub returns a copy of beamTemplate and the prime's worktree name.
 func beamHub(t *testing.T) (h *hubforge.Hub, primeName string) {
 	t.Helper()
-	h = hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	hubforge.AddPairWith(t, h, "b", fabricengine.AddOptions{SkipPush: true, Beam: true})
-	hubforge.AddPairWith(t, h, "m", fabricengine.AddOptions{SkipPush: true, Parent: "b"})
-	hubforge.AddPairWith(t, h, "p", fabricengine.AddOptions{SkipPush: true})
+	h = hubforge.CopyRegistered(t, &beamTemplate)
 	primeName, err := fabricengine.PrimeName(h.Location)
 	if err != nil {
 		t.Fatalf("prime name: %v", err)
@@ -50,8 +58,8 @@ func TestResolveBattenPrime(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	boardkit.InstallReplay(t)
 	h, primeName := beamHub(t)
+	boardkit.InstallReplay(t)
 	recordsSibling, err := lymcwd.Resolve(h.PrimeRecords())
 	if err != nil {
 		t.Fatalf("resolve the prime's records sibling: %v", err)
@@ -155,8 +163,8 @@ func TestVerbs_RunFromABeam(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	boardkit.InstallReplay(t)
 	h, primeName := beamHub(t)
+	boardkit.InstallReplay(t)
 	const runSlug = "prime-run"
 	const doneSlug = "finished-task"
 	seedCancelRun(t, h, runSlug, battenrecipe.NameWorktreeCreate, shedengine.StateBlocked, "running · Worktree-Create")
