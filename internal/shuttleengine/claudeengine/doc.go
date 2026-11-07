@@ -100,6 +100,8 @@
 // Prepare validates the whole configured set to `5m` or `1h` (exact, case-sensitive) before any artifact is written.
 // It logs the resolved value with the role.
 // The value is fixed for the session's life, since a resume line is never rebuilt.
+// OpenLaunch resolves the TTL from `OpenSpec.Role` the same way and refuses an invalid set the same way.
+// Its two lines open with a statement exporting the variable, since its resume line falls back to its fresh line.
 // PromptCacheLifetime answers the same resolved value as a duration,
 // so a caller can keep an idle session's cache warm inside it.
 // `keep_warm_cap` and the per-role `keep_warm_cap_roles` set the longest single wait an agent of a role blocks on.
@@ -416,6 +418,8 @@
 // ClearInputSequence is one `C-u`, which deletes from the caret to the start of the line.
 // It empties a one-line draft without interrupting a running turn.
 // It serves sent text and a lone stray-character candidate alike, since both are one line with the caret at its end.
+// It also empties whitespace the box may hold before a session command is pasted:
+// a box of whitespace reads as empty, and Claude Code takes a command behind it as a prompt.
 // RestoredPromptClearSequence clears the prompt an interrupt restored into the box.
 // It is sized from the box capture: n `C-u` with one `BSpace` between each pair, for n box lines.
 // One `C-u` deletes only the caret's row, and a `BSpace` at a row's start joins it to the row above.
@@ -584,6 +588,7 @@
 //
 // The open launch (Claude.OpenLaunch) starts a named interactive session with no prompt.
 // Its line carries the session id and the strand-name reference, and adds `--model` and `--effort` only when set.
+// It exports `CLAUDE_CODE_PROMPT_CACHE_TTL` at the role's TTL ahead of both lines.
 // An open naming skills puts their load message after the binary on the fresh line as the session's first turn;
 // the resume line carries none.
 // An engine told no board directory passes no `--settings`, so the session takes the worktree's own settings.

@@ -515,12 +515,17 @@ type slashPasteEngine struct {
 
 func (e *slashPasteEngine) ProcessLiveness(string) Liveness { return LivenessAlive }
 
-// ParseSessionSignals adds the "SESSIONSTART:<source>" lines, after the scripted engine's own signals.
+// ParseSessionSignals adds the "SESSIONSTART:<source>" and "START:<text>" lines after the scripted engine's own.
+// A "START:<text>" line is a turn start carrying <text> as its instruction.
 func (e *slashPasteEngine) ParseSessionSignals(data []byte) ([]SessionSignal, int) {
 	signals, end := e.scriptedPasteEngine.ParseSessionSignals(data)
 	for _, line := range strings.Split(string(data), "\n") {
-		if source, found := strings.CutPrefix(strings.TrimSpace(line), "SESSIONSTART:"); found {
+		trimmed := strings.TrimSpace(line)
+		if source, found := strings.CutPrefix(trimmed, "SESSIONSTART:"); found {
 			signals = append(signals, SessionSignal{Kind: SessionSignalSessionStart, Source: SessionStartSource(source)})
+		}
+		if instruction, found := strings.CutPrefix(trimmed, "START:"); found {
+			signals = append(signals, SessionSignal{Kind: SessionSignalTurnStart, Instruction: instruction})
 		}
 	}
 	return signals, end
@@ -577,40 +582,67 @@ func (e *slashPasteEngine) ColorSequence(color segmentcolor.Color) []PaneInput {
 }
 
 // parserlessPasteEngine is a paste-path engine with no SessionSignalParser:
-// it exposes only the Engine, TextPaster, InputBoxReader and SessionCycler capabilities of the engine it wraps.
+// it exposes only the capabilities of the engine it wraps that the paste path reads.
+// Those are Engine, TextPaster, InputBoxReader, InputBoxClearer and SessionCycler.
 type parserlessPasteEngine struct {
+	Engine
+	TextPaster
+	InputBoxReader
+	InputBoxClearer
+	SessionCycler
+}
+
+// clearlessPasteEngine is a paste-path engine with no InputBoxClearer.
+type clearlessPasteEngine struct {
 	Engine
 	TextPaster
 	InputBoxReader
 	SessionCycler
 }
 
+// pasteEngineShape names which capabilities of the slash paste engine a test hides from the runner.
+type pasteEngineShape int
+
+const (
+	// fullPasteEngine hides nothing.
+	fullPasteEngine pasteEngineShape = iota
+	// parserlessPasteShape hides the session-signal parsing.
+	parserlessPasteShape
+	// clearlessPasteShape hides the input-box clear.
+	clearlessPasteShape
+)
+
 // newSlashPasteRunner returns a runner over a live strand "strand-1" on a paste-path engine.
 // Its input box reads box, and its pane shows an operator when active is set.
 // The returned reed is the one the runner drives.
 func newSlashPasteRunner(t *testing.T, box string, active, noColor bool) (*Runner, *fakeReed, string) {
 	t.Helper()
-	runner, reed, runDir, _ := newSlashPasteRunnerAppending(t, box, active, noColor, "", false, nil)
+	runner, reed, runDir, _ := newSlashPasteRunnerAppending(t, box, active, noColor, "", fullPasteEngine, nil)
 	return runner, reed, runDir
 }
 
 // newSlashPasteRunnerAppending returns a runner over a live strand "strand-1" on a paste-path engine.
 // Every paste appends pasteLine to the events file, and the runner's clock is returned as well.
 // A non-nil afterPaste replaces the box's answers once the paste is made, so the reads that confirm the send see it.
-// parserless hides the engine's session-signal parsing behind parserlessPasteEngine.
-func newSlashPasteRunnerAppending(t *testing.T, box string, active, noColor bool, pasteLine string, parserless bool, afterPaste []inputBoxAnswer) (*Runner, *fakeReed, string, *fakeClock) {
+// shape hides capabilities of the engine from the runner.
+// The input box reads box at the idle wait, then each of afterIdleBoxes in turn, the last answer sticking:
+// the first of those is what the clear before a command reads.
+func newSlashPasteRunnerAppending(t *testing.T, box string, active, noColor bool, pasteLine string, shape pasteEngineShape, afterPaste []inputBoxAnswer, afterIdleBoxes ...inputBoxAnswer) (*Runner, *fakeReed, string, *fakeClock) {
 	t.Helper()
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"IDLE"}, ActiveQueue: []bool{active}}
 	appending := &pasteLineReed{fakeReed: reed, line: pasteLine}
 	clock := newFakeClock(time.Now())
-	boxes := &inputBoxEngine{fakeEngine: readyAgentEngine(), boxes: []inputBoxAnswer{{box, true}}, settle: 100 * time.Millisecond}
+	boxes := &inputBoxEngine{fakeEngine: readyAgentEngine(), boxes: append([]inputBoxAnswer{{box, true}}, afterIdleBoxes...), settle: 100 * time.Millisecond}
 	if afterPaste != nil {
 		appending.onPaste = func() { boxes.boxes = afterPaste }
 	}
 	slash := &slashPasteEngine{scriptedPasteEngine: &scriptedPasteEngine{clearableBoxEngine: &clearableBoxEngine{inputBoxEngine: boxes}, pasteSubmits: true}, noColor: noColor}
 	var engine Engine = slash
-	if parserless {
-		engine = parserlessPasteEngine{Engine: slash, TextPaster: slash, InputBoxReader: slash, SessionCycler: slash}
+	switch shape {
+	case parserlessPasteShape:
+		engine = parserlessPasteEngine{Engine: slash, TextPaster: slash, InputBoxReader: slash, InputBoxClearer: slash, SessionCycler: slash}
+	case clearlessPasteShape:
+		engine = clearlessPasteEngine{Engine: slash, TextPaster: slash, InputBoxReader: slash, SessionCycler: slash}
 	}
 	cfg := Config{SubmitSettleMS: 100, SubmitConfirmTimeoutS: 30, SendReadyTimeoutS: 60}
 	fx := newFixture(t, appending, engine, withConfig(cfg), withStrand("strand-1"), withClock(clock))
@@ -636,7 +668,7 @@ func newSlashPasteRunnerAppending(t *testing.T, box string, active, noColor bool
 // A box that reads empty after the paste stays confirmed when it then holds other text.
 // The same holds when an operator types during a compaction, when the box holds sentText, or when it cannot be read.
 // Other text before any empty read fails the send with ErrForeignBoxText.
-// No row sends a key after the paste.
+// Every row's one key is the clear right before the paste, and no row sends a key after it.
 func checkLandingStartConfirmation(t *testing.T, landing, other SessionStartSource, sentText string, call func(*Runner) error) {
 	t.Helper()
 	window := submitConfirmTimeout(Config{SubmitConfirmTimeoutS: 30})
@@ -662,15 +694,17 @@ func checkLandingStartConfirmation(t *testing.T, landing, other SessionStartSour
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			runner, reed, runDir, clock := newSlashPasteRunnerAppending(t, "", false, false, tt.pasteLine, tt.parserless, tt.afterPaste)
+			shape := fullPasteEngine
+			if tt.parserless {
+				shape = parserlessPasteShape
+			}
+			runner, reed, runDir, clock := newSlashPasteRunnerAppending(t, "", false, false, tt.pasteLine, shape, tt.afterPaste)
 			if tt.priorLine != "" {
 				appendEventsLine(t, filepath.Join(runDir, eventsFileName), tt.priorLine)
 			}
 			start := clock.Now()
 			err := call(runner)
-			if keys := sentCalls(reed); len(keys) != 0 {
-				t.Errorf("sent calls = %v, want none after the paste", keys)
-			}
+			checkClearBeforePaste(t, reed)
 			if tt.wantErr != nil {
 				if !errors.Is(err, tt.wantErr) {
 					t.Errorf("error = %v, want one wrapping %v", err, tt.wantErr)
@@ -693,28 +727,54 @@ func checkLandingStartConfirmation(t *testing.T, landing, other SessionStartSour
 
 // checkPastedSessionCommand drives call, one of Runner's session commands or its color step, over a paste-path engine.
 // Each row is a state of the pane that the caller's own idle probe would have passed.
-// An empty box gets the command as one paste-submit of wantText and no typed text.
+// An empty box gets the clear key and then the command as one paste-submit of wantText, and no typed text.
 // A box holding a draft and an operator active in the pane each hold the command:
 // it fails wrapping ErrSessionBusy and writes nothing.
+// So do a draft or an operator that shows only after the idle reading, when the clear is about to go.
+// A failed clear key fails the send and pastes nothing.
+// An engine with no input-box clear pastes the command once and sends no key.
 // A pending record of the command with a turn started since is another turn, so the command is still pasted.
+// A turn start the paste writes with no instruction fails the send with ErrCommandTakenAsPrompt.
+// That is how a slash command read as a prompt is recorded.
+// A turn start with another instruction is no signal, and the empty box confirms the command.
 func checkPastedSessionCommand(t *testing.T, wantText string, call func(*Runner) error) {
 	t.Helper()
+	otherTurn := "START:an unrelated prompt"
+	keyErr := errors.New("tmux send-keys failed")
 	tests := []struct {
-		name     string
-		box      string
-		active   bool
-		pending  bool
-		wantHeld bool
+		name          string
+		box           string
+		boxAtClear    []inputBoxAnswer
+		afterPaste    []inputBoxAnswer
+		active        bool
+		activeAtClear bool
+		keyErr        error
+		shape         pasteEngineShape
+		pending       bool
+		pasteLine     string
+		wantHeld      bool
+		wantErr       error
 	}{
 		{name: "an empty box pastes the command once"},
 		{name: "a drafted box holds the command", box: "a half-written draft", wantHeld: true},
 		{name: "an active operator holds the command", active: true, wantHeld: true},
+		{name: "a draft typed after the idle reading holds the command", boxAtClear: []inputBoxAnswer{{"a half-written draft", true}}, wantHeld: true},
+		{name: "an operator active only at the clear holds the command", activeAtClear: true, wantHeld: true},
+		{name: "a box that cannot be read at the clear still gets the clear", boxAtClear: []inputBoxAnswer{{"", false}}, afterPaste: []inputBoxAnswer{{"", true}}},
+		{name: "a failed clear key pastes nothing", keyErr: keyErr, wantErr: keyErr},
+		{name: "an engine with no input-box clear pastes the command once with no key", shape: clearlessPasteShape},
 		{name: "a pending record of the command with a turn started since pastes it afresh", pending: true},
+		{name: "a turn the paste started with no instruction fails the command as taken for a prompt", pasteLine: "START", wantErr: ErrCommandTakenAsPrompt},
+		{name: "a turn the paste started with another instruction leaves the command confirmed", pasteLine: otherTurn},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			runner, reed, runDir := newSlashPasteRunner(t, tt.box, tt.active, false)
+			runner, reed, runDir, _ := newSlashPasteRunnerAppending(t, tt.box, tt.active, false, tt.pasteLine, tt.shape, tt.afterPaste, tt.boxAtClear...)
+			if tt.activeAtClear {
+				reed.ActiveQueue = []bool{false, true}
+			}
+			reed.SendKeyErr = tt.keyErr
 			if tt.pending {
 				if err := savePendingSend(runDir, pendingSend{Text: wantText}); err != nil {
 					t.Fatalf("savePendingSend: %v", err)
@@ -724,22 +784,57 @@ func checkPastedSessionCommand(t *testing.T, wantText string, call func(*Runner)
 			if len(reed.SendTextCalls) != 0 {
 				t.Errorf("SendText calls = %+v, want none on the paste path", reed.SendTextCalls)
 			}
+			if tt.keyErr != nil {
+				if !errors.Is(err, tt.keyErr) {
+					t.Errorf("error = %v, want one wrapping %v", err, tt.keyErr)
+				}
+				if len(reed.PasteSubmitCalls) != 0 {
+					t.Errorf("PasteSubmit calls = %+v, want none after a failed clear", reed.PasteSubmitCalls)
+				}
+				return
+			}
 			if tt.wantHeld {
 				if !errors.Is(err, ErrSessionBusy) {
 					t.Errorf("error = %v, want one wrapping ErrSessionBusy", err)
 				}
-				if len(reed.PasteSubmitCalls) != 0 {
-					t.Errorf("PasteSubmit calls = %+v, want none for a held command", reed.PasteSubmitCalls)
+				if len(reed.PasteSubmitCalls) != 0 || len(sentCalls(reed)) != 0 {
+					t.Errorf("PasteSubmit calls = %+v, sent calls = %v, want none for a held command", reed.PasteSubmitCalls, sentCalls(reed))
+				}
+				return
+			}
+			if tt.shape == clearlessPasteShape {
+				if sent := sentCalls(reed); len(sent) != 0 {
+					t.Errorf("sent calls = %v, want none for an engine with no clear", sent)
+				}
+			} else {
+				checkClearBeforePaste(t, reed)
+			}
+			if len(reed.PasteSubmitCalls) != 1 || reed.PasteSubmitCalls[0].Text != wantText {
+				t.Errorf("PasteSubmit calls = %+v, want one of %q", reed.PasteSubmitCalls, wantText)
+			}
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Errorf("error = %v, want one wrapping %v", err, tt.wantErr)
 				}
 				return
 			}
 			if err != nil {
 				t.Fatalf("error = %v, want the command confirmed", err)
 			}
-			if len(reed.PasteSubmitCalls) != 1 || reed.PasteSubmitCalls[0].Text != wantText {
-				t.Errorf("PasteSubmit calls = %+v, want one of %q", reed.PasteSubmitCalls, wantText)
-			}
 		})
+	}
+}
+
+// checkClearBeforePaste asserts that reed's only key is one C-u, the engine's box clear, sent right before its one paste.
+func checkClearBeforePaste(t *testing.T, reed *fakeReed) {
+	t.Helper()
+	if got, want := sentCalls(reed), []string{"SendKey:C-u"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("sent calls = %v, want %v", got, want)
+	}
+	for i, call := range reed.CallLog {
+		if call == "SendKey:C-u" && (i+1 >= len(reed.CallLog) || !strings.HasPrefix(reed.CallLog[i+1], "paste:")) {
+			t.Errorf("call log = %v, want the C-u right before the paste", reed.CallLog)
+		}
 	}
 }
 

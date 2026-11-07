@@ -452,10 +452,12 @@ func TestHubDelivery(t *testing.T) {
 		hub, prime, _ := newHub(t)
 		strand := creelengine.Strand{Name: "ly:orch", GUID: "guid-orch", Worktree: prime}
 		other := errors.New("boom")
+		takenAsPrompt := fmt.Errorf("wrapped: %w", shuttleengine.ErrCommandTakenAsPrompt)
 		for _, sentinel := range []struct {
 			in   error
 			want error
 		}{
+			{takenAsPrompt, takenAsPrompt},
 			{fmt.Errorf("wrapped: %w", shuttleengine.ErrSessionBusy), creelengine.ErrBusy},
 			{fmt.Errorf("wrapped: %w", shuttleengine.ErrPaused), creelengine.ErrBusy},
 			{fmt.Errorf("wrapped: %w", shuttleengine.ErrSubmissionNotLanded), creelengine.ErrNotLanded},

@@ -410,6 +410,8 @@
 // The engine knows no slash spelling or key name;
 // the Delivery seam's Command operation maps the name onto the provider.
 // It has the same ErrBusy and ErrNotLanded contract as the typing of a line.
+// A command the provider took as a prompt fails as a plain send error.
+// Creel then requeues the inject and types it again once the session is idle.
 // compact takes a one-line focus, color a segment color, and load-skills a space-separated skill list.
 // clear and reload-plugins take no argument.
 // Store.InjectCommand queues one under every rule of a text inject:

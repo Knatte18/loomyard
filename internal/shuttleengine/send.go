@@ -59,7 +59,9 @@ const (
 // sendContext is what one verified send needs: the pane it types into; the run's record, directory and events file;
 // the config; and the clock its timed waits read.
 // A zero deadline means none, and a nil hold starts the idle wait's turn-start hold afresh.
-// startsNoTurn marks a send whose text starts no turn, such as a slash command, so no turn start reads as its landing.
+// startsNoTurn marks a send whose text starts no turn, such as a slash command:
+// its paste follows a clear of the box,
+// and a turn start past the paste with no instruction or its text as one fails it as a command taken for a prompt.
 // landingStart is the session-start source whose line confirms a send that starts no turn;
 // it is empty for every other send.
 // keepUnlanded marks a send that never clears a text that did not land, leaving it in the input box.
@@ -588,6 +590,14 @@ var ErrSentTextInDraft = fmt.Errorf("%w: the sent text sits in the operator's dr
 // Nothing was submitted, cleared or edited.
 var ErrForeignBoxText = fmt.Errorf("%w: the input box holds text that is not this send's", ErrSessionBusy)
 
+// ErrCommandTakenAsPrompt marks a pasted command, a send that starts no turn, whose paste started a turn.
+// That turn start has no instruction, or the command's text as one.
+// The provider took the text as a prompt, so the command never ran.
+// A provider does this to a slash command behind leading whitespace.
+// The agent got the text as an instruction and nothing else was typed;
+// the caller may send the command again once the session is idle.
+var ErrCommandTakenAsPrompt = errors.New("shuttle: the command reached the agent as a prompt and did not run")
+
 // IsDraftHold reports whether err is a send held by text in the input box:
 // a *SessionBusyError whose hold is a draft, or an error wrapping ErrSentTextInDraft or ErrForeignBoxText.
 func IsDraftHold(err error) bool {
@@ -602,6 +612,7 @@ func IsDraftHold(err error) bool {
 // The paste carries its trailing Enter when the provider's Enter submits a paste;
 // otherwise the box is settled first, so the guarded Enter lands on a redrawn box.
 // The send's window opens before the paste and is cut to the send's deadline.
+// A send that starts no turn clears the box right before its paste.
 // A send into a strand with no run record keeps no pending-send record, since it has no run directory.
 func pasteVerified(sc sendContext, paster TextPaster, reader InputBoxReader, text string) error {
 	closeAt := sc.clock.Now().Add(submitConfirmTimeout(sc.cfg))
@@ -610,6 +621,11 @@ func pasteVerified(sc sendContext, paster TextPaster, reader InputBoxReader, tex
 	}
 	if windowClosed(sc.clock, closeAt) {
 		return withPaneTail(fmt.Errorf("%w: the submit window, cut to the send's deadline, had closed before the paste; nothing was pasted", ErrSubmissionNotLanded), "", sc)
+	}
+	if sc.startsNoTurn {
+		if err := clearBoxBeforeCommand(sc, reader); err != nil {
+			return err
+		}
 	}
 	sentAt := eventsSize(sc.eventsPath)
 	if err := sc.reed.PasteSubmit(sc.guid, text, paster.PasteSubmits()); err != nil {
@@ -622,6 +638,32 @@ func pasteVerified(sc sendContext, paster TextPaster, reader InputBoxReader, tex
 		}
 	}
 	return err
+}
+
+// clearBoxBeforeCommand plays the engine's input-box clear, for an engine that has one, right before a command's paste.
+// The idle reading takes a box holding only whitespace as empty,
+// and a provider takes a command pasted behind that whitespace as a prompt.
+// The clear goes only into a box that reads blank or unreadable.
+// No operator may have been active in the pane within the quiet window.
+// Text typed since the idle reading holds the send with a *SessionBusyError, and nothing is cleared or pasted.
+// A failed key fails the send before anything is pasted.
+func clearBoxBeforeCommand(sc sendContext, reader InputBoxReader) error {
+	clearer, ok := sc.engine.(InputBoxClearer)
+	if !ok {
+		return nil
+	}
+	if boxText, readable := readInputBox(sc, reader); readable && normalizePaneText(boxText) != "" {
+		reason := fmt.Sprintf("the input box holds %q", strings.TrimSpace(boxText))
+		busy := fmt.Errorf("%w: strand %q: %s; nothing was cleared or pasted", ErrSessionBusy, sc.guid, reason)
+		return &SessionBusyError{Reason: reason, Draft: true, Err: withPaneTail(busy, "", sc)}
+	}
+	if hold := operatorActivityHold(sc.reed, sc.guid, sc.activityFailures); hold != "" {
+		return &SessionBusyError{Reason: hold, Err: fmt.Errorf("%w: strand %q: %s; nothing was cleared or pasted; retry once the operator is idle", ErrSessionBusy, sc.guid, hold)}
+	}
+	if err := playInputs(sc.reed, sc.guid, clearer.ClearInputSequence()); err != nil {
+		return fmt.Errorf("shuttle: clear the input box before the command; nothing was pasted: %w", err)
+	}
+	return nil
 }
 
 // settleAndConfirmPasted runs what follows a paste.
@@ -648,8 +690,8 @@ func sequenceText(inputs []PaneInput) string {
 // sendSequence sends a choreography into sc's pane as one guarded write.
 // An empty choreography, a provider's no-command answer, returns nil before the guard:
 // no idle wait, no activity query and no paste.
-// An engine that takes pastes sends the choreography's text as a verified send,
-// so a slash command is pasted once and confirmed by the box reading empty.
+// An engine that takes pastes sends the choreography's text as a verified send that starts no turn,
+// so a slash command is pasted once into a cleared box and confirmed by the box reading empty.
 // Any other engine waits for an idle session and then plays its own keys.
 // A held write returns an error wrapping ErrSessionBusy and writes nothing.
 func sendSequence(sc sendContext, inputs []PaneInput) error {
@@ -701,6 +743,11 @@ func retryLanded(sc sendContext, text string) bool {
 // The input box is read first after reader.SubmitSettle(), then at a doubling interval capped at confirmBackoffCap.
 // The window closeAt cuts the last interval short.
 // A turn start past sentAt means the paste landed.
+// For a send that starts no turn, only a turn start whose instruction is empty or the pasted text counts:
+// a provider records no instruction for a slash command it took as a prompt,
+// and the send fails with ErrCommandTakenAsPrompt.
+// A turn start with another instruction, such as an operator's prompt, is no signal for such a send;
+// the checks below decide it.
 // When landingStart is set and the engine parses session signals, a session start of that source past sentAt does too.
 // For such a send, an empty box does not end the reads: the Enter is taken as sent, and later reads send no key.
 // The reads go on until a landing shows, or the window or read cap runs out; then the send returns nil.
@@ -720,7 +767,11 @@ func confirmPasted(sc sendContext, paster TextPaster, reader InputBoxReader, tex
 	for read := 1; ; read++ {
 		wait := min(interval, closeAt.Sub(sc.clock.Now()))
 		sc.clock.Sleep(max(wait, settle))
-		if turnStartedSince(sc.engine, sc.eventsPath, sentAt) {
+		if sc.startsNoTurn {
+			if commandTurnStartedSince(sc.engine, sc.eventsPath, sentAt, text) {
+				return withPaneTail(fmt.Errorf("%w: a turn started after the paste of %q", ErrCommandTakenAsPrompt, text), "", sc)
+			}
+		} else if turnStartedSince(sc.engine, sc.eventsPath, sentAt) {
 			return nil
 		}
 		_, parsesSignals := sc.engine.(SessionSignalParser)
@@ -924,6 +975,17 @@ func turnStartedSince(engine Engine, eventsPath string, offset int64) bool {
 func promptTurnStartedSince(engine Engine, eventsPath string, offset int64, promptLine string) bool {
 	instruction := strings.TrimSpace(promptLine)
 	return turnStartMatchedSince(engine, eventsPath, offset, func(signal SessionSignal) bool { return signal.Instruction == instruction })
+}
+
+// commandTurnStartedSince reports whether the events file holds a turn start past byte offset.
+// Its instruction must be empty or command, trimmed.
+// A provider records no instruction for a slash command it took as a prompt, and a turn an operator typed carries one.
+// An engine that cannot parse session signals, or an unreadable events file, reports false.
+func commandTurnStartedSince(engine Engine, eventsPath string, offset int64, command string) bool {
+	instruction := strings.TrimSpace(command)
+	return turnStartMatchedSince(engine, eventsPath, offset, func(signal SessionSignal) bool {
+		return signal.Instruction == "" || signal.Instruction == instruction
+	})
 }
 
 // turnStartMatchedSince reports whether the events file holds a turn start past byte offset that match accepts.

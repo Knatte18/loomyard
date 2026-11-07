@@ -381,7 +381,7 @@ func isBlankBoxInterior(line string) bool {
 }
 
 // ClearSessionSequence returns /clear and its Enter, with no leading Escape.
-// The caller has just proved the input box empty, so there is nothing to clear,
+// The caller has just read the input box empty and empties any whitespace in it before the paste,
 // and an Escape landing right after another Escape opens Claude's rewind menu instead.
 // There is no pause between the text and the Enter: the paste path submits them in one tmux invocation.
 func (c *Claude) ClearSessionSequence() []shuttleengine.PaneInput {
@@ -392,7 +392,8 @@ func (c *Claude) ClearSessionSequence() []shuttleengine.PaneInput {
 }
 
 // CompactSessionSequence returns /compact and its Enter, followed by focus when it is non-empty.
-// It has no leading Escape, because the caller has just proved the input box empty.
+// It has no leading Escape:
+// the caller has just read the input box empty and empties any whitespace in it before the paste.
 // There is no pause between the text and the Enter: the paste path submits them in one tmux invocation.
 func (c *Claude) CompactSessionSequence(focus string) []shuttleengine.PaneInput {
 	text := "/compact"
@@ -406,7 +407,8 @@ func (c *Claude) CompactSessionSequence(focus string) []shuttleengine.PaneInput 
 }
 
 // ReloadPluginsSequence returns /reload-plugins and its Enter.
-// It has no leading Escape, because the caller has just proved the input box empty.
+// It has no leading Escape:
+// the caller has just read the input box empty and empties any whitespace in it before the paste.
 // The command rebuilds the skill list the Skill tool reads and ends no turn.
 // There is no pause between the text and the Enter: the paste path submits them in one tmux invocation.
 func (c *Claude) ReloadPluginsSequence() []shuttleengine.PaneInput {

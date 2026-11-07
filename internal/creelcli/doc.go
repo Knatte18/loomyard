@@ -147,6 +147,8 @@
 // The commands are clear, reload-plugins, compact, color and load-skills.
 // The argument is the focus for compact, the segment color for color, and the space-separated skills for load-skills.
 // Shuttle's busy and not-confirmed answers map onto the engine's ErrBusy and ErrNotLanded, as they do for a typed line.
+// A command the provider took as a prompt fails as a plain send error.
+// Creel then requeues the inject and types it again once the session is idle.
 // A send that failed after the paste maps onto ErrNotLanded as well.
 // It failed because its text was found in the operator's draft or foreign text stood in the input box.
 // ErrBusy means nothing was typed, and a requeue would type the line again.

@@ -451,6 +451,14 @@
 // Runner.ClearSession, Runner.CompactSession and Runner.ReloadPlugins send their slash commands through the same path.
 // A draft in the box or an active operator holds them with ErrSessionBusy,
 // so a caller's earlier idle probe never lets them type.
+// The idle reading takes a box of whitespace as empty, and a provider takes a command behind whitespace as a prompt,
+// so an engine with InputBoxClearer gets its clear right before the paste of a command or the color.
+// The clear goes only into a box that reads blank or unreadable with no operator active.
+// Text typed since the idle reading holds the command.
+// A command's text starts no turn.
+// A turn start past the paste with no instruction, or the command's text as one, means the provider took it as a prompt.
+// The send then fails with ErrCommandTakenAsPrompt instead of confirming.
+// A turn start with another instruction, such as an operator's prompt, is no signal for a command.
 // Runner.ClearSession and Runner.CompactSession confirm on a session-start line the provider writes for their command.
 // The line has source clear or compact and lies past the events offset taken before the paste.
 // An empty box does not confirm them early.

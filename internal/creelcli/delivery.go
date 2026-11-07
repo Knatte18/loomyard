@@ -457,6 +457,8 @@ func (d *hubDelivery) Interrupt(strand creelengine.Strand) error {
 // A send that failed after the paste maps onto creelengine.ErrNotLanded instead.
 // Its text sits in the operator's draft or among foreign text in the input box.
 // Requeueing such an inject would type it again, whereas ErrBusy means nothing was typed.
+// A command the provider took as a prompt passes through as a failed send:
+// it never ran, so creel requeues it and types it again once the session is idle.
 func mapDeliveryError(err error) error {
 	switch {
 	case errors.Is(err, shuttleengine.ErrSentTextInDraft), errors.Is(err, shuttleengine.ErrForeignBoxText):

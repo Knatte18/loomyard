@@ -338,8 +338,23 @@ func TestBuildLaunchCmd(t *testing.T) {
 	}
 }
 
+// openLines returns an open launch's fresh and resume lines with their leading export of the prompt-cache TTL stripped.
+// It fails the test unless both lines open with that export at ttl.
+func openLines(t *testing.T, sh shell.Shell, launch shuttleengine.Launch, ttl string) (fresh, resume string) {
+	t.Helper()
+	const marker = "|"
+	lead := strings.TrimSuffix(sh.Chain(sh.ExportEnv(promptCacheTTLEnvKey, ttl), marker), marker)
+	fresh, freshFound := strings.CutPrefix(launch.Cmd, lead)
+	resume, resumeFound := strings.CutPrefix(launch.ResumeCmd, lead)
+	if !freshFound || !resumeFound {
+		t.Fatalf("launch = %+v; want both lines to open with %q", launch, lead)
+	}
+	return fresh, resume
+}
+
 // TestOpenLaunch pins the open launch: the fresh line with the name reference and optional model flags;
-// the resume line that falls back to the fresh one; and the refusals made before a session id is minted.
+// the resume line that falls back to the fresh one; the export of the role's prompt-cache TTL ahead of both;
+// and the refusals made before a session id is minted.
 func TestOpenLaunch(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -348,6 +363,11 @@ func TestOpenLaunch(t *testing.T) {
 	tests := []struct {
 		name string
 		spec shuttleengine.OpenSpec
+		// defaultTTL and ttlRoles replace the template's prompt-cache TTL fields when set.
+		defaultTTL string
+		ttlRoles   map[string]string
+		// wantTTL is the TTL both lines export; empty means the template's default.
+		wantTTL string
 		// invalidConfig makes the engine load a claude.yaml the loader refuses.
 		invalidConfig bool
 		// board gives the engine a hub board directory, so the launch writes creel's files into the open directory.
@@ -356,95 +376,111 @@ func TestOpenLaunch(t *testing.T) {
 		// so the write of that file fails after the directory and settings.json exist.
 		obstructAppendPrompt bool
 		wantErr              string
-		check                func(t *testing.T, launch shuttleengine.Launch)
+		// check gets the launch and its two lines with the TTL export stripped.
+		check func(t *testing.T, launch shuttleengine.Launch, fresh, resume string)
 	}{
+		{
+			name:       "the role's mapped TTL is exported ahead of both lines",
+			spec:       shuttleengine.OpenSpec{Role: "orch"},
+			defaultTTL: "1h",
+			ttlRoles:   map[string]string{"orch": "5m"},
+			wantTTL:    "5m",
+			check: func(t *testing.T, _ shuttleengine.Launch, fresh, resume string) {
+				resumeLine := strings.Replace(fresh, "--session-id", "--resume", 1)
+				if want := sh.OrElse(resumeLine, fresh); resume != want {
+					t.Errorf("resume line = %q; want %q, both under the one export", resume, want)
+				}
+			},
+		},
+		{name: "an unmapped role exports the default TTL", spec: shuttleengine.OpenSpec{Role: "explore"}, defaultTTL: "1h", wantTTL: "1h"},
+		{name: "an invalid TTL is refused", spec: shuttleengine.OpenSpec{Role: "explore"}, defaultTTL: "1H", wantErr: `prompt_cache_ttl "1H"`},
 		{name: "a failed append-prompt write removes the directory", spec: shuttleengine.OpenSpec{Role: "explore"}, board: true, obstructAppendPrompt: true, wantErr: "write open append system prompt"},
 		{name: "a board writes the creel settings and the append prompt", spec: shuttleengine.OpenSpec{Role: "explore"}, board: true},
 		{name: "a board refusal creates nothing", spec: shuttleengine.OpenSpec{Role: "explore", PermissionMode: "auto"}, board: true, wantErr: "invalid permission mode"},
 		{
 			name: "fresh line",
 			spec: shuttleengine.OpenSpec{Role: "explore", ModelChoice: shuttleengine.ModelChoice{Model: "opus", Effort: "high"}},
-			check: func(t *testing.T, launch shuttleengine.Launch) {
+			check: func(t *testing.T, launch shuttleengine.Launch, fresh, resume string) {
 				for _, want := range []string{"--session-id " + sh.Quote(launch.SessionID), nameRef, "--model " + sh.Quote("opus"), "--effort " + sh.Quote("high")} {
-					if !strings.Contains(launch.Cmd, want) {
-						t.Errorf("Cmd = %q; want it to hold %q", launch.Cmd, want)
+					if !strings.Contains(fresh, want) {
+						t.Errorf("fresh line = %q; want it to hold %q", fresh, want)
 					}
 				}
-				if !strings.HasPrefix(launch.Cmd, sh.Invoke("claude")) {
-					t.Errorf("Cmd = %q; want it to start with the invoked binary", launch.Cmd)
+				if !strings.HasPrefix(fresh, sh.Invoke("claude")) {
+					t.Errorf("fresh line = %q; want it to start with the invoked binary", fresh)
 				}
 				for _, banned := range []string{"--settings", "Read "} {
-					if strings.Contains(launch.Cmd, banned) {
-						t.Errorf("Cmd = %q; want no %q", launch.Cmd, banned)
+					if strings.Contains(fresh, banned) {
+						t.Errorf("fresh line = %q; want no %q", fresh, banned)
 					}
 				}
-				if got := strings.Count(launch.ResumeCmd, "--dangerously-skip-permissions"); got != 2 {
-					t.Errorf("ResumeCmd = %q holds --dangerously-skip-permissions %d times; want 2, the empty mode's bypass default", launch.ResumeCmd, got)
+				if got := strings.Count(resume, "--dangerously-skip-permissions"); got != 2 {
+					t.Errorf("resume line = %q holds --dangerously-skip-permissions %d times; want 2, the empty mode's bypass default", resume, got)
 				}
 			},
 		},
 		{
 			name: "bypass skips permissions on every line",
 			spec: shuttleengine.OpenSpec{Role: "explore", PermissionMode: "bypass"},
-			check: func(t *testing.T, launch shuttleengine.Launch) {
+			check: func(t *testing.T, _ shuttleengine.Launch, fresh, resume string) {
 				const flag = "--dangerously-skip-permissions"
-				if !strings.Contains(launch.Cmd, flag) {
-					t.Errorf("Cmd = %q; want it to hold %q", launch.Cmd, flag)
+				if !strings.Contains(fresh, flag) {
+					t.Errorf("fresh line = %q; want it to hold %q", fresh, flag)
 				}
-				resumeLine := strings.Replace(launch.Cmd, "--session-id", "--resume", 1)
-				if want := sh.OrElse(resumeLine, launch.Cmd); launch.ResumeCmd != want {
-					t.Errorf("ResumeCmd = %q; want %q", launch.ResumeCmd, want)
+				resumeLine := strings.Replace(fresh, "--session-id", "--resume", 1)
+				if want := sh.OrElse(resumeLine, fresh); resume != want {
+					t.Errorf("resume line = %q; want %q", resume, want)
 				}
-				if got := strings.Count(launch.ResumeCmd, flag); got != 2 {
-					t.Errorf("ResumeCmd = %q holds %q %d times; want 2", launch.ResumeCmd, flag, got)
+				if got := strings.Count(resume, flag); got != 2 {
+					t.Errorf("resume line = %q holds %q %d times; want 2", resume, flag, got)
 				}
 			},
 		},
 		{
 			name: "prompt adds no permission flag",
 			spec: shuttleengine.OpenSpec{Role: "explore", PermissionMode: "prompt"},
-			check: func(t *testing.T, launch shuttleengine.Launch) {
-				for _, line := range []string{launch.Cmd, launch.ResumeCmd} {
+			check: func(t *testing.T, _ shuttleengine.Launch, fresh, resume string) {
+				for _, line := range []string{fresh, resume} {
 					if strings.Contains(line, "--dangerously-skip-permissions") {
 						t.Errorf("line = %q; want no --dangerously-skip-permissions", line)
 					}
 				}
-				resumeLine := strings.Replace(launch.Cmd, "--session-id", "--resume", 1)
-				if want := sh.OrElse(resumeLine, launch.Cmd); launch.ResumeCmd != want {
-					t.Errorf("ResumeCmd = %q; want %q", launch.ResumeCmd, want)
+				resumeLine := strings.Replace(fresh, "--session-id", "--resume", 1)
+				if want := sh.OrElse(resumeLine, fresh); resume != want {
+					t.Errorf("resume line = %q; want %q", resume, want)
 				}
 			},
 		},
 		{
 			name: "resume falls back to a fresh start",
 			spec: shuttleengine.OpenSpec{Role: "explore", ModelChoice: shuttleengine.ModelChoice{Model: "opus"}},
-			check: func(t *testing.T, launch shuttleengine.Launch) {
-				resumeLine := strings.Replace(launch.Cmd, "--session-id", "--resume", 1)
-				if want := sh.OrElse(resumeLine, launch.Cmd); launch.ResumeCmd != want {
-					t.Errorf("ResumeCmd = %q; want %q", launch.ResumeCmd, want)
+			check: func(t *testing.T, _ shuttleengine.Launch, fresh, resume string) {
+				resumeLine := strings.Replace(fresh, "--session-id", "--resume", 1)
+				if want := sh.OrElse(resumeLine, fresh); resume != want {
+					t.Errorf("resume line = %q; want %q", resume, want)
 				}
 			},
 		},
 		{
 			name: "no model or effort adds neither flag",
 			spec: shuttleengine.OpenSpec{Role: "explore"},
-			check: func(t *testing.T, launch shuttleengine.Launch) {
-				if strings.Contains(launch.Cmd, "--model") || strings.Contains(launch.Cmd, "--effort") {
-					t.Errorf("Cmd = %q; want neither --model nor --effort", launch.Cmd)
+			check: func(t *testing.T, _ shuttleengine.Launch, fresh, _ string) {
+				if strings.Contains(fresh, "--model") || strings.Contains(fresh, "--effort") {
+					t.Errorf("fresh line = %q; want neither --model nor --effort", fresh)
 				}
 			},
 		},
 		{
 			name: "skills ride the fresh line as the first turn and no resume line",
 			spec: shuttleengine.OpenSpec{Role: "board", Skills: []string{"ly:board-policy", "ly:board"}},
-			check: func(t *testing.T, launch shuttleengine.Launch) {
+			check: func(t *testing.T, _ shuttleengine.Launch, fresh, resume string) {
 				message := " " + sh.Quote(new(Claude).SkillLoadMessage([]string{"ly:board-policy", "ly:board"}))
-				if want := sh.Invoke("claude") + message + " --session-id "; !strings.HasPrefix(launch.Cmd, want) {
-					t.Errorf("Cmd = %q; want it to start with %q", launch.Cmd, want)
+				if want := sh.Invoke("claude") + message + " --session-id "; !strings.HasPrefix(fresh, want) {
+					t.Errorf("fresh line = %q; want it to start with %q", fresh, want)
 				}
-				resumeLine := strings.Replace(strings.Replace(launch.Cmd, message, "", 1), "--session-id", "--resume", 1)
-				if want := sh.OrElse(resumeLine, launch.Cmd); launch.ResumeCmd != want {
-					t.Errorf("ResumeCmd = %q; want %q", launch.ResumeCmd, want)
+				resumeLine := strings.Replace(strings.Replace(fresh, message, "", 1), "--session-id", "--resume", 1)
+				if want := sh.OrElse(resumeLine, fresh); resume != want {
+					t.Errorf("resume line = %q; want %q", resume, want)
 				}
 			},
 		},
@@ -457,7 +493,7 @@ func TestOpenLaunch(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			engine := engineWith(t, templateConfig(t))
+			engine := engineWith(t, ttlConfig(t, tt.defaultTTL, tt.ttlRoles))
 			if tt.invalidConfig {
 				engine = engineWithInvalidConfig(t)
 			}
@@ -498,6 +534,11 @@ func TestOpenLaunch(t *testing.T) {
 			if strings.ContainsAny(launch.Cmd+launch.ResumeCmd, "\r\n") {
 				t.Errorf("launch = %+v; want single-line commands", launch)
 			}
+			wantTTL := tt.wantTTL
+			if wantTTL == "" {
+				wantTTL = templateConfig(t).PromptCacheTTL
+			}
+			fresh, resume := openLines(t, sh, launch, wantTTL)
 			if tt.board {
 				checkOpenCreelFiles(t, launch, dir, boardDir, sh)
 				return
@@ -514,7 +555,9 @@ func TestOpenLaunch(t *testing.T) {
 			if _, statErr := os.Stat(dir); !os.IsNotExist(statErr) {
 				t.Errorf("Stat(%s) error = %v; want the directory uncreated without a board", dir, statErr)
 			}
-			tt.check(t, launch)
+			if tt.check != nil {
+				tt.check(t, launch, fresh, resume)
+			}
 		})
 	}
 }

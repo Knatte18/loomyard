@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -379,7 +380,8 @@ func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model
 // Reed replays the resume line verbatim, so a resume without the flag would bring a bypass session back prompting.
 // A non-empty settingsPath adds --settings naming it, which Claude Code stacks over the worktree's own settings.
 // A non-empty appendPromptPath adds --append-system-prompt-file naming it.
-// It passes no environment assignment, so the line is one pipeline that OrElse may join.
+// It passes no environment assignment, so the line is one pipeline that OrElse may join;
+// the caller exports the environment once in front of the joined lines.
 func buildOpenCmd(sh shell.Shell, bin, firstTurn, sessionID, model, effort, settingsPath, appendPromptPath string, skipPermissions, resume bool) string {
 	sessionFlag := " --session-id "
 	if resume {
@@ -409,7 +411,11 @@ func buildOpenCmd(sh shell.Shell, bin, firstTurn, sessionID, model, effort, sett
 }
 
 // OpenLaunch returns the launch of a named interactive session with no prompt.
-// It validates the effort, the permission mode and the model before it writes anything.
+// It validates the effort, the permission mode and the model before it writes anything,
+// and it resolves the prompt-cache TTL before then too.
+// The TTL is spec.Role's from claude.yaml, as for a run, and an invalid TTL anywhere in claude.yaml refuses the open.
+// Both lines open with a statement that exports it as CLAUDE_CODE_PROMPT_CACHE_TTL,
+// so the resume line and its fresh fallback both run under it, in either shell dialect.
 // With a hub board directory, it creates dir and writes two files into it:
 // settings.json holds creel's hook delivery, the empty attribution and the session's scope for spec.Skills alone.
 // The append-system-prompt file holds the creel trust sentence.
@@ -445,6 +451,11 @@ func (c *Claude) OpenLaunch(dir string, spec shuttleengine.OpenSpec, cfg shuttle
 	if err != nil {
 		return shuttleengine.Launch{}, err
 	}
+	promptCacheTTL, err := resolvePromptCacheTTL(spec.Role, claude)
+	if err != nil {
+		return shuttleengine.Launch{}, err
+	}
+	logger.Info("claudeengine: resolved the prompt-cache TTL of an opened session", "role", spec.Role, "ttl", promptCacheTTL)
 	skillLoadMessage := ""
 	if len(spec.Skills) > 0 {
 		skillLoadMessage = c.SkillLoadMessage(spec.Skills)
@@ -475,7 +486,13 @@ func (c *Claude) OpenLaunch(dir string, spec shuttleengine.OpenSpec, cfg shuttle
 	bin := claudeBinary(claude)
 	fresh := buildOpenCmd(sh, bin, skillLoadMessage, sessionID, resolvedModel, spec.Effort, settingsPath, appendPromptPath, skipPermissions, false)
 	resumeLine := buildOpenCmd(sh, bin, "", sessionID, resolvedModel, spec.Effort, settingsPath, appendPromptPath, skipPermissions, true)
-	return shuttleengine.Launch{Cmd: fresh, ResumeCmd: sh.OrElse(resumeLine, fresh), SessionID: sessionID, CreelHooks: creelFlagDirForHook != ""}, nil
+	exportTTL := sh.ExportEnv(promptCacheTTLEnvKey, promptCacheTTL)
+	return shuttleengine.Launch{
+		Cmd:        sh.Chain(exportTTL, fresh),
+		ResumeCmd:  sh.Chain(exportTTL, sh.OrElse(resumeLine, fresh)),
+		SessionID:  sessionID,
+		CreelHooks: creelFlagDirForHook != "",
+	}, nil
 }
 
 // writeOpenFiles creates dir and writes an opened session's two files into it.

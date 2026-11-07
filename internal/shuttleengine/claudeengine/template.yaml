@@ -1,7 +1,7 @@
 binary: ${env:LYM_SHUTTLE_CLAUDE:-}  # path to the claude executable; empty falls back to "claude" on PATH — prefer an explicit path, PATH aliases can hit the 0-byte WindowsApps stub; the binary must be the engine or exec it, since a wrapper that does not exec leaves its shell in the foreground and reed reads the strand dead
 deny_ask_user_question: true  # emit a PreToolUse deny for the AskUserQuestion tool (autonomous runs only)
-prompt_cache_ttl: 5m  # prompt-cache TTL for every role without an entry in prompt_cache_ttl_roles; Claude Code's own values, validated when a run starts, and the refusal names the accepted ones
-prompt_cache_ttl_roles:  # prompt-cache TTL per role, keyed by a strand's role segment (Spec.Role); the operator's own map, replacing the template's whole when present, so leaving a role out drops it to the default; values are Claude Code's, validated when a run starts, and the refusal names the accepted ones
+prompt_cache_ttl: 5m  # prompt-cache TTL for every role without an entry in prompt_cache_ttl_roles; Claude Code's own values, validated when a run starts or a session opens, and the refusal names the accepted ones
+prompt_cache_ttl_roles:  # prompt-cache TTL per role, keyed by a strand's role segment (Spec.Role); the operator's own map, replacing the template's whole when present, so leaving a role out drops it to the default; values are Claude Code's, validated when a run starts or a session opens, and the refusal names the accepted ones
   driver: 5m
   webster: 1h
   orch: 1h
