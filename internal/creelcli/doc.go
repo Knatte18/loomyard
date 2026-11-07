@@ -24,7 +24,8 @@
 // A message that expects a reply carries `expect_reply: true`.
 // A message from another hub has its stamp after the sender in the read header.
 // In the envelope `from` stays the bare name.
-// Beside it are `trust` (`trusted-orch` or `untrusted`), `sending_hub` and `sending_id`.
+// Beside it are `trust` (`trusted-orch` or `untrusted`), `sending_hub` and `sending_id`,
+// and `sending_repository` when the sending hub had a repository name.
 // `log` entries carry `expect_reply: true` on an entry of a marked message.
 // A reply's entry carries `reply_to`, the answered id, and a `chased` entry carries `chase`, the chase number.
 // An entry of mail across hubs adds these fields where set:
@@ -107,16 +108,19 @@
 // A wait is never resumed once a ring reached it.
 // A waiter costs one idle process per live strand, blocked on its socket.
 // The hub directory in this package implements the engine's HubDirectory seam.
-// It works over the machine record of hubs, the other hubs' geometries, the daemon spawn and the hub's creel.yaml.
+// It works over the machine record of hubs and the other hubs' geometries and repository names.
+// It also works over the daemon spawn and the hub's creel.yaml.
 // The machine record sits in the per-user state directory.
 // The `trusted_hubs` list of creel.yaml is read at each call, so a changed list applies with no daemon restart.
 // A per-user state directory that cannot be read leaves the daemon serving its own strands.
 // A record or lookup then refuses, naming the cause and the environment variables to set.
-// `hubs` prints `{"hubs":[{shortname, hub_path, daemon_answers, trusted}]}`.
+// `hubs` prints `{"hubs":[{shortname, hub_path, repository, daemon_answers, trusted}]}`.
 // It lists the hubs of the machine record whose shortname record still reads their shortname.
 // The list is empty when the record holds none.
 // `daemon_answers` dials the hub's socket and closes at once, so the verb starts no daemon and writes no record.
-// `trusted` says whether this hub's creel.yaml lists the shortname.
+// `repository` is the hub's GitHub repository, owner/repo, read from its prime's origin remote.
+// A hub with none carries `no_repository`, the reason, in its place and is never trusted.
+// `trusted` says whether this hub's creel.yaml lists the repository, ignoring case.
 // A corrupt record, an invalid creel.yaml and an unreadable per-user state directory each refuse.
 // Each refusal carries its own way forward.
 // GoClient is the one Go-side caller of creel, so no other module builds a creel request by hand.

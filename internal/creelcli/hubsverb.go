@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"slices"
 
 	"github.com/spf13/cobra"
 
@@ -55,11 +54,13 @@ func hubsCmd() *cobra.Command {
 		Short:       "list the other hubs of this machine that creel mail can reach",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
 		Long: `hubs lists the hubs recorded on this machine whose shortname record still reads
-the shortname they recorded, as {"hubs":[{shortname, hub_path, daemon_answers,
-trusted}]}. daemon_answers says whether the hub's daemon answers on its socket;
-the verb never starts a daemon and writes no record. trusted says whether this
-hub's creel.yaml lists the shortname in trusted_hubs, so its orch's mail is
-obeyed here.
+the shortname they recorded, as {"hubs":[{shortname, hub_path, repository,
+daemon_answers, trusted}]}. repository is the hub's GitHub repository, owner/repo,
+read from its origin remote; a hub with none shows no_repository, the reason,
+instead, and is never trusted. daemon_answers says whether the hub's daemon
+answers on its socket; the verb never starts a daemon and writes no record.
+trusted says whether this hub's creel.yaml lists the repository in
+trusted_hubs, so its orch's mail is obeyed here.
 
 To mail a strand of another hub, post to its full name, as lym creel post
 <shortname>:orch "<text>" does.
@@ -98,10 +99,15 @@ Example:
 					if err != nil {
 						return result{}, err
 					}
-					hubs = append(hubs, map[string]any{
-						"shortname": entry.Shortname, "hub_path": entry.HubPath,
-						"daemon_answers": daemonAnswers(geometry.SocketPath), "trusted": slices.Contains(cfg.TrustedHubs, entry.Shortname),
-					})
+					fields := map[string]any{"shortname": entry.Shortname, "hub_path": entry.HubPath, "daemon_answers": daemonAnswers(geometry.SocketPath)}
+					repository, err := hubregistry.RepositoryName(entry.HubPath)
+					if err != nil {
+						fields["no_repository"] = err.Error()
+					} else {
+						fields["repository"] = repository
+					}
+					fields["trusted"] = creelengine.ListsRepository(cfg.TrustedHubs, repository)
+					hubs = append(hubs, fields)
 				}
 				return result{fields: map[string]any{"hubs": hubs}}, nil
 			})

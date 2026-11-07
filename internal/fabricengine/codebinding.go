@@ -64,6 +64,15 @@ func HubRepoURL(l *lymcwd.Location) (string, error) {
 	return origin, nil
 }
 
+// HubOriginURL returns the URL of the origin remote of the prime worktree of the hub at hubPath.
+// The prime is the worktree named after the hub: the hub `<name>-LYMHUB` holds it as `<name>`.
+// It reads the repository's local config and spawns no git process.
+// A prime with no origin remote, or an origin with no configured URL, is an error.
+func HubOriginURL(hubPath string) (string, error) {
+	prime := filepath.Join(hubPath, strings.TrimSuffix(filepath.Base(hubPath), HubSuffix))
+	return gitrepo.New(prime).RemoteURL("origin")
+}
+
 // writeWarpBinding writes warpURL plus a trailing newline to <boardDir>/.lym-warp, replacing any
 // existing content.
 // The caller is responsible for committing the result onto weft:main through Bolt;

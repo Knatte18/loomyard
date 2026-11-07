@@ -26,7 +26,7 @@ const trustedHubsKey = "trusted_hubs"
 
 // Config represents the resolved creel.yaml configuration.
 type Config struct {
-	// TrustedHubs lists the shortnames of the hubs whose orch this hub obeys.
+	// TrustedHubs lists the repository names, owner/repo, of the hubs whose orch this hub obeys.
 	// No entry is validated: a malformed one matches no sender.
 	TrustedHubs []string `yaml:"trusted_hubs"`
 }

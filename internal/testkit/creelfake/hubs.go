@@ -17,25 +17,32 @@ var _ creelengine.HubDirectory = (*Hubs)(nil)
 // Hubs is a creelengine.HubDirectory whose hubs and answers are scripted.
 // With nothing set, Spawn answers an error and starts nothing.
 // Geometry of an unknown path answers an error.
-// TrustedHubs answers an empty list.
+// TrustedHubs answers an empty list, and RepositoryName of a hub with no scripted answer answers an error.
 type Hubs struct {
-	mu          sync.Mutex
-	paths       map[string][]string
-	geometries  map[string]creelengine.Geometry
-	spawnFn     func(hubPath string) (creelengine.Spawn, error)
-	trusted     []string
-	trustedErr  error
-	recordErr   error
-	lookupErrs  map[string]error
-	geometryErr map[string]error
-	records     int
-	spawns      map[string]int
+	mu           sync.Mutex
+	paths        map[string][]string
+	geometries   map[string]creelengine.Geometry
+	spawnFn      func(hubPath string) (creelengine.Spawn, error)
+	trusted      []string
+	trustedErr   error
+	repositories map[string]repositoryAnswer
+	recordErr    error
+	lookupErrs   map[string]error
+	geometryErr  map[string]error
+	records      int
+	spawns       map[string]int
+}
+
+// repositoryAnswer is the scripted answer of RepositoryName for one hub.
+type repositoryAnswer struct {
+	name string
+	err  error
 }
 
 // NewHubs returns a Hubs that knows no hub.
 func NewHubs() *Hubs {
 	return &Hubs{
-		paths: map[string][]string{}, geometries: map[string]creelengine.Geometry{},
+		paths: map[string][]string{}, geometries: map[string]creelengine.Geometry{}, repositories: map[string]repositoryAnswer{},
 		lookupErrs: map[string]error{}, geometryErr: map[string]error{}, spawns: map[string]int{},
 	}
 }
@@ -56,11 +63,18 @@ func (h *Hubs) SetSpawn(fn func(hubPath string) (creelengine.Spawn, error)) {
 	h.spawnFn = fn
 }
 
-// SetTrusted scripts the shortnames and the error answered for the trusted hubs.
-func (h *Hubs) SetTrusted(shortnames []string, err error) {
+// SetTrusted scripts the repository names and the error answered for the trusted hubs.
+func (h *Hubs) SetTrusted(repositories []string, err error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.trusted, h.trustedErr = shortnames, err
+	h.trusted, h.trustedErr = repositories, err
+}
+
+// SetRepository scripts the repository name and the error RepositoryName answers for the hub at hubPath.
+func (h *Hubs) SetRepository(hubPath, name string, err error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.repositories[hubPath] = repositoryAnswer{name: name, err: err}
 }
 
 // SetRecordError makes the record operation fail with err until it is set to nil.
@@ -166,4 +180,15 @@ func (h *Hubs) TrustedHubs() ([]string, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return slices.Clone(h.trusted), h.trustedErr
+}
+
+// RepositoryName implements creelengine.HubDirectory.
+func (h *Hubs) RepositoryName(hubPath string) (string, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	answer, ok := h.repositories[hubPath]
+	if !ok {
+		return "", fmt.Errorf("creelfake: no repository is set for the hub %q", hubPath)
+	}
+	return answer.name, answer.err
 }

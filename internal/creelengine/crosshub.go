@@ -6,6 +6,7 @@ package creelengine
 import (
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 )
@@ -31,10 +32,16 @@ func (s *Store) refuseOtherHub(receiver, verb string) error {
 	return fmt.Errorf("creel: %s is a name of another hub, and %s stays inside one hub; way forward: lym creel post %s \"<text>\"", receiver, verb, receiver)
 }
 
+// longestRepositoryName is the longest owner/repo GitHub allows: a 39-character owner and a 100-character repository.
+var longestRepositoryName = strings.Repeat("o", 39) + "/" + strings.Repeat("r", 100)
+
 // widestStampedLine renders the longest line a message from sender from with body can take.
-// It uses the marked form with the longer, untrusted stamp.
+// It uses the marked form with the longer, untrusted stamp, led by the longest repository name.
 func widestStampedLine(from, body string) string {
-	return MessageLine(Message{ID: math.MaxInt64, From: from, Body: body, ExpectReply: true, SendingHub: "hub", Trusted: false})
+	return MessageLine(Message{
+		ID: math.MaxInt64, From: from, Body: body, ExpectReply: true,
+		SendingHub: "hub", SendingRepository: longestRepositoryName, Trusted: false,
+	})
 }
 
 // validateStampedLine refuses an empty body and one whose stamped line does not fit one hook delivery.

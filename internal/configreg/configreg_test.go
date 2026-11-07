@@ -12,7 +12,9 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/creelconfig"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubregistry"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
@@ -41,6 +43,53 @@ func TestNames(t *testing.T) {
 		if module, _ := Lookup(name); module.CheckLoad == nil {
 			t.Errorf("Lookup(%q).CheckLoad is nil; want the module's loader", name)
 		}
+	}
+}
+
+// TestModules_CreelRegistersTheTrustedHubsReinterpretation pins that the creel module carries the change of trusted_hubs.
+// The change goes from shortnames to repository names and rewrites a hub's creel.yaml with no hand step.
+func TestModules_CreelRegistersTheTrustedHubsReinterpretation(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	module, ok := Lookup("creel")
+	if !ok {
+		t.Fatal(`Lookup("creel") found no module`)
+	}
+	if len(module.Reinterpretations) != 1 || module.Reinterpretations[0].ID != creelconfig.TrustedHubsRepositoryReinterpretation || module.Reinterpretations[0].Rewrite == nil {
+		t.Errorf("creel Reinterpretations = %+v; want one with ID %q and a rewrite", module.Reinterpretations, creelconfig.TrustedHubsRepositoryReinterpretation)
+	}
+}
+
+// TestMarkUnresolvable pins which resolve failures drop a trusted_hubs entry and which end the rewrite.
+func TestMarkUnresolvable(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	unreadable := errors.New("the per-user state directory is unreadable")
+	tests := []struct {
+		name          string
+		err           error
+		wantUnmarked  bool
+		wantUnchanged bool
+	}{
+		{"ShortnameNamingNoHub", fmt.Errorf("no hub: %w", hubregistry.ErrUnresolved), false, false},
+		{"HubWithNoRepository", fmt.Errorf("no origin: %w", hubregistry.ErrNoRepository), false, false},
+		{"UnreadableState", unreadable, true, true},
+		{"NoError", nil, true, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := markUnresolvable(tt.err)
+			if marked := errors.Is(got, creelconfig.ErrShortnameUnresolvable); marked == tt.wantUnmarked {
+				t.Errorf("markUnresolvable(%v) matches ErrShortnameUnresolvable = %v; want %v", tt.err, marked, !tt.wantUnmarked)
+			}
+			if tt.wantUnchanged && got != tt.err {
+				t.Errorf("markUnresolvable(%v) = %v; want it unchanged", tt.err, got)
+			}
+			if tt.err != nil && (got == nil || got.Error() != tt.err.Error() || !errors.Is(got, tt.err)) {
+				t.Errorf("markUnresolvable(%v) = %v; want the same text and the same chain", tt.err, got)
+			}
+		})
 	}
 }
 

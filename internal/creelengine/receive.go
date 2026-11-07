@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"slices"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
@@ -172,7 +171,11 @@ func (s *Store) Deliver(mail HubMail) (DeliverAnswer, error) {
 	if err != nil {
 		return DeliverAnswer{}, err
 	}
-	trusted := confirmed && s.trustedSender(mail.Sender)
+	var repository string
+	if confirmed {
+		repository = s.sendingRepository(sendingHub)
+	}
+	trusted := confirmed && s.trustedSender(mail.Sender, repository)
 	err = s.do(func() error {
 		held, clash := s.heldLocked(sendingHub, mail)
 		switch {
@@ -181,7 +184,7 @@ func (s *Store) Deliver(mail HubMail) (DeliverAnswer, error) {
 		case held != nil:
 			answer = &DeliverAnswer{Delivery: deliveryAccepted, ID: held.ID}
 		case confirmed:
-			id, err := s.storeInboundLocked(sendingHub, mail, trusted)
+			id, err := s.storeInboundLocked(sendingHub, repository, mail, trusted)
 			if err != nil {
 				return err
 			}
@@ -273,12 +276,24 @@ func (s *Store) confirmWithSender(sendingHub string, mail HubMail) (bool, error)
 	return false, fmt.Errorf("creel: the sending hub's daemon answered the confirm with %q, neither yes nor no", resp.Confirmed)
 }
 
-// trustedSender reports whether sender is the orch of a hub that this hub's creel.yaml lists.
+// sendingRepository answers the repository name of the hub at sendingHub, or "" when it has none.
+// A hub with no repository name, such as one with no origin remote, is ordinary, so the reason is logged at Debug.
+func (s *Store) sendingRepository(sendingHub string) string {
+	repository, err := s.hubs.RepositoryName(sendingHub)
+	if err != nil {
+		logger.Debug("creel: the sending hub has no repository name, so its mail is stored untrusted", "hub", sendingHub, "error", err)
+		return ""
+	}
+	return repository
+}
+
+// trustedSender reports whether sender is the orch of a hub whose repository this hub's creel.yaml lists.
+// repository is the sending hub's repository name, and an empty one is never trusted.
 // It answers only on Linux, where the sending hub's identity rests on the kernel.
 // A trusted-hubs read that fails logs one warning and counts as untrusted.
-func (s *Store) trustedSender(sender string) bool {
+func (s *Store) trustedSender(sender, repository string) bool {
 	name, err := agentname.Parse(sender)
-	if err != nil || name.Role != agentname.RoleOrch || s.goos != "linux" {
+	if err != nil || name.Role != agentname.RoleOrch || s.goos != "linux" || repository == "" {
 		return false
 	}
 	listed, err := s.hubs.TrustedHubs()
@@ -286,13 +301,13 @@ func (s *Store) trustedSender(sender string) bool {
 		logger.Warn("creel: could not read the trusted hubs, so mail from another hub is stored untrusted", "error", err)
 		return false
 	}
-	return slices.Contains(listed, name.Shortname)
+	return ListsRepository(listed, repository)
 }
 
-// storeInboundLocked journals mail from the hub at sendingHub as unread, stamped with its trust.
+// storeInboundLocked journals mail from the hub at sendingHub as unread, stamped with its trust and its repository name.
 // It then delivers the mail to its receiver.
 // A reply also ends a wait on the outbound message it answers, and still reaches the receiver as mail.
-func (s *Store) storeInboundLocked(sendingHub string, mail HubMail, trusted bool) (int64, error) {
+func (s *Store) storeInboundLocked(sendingHub, sendingRepository string, mail HubMail, trusted bool) (int64, error) {
 	kind := kindMail
 	if mail.ReplyTo != 0 {
 		kind = kindReply
@@ -300,7 +315,7 @@ func (s *Store) storeInboundLocked(sendingHub string, mail HubMail, trusted bool
 	id := s.state.newID()
 	if err := s.writer.append(record{
 		Event: eventInbound, ID: id, From: mail.Sender, To: mail.Receiver, Kind: kind, Body: mail.Body, ReplyTo: mail.ReplyTo, ExpectReply: mail.ExpectReply,
-		SendingHub: sendingHub, SendingID: mail.SendingID, Trusted: trusted, RemotePosted: mail.Posted, DeliveredTo: mail.Receiver,
+		SendingHub: sendingHub, SendingRepository: sendingRepository, SendingID: mail.SendingID, Trusted: trusted, RemotePosted: mail.Posted, DeliveredTo: mail.Receiver,
 	}); err != nil {
 		return 0, err
 	}

@@ -7,4 +7,8 @@
 // Every call is told the directory holding the record, so a test's record lives in the test's own directory.
 // A hub's Bolt shortname record decides what an entry still means;
 // the record is a cache of paths that a lookup always checks against it.
+//
+// A hub's identity across machines is its repository name, owner/repo, read from its prime's origin remote;
+// creel's trusted_hubs lists hubs by it, since a shortname resolves per machine and may be taken again.
+// A hub with no origin remote, or a non-GitHub one, has no repository name.
 package hubregistry

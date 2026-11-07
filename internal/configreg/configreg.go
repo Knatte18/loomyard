@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"sort"
 	"strconv"
 
@@ -27,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/hibernateconfig"
+	"github.com/Knatte18/loomyard/internal/hubregistry"
 	"github.com/Knatte18/loomyard/internal/ideconfig"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
@@ -43,6 +45,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/slackengine"
+	"github.com/Knatte18/loomyard/internal/standalonestate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -113,6 +116,38 @@ type Reinterpretation struct {
 	Rewrite func(existing []byte, worktreeRoot, anchorDir string) (rewritten []byte, rewrote, flagged []string, err error)
 }
 
+// repositoryOfShortname answers the repository name of the hub that shortname names in this machine's record of hubs.
+// A shortname that names no hub or several matches creelconfig.ErrShortnameUnresolvable.
+// So does a hub with no valid repository.
+// A failure to read the machine's state matches it not, so the rewrite that asked ends instead of dropping the entry.
+func repositoryOfShortname(shortname string) (string, error) {
+	registryDir, err := standalonestate.UserStateDir()
+	if err != nil {
+		return "", err
+	}
+	repository, err := hubregistry.LookupRepository(registryDir, shortname)
+	return repository, markUnresolvable(err)
+}
+
+// markUnresolvable wraps err as creelconfig.ErrShortnameUnresolvable.
+// It does so when err refuses a shortname for want of a repository.
+// It returns every other err, nil included, unchanged.
+func markUnresolvable(err error) error {
+	if errors.Is(err, hubregistry.ErrUnresolved) || errors.Is(err, hubregistry.ErrNoRepository) {
+		return unresolvableShortname{err}
+	}
+	return err
+}
+
+// unresolvableShortname carries a refusal's own text and matches creelconfig.ErrShortnameUnresolvable.
+type unresolvableShortname struct{ error }
+
+func (e unresolvableShortname) Unwrap() error { return e.error }
+
+func (e unresolvableShortname) Is(target error) bool {
+	return target == creelconfig.ErrShortnameUnresolvable
+}
+
 // withLocalBounds fills the module's LocalKeys or LocalDenied from its Spec, so the registry never restates a key.
 func withLocalBounds(m Module) Module {
 	spec := m.Spec()
@@ -150,7 +185,7 @@ func Modules() []Module {
 		{Name: "batten", Template: battenshed.ConfigTemplate, CheckValues: battenshed.ValidateLocalValues, CheckLoad: checkLoad(battenshed.LoadConfig), Spec: battenshed.ConfigSpec},
 		{Name: "beam", Template: dobbyengine.ConfigTemplate, CheckLoad: checkLoad(dobbyengine.LoadConfig), Spec: dobbyengine.ConfigSpec},
 		{Name: "board", Template: boardengine.ConfigTemplate, OpenMaps: boardengine.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoadNamed(boardengine.LoadConfig, "board"), Spec: boardengine.ConfigSpec},
-		{Name: "creel", Template: creelconfig.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(creelconfig.LoadConfig), Spec: creelconfig.ConfigSpec},
+		{Name: "creel", Template: creelconfig.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(creelconfig.LoadConfig), Reinterpretations: []Reinterpretation{{ID: creelconfig.TrustedHubsRepositoryReinterpretation, Rewrite: creelconfig.RewriteShortnamesToRepositories(repositoryOfShortname)}}, Spec: creelconfig.ConfigSpec},
 		{Name: "darn", Template: darnengine.ConfigTemplate, OpenMaps: darnengine.ConfigOpenMaps(), HubWide: true, Migrate: darnengine.MigrateConfig, CheckLoad: checkLoadNamed(darnengine.LoadConfig, "darn"), Spec: darnengine.ConfigSpec},
 		{Name: "desktop", Template: desktophook.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(desktophook.LoadConfig), Spec: desktophook.ConfigSpec},
 		{Name: "drift", Template: driftengine.ConfigTemplate, OpenMaps: driftengine.ConfigOpenMaps(), HubWide: true, Migrate: driftengine.MigrateConfig, CheckLoad: checkLoad(driftengine.LoadConfig), CheckDirs: driftengine.CheckDirs, Reinterpretations: []Reinterpretation{{ID: driftengine.DirBaseReinterpretation, Rewrite: driftengine.RebaseDirsOntoRoot}, {ID: driftengine.DiffModeReinterpretation, Rewrite: driftengine.FlagDiffMode}}, Spec: driftengine.ConfigSpec},

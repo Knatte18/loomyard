@@ -80,6 +80,11 @@ func (d *hubDirectory) Spawn(hubPath, logPath string) (creelengine.Spawn, error)
 	return seam.spawn(hubPath, logPath)
 }
 
+// RepositoryName reads the repository name of the hub at hubPath from that hub's origin remote.
+func (d *hubDirectory) RepositoryName(hubPath string) (string, error) {
+	return hubregistry.RepositoryName(hubPath)
+}
+
 // TrustedHubs reads this hub's creel.yaml at each call, so a changed list applies with no daemon restart.
 func (d *hubDirectory) TrustedHubs() ([]string, error) {
 	cfg, err := creelconfig.LoadConfig(configengine.Dirs{Board: fabricengine.BoltDir(d.hubPath)})
