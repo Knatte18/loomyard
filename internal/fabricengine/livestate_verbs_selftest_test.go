@@ -6,7 +6,6 @@ package fabricengine_test
 import (
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -39,7 +38,7 @@ func TestVerbCases_ArrangeSetsItsPreconditionField(t *testing.T) {
 			if vc == nil {
 				t.Fatalf("Verbs has no %s case", tt.verb)
 			}
-			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+			h := copyVerbHub(t, *vc, ".")
 
 			if got := tt.field(vc.Arrange(t, h)); got == "" {
 				t.Errorf("%s Arrange left its precondition field empty", tt.verb)

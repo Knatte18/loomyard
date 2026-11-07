@@ -40,6 +40,41 @@ func mainVerbs() []VerbCase {
 	return out
 }
 
+// verbTemplates holds, per anchor, the registered template of each Verbs case that has a Build, keyed by verbTemplateKey.
+var verbTemplates = registerVerbTemplates()
+
+// registerVerbTemplates returns one registration per anchor for each Verbs case that has a Build:
+// the anchor's bare hub with the case's Build run on it.
+func registerVerbTemplates() map[string]*hubforge.Registration {
+	templates := map[string]*hubforge.Registration{}
+	for _, vc := range Verbs {
+		if vc.Build == nil {
+			continue
+		}
+		for _, anchor := range anchors {
+			key := verbTemplateKey(vc.Name, anchor)
+			templates[key] = &hubforge.Registration{Key: key, Base: hubforge.Shape{Anchor: anchor}, Build: vc.Build}
+		}
+	}
+	return templates
+}
+
+// verbTemplateKey returns the template key of the verb case verbName at anchor.
+func verbTemplateKey(verbName, anchor string) string {
+	return "fabricengine-livestate-" + verbName + "-" + anchor
+}
+
+// copyVerbHub returns a hub the test owns for vc at anchor, before vc's Arrange runs.
+// It is a copy of vc's registered template when vc has a Build, and of the anchor's bare hub otherwise.
+func copyVerbHub(t *testing.T, vc VerbCase, anchor string) *hubforge.Hub {
+	t.Helper()
+
+	if vc.Build == nil {
+		return hubforge.CopyHub(t, hubforge.Shape{Anchor: anchor})
+	}
+	return hubforge.CopyRegistered(t, verbTemplates[verbTemplateKey(vc.Name, anchor)])
+}
+
 // cloneHubResetVerbs returns the VerbCase entries of the CloneHub{Reset: true} column.
 func cloneHubResetVerbs() []VerbCase {
 	var out []VerbCase
@@ -223,11 +258,11 @@ func assertArrangePreconditions(t *testing.T, fixture VerbFixture) {
 func runCell(t *testing.T, anchor string, state State, vc VerbCase) {
 	t.Helper()
 
-	// Build: the factory clones a fresh hub at the cell's anchor.
+	// Build: a copy of the verb's template at the cell's anchor.
 	// Every cell owns its hub, so pushes across parallel cells never race.
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: anchor})
+	h := copyVerbHub(t, vc, anchor)
 
-	// Arrange: the verb's own fixture.
+	// Arrange: the rest of the verb's own fixture, derived from the copy.
 	fixture := vc.Arrange(t, h)
 	assertArrangePreconditions(t, fixture)
 
