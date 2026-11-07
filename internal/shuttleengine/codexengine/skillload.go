@@ -1,5 +1,5 @@
 // skillload.go implements Codex's one-turn skill load: the model reads and follows each SKILL.md by absolute path,
-// and the rollout that the turn end names says which of those files a tool call of that turn named.
+// and the rollout that the turn end names says which of those files a tool call of that turn named or printed.
 // A skill is a file the model reads, since Codex's own skill discovery outside a repository is untested,
 // and a typed `$` opens a popup that takes the next Enter.
 
@@ -50,12 +50,14 @@ func skillLoadOver(skills, roots []string) string {
 }
 
 // ClassifySkillLoad sorts skills into loaded, missing and unknown, from the rollout turnEnd's transcript_path names.
-// The latest user message that is a load message starts the turn, and only the tool calls after it count;
+// The latest user message that is a load message starts the turn, and only the tool calls and outputs after it count;
 // a load message is recognised by its fixed text, not by the paths it names,
 // so a skill file that appeared after the launch does not hide it.
-// A skill is unknown when no skill root holds it;
-// it is loaded when a call names its skills/<name>/SKILL.md tail;
-// otherwise it is missing.
+// A skill is unknown when no skill root holds it.
+// It is loaded when a call names its skills/<name>/SKILL.md tail.
+// It is also loaded when the calls' outputs hold the whole of its SKILL.md.
+// A read through a path built in a loop leaves such an output.
+// Otherwise it is missing.
 // The report is unverified when the rollout cannot be read or holds no load message.
 func (c *Codex) ClassifySkillLoad(turnEnd shuttleengine.Event, skills []string) shuttleengine.SkillLoadReport {
 	data, err := os.ReadFile(payloadField(turnEnd.Raw, payloadTranscriptPath))
@@ -63,17 +65,17 @@ func (c *Codex) ClassifySkillLoad(turnEnd shuttleengine.Event, skills []string) 
 		return shuttleengine.SkillLoadReport{}
 	}
 	roots := c.skillRoots()
-	calls, found := loadTurnCalls(data)
+	turn, found := readLoadTurn(data)
 	if !found {
 		return shuttleengine.SkillLoadReport{}
 	}
 	report := shuttleengine.SkillLoadReport{Verified: true}
 	for _, skill := range skills {
-		tail := skillFileTail(skill)
+		file := skillPath(skill, roots)
 		switch {
-		case skillPath(skill, roots) == "":
+		case file == "":
 			report.Unknown = append(report.Unknown, skill)
-		case slices.ContainsFunc(calls, func(call string) bool { return strings.Contains(call, tail) }):
+		case turn.namesPath(skillFileTail(skill)) || turn.printedFile(file):
 			report.Loaded = append(report.Loaded, skill)
 		default:
 			report.Missing = append(report.Missing, skill)
@@ -235,11 +237,39 @@ const (
 // toolCallPayloads are the response item types that carry a tool call and its arguments.
 var toolCallPayloads = []string{"function_call", "custom_tool_call", "local_shell_call"}
 
-// loadTurnCalls returns the raw payload of every tool call after the latest load message in the rollout data.
+// toolOutputPayloads are the response item types that carry what a tool call printed.
+var toolOutputPayloads = []string{"function_call_output", "custom_tool_call_output"}
+
+// loadTurn is the tool traffic of a rollout after its latest load message.
+type loadTurn struct {
+	// calls holds the raw payload of every tool call.
+	calls []string
+	// outputs holds the text of every tool call output.
+	outputs []string
+}
+
+// namesPath reports whether a tool call of the turn names tail anywhere in its payload.
+func (turn loadTurn) namesPath(tail string) bool {
+	return slices.ContainsFunc(turn.calls, func(call string) bool { return strings.Contains(call, tail) })
+}
+
+// printedFile reports whether one tool call output of the turn holds the whole of the file at the path file.
+// The file's content is matched with its surrounding whitespace trimmed;
+// an empty or unreadable file is never printed.
+func (turn loadTurn) printedFile(file string) bool {
+	data, err := os.ReadFile(file)
+	content := strings.TrimSpace(string(data))
+	if err != nil || content == "" {
+		return false
+	}
+	return slices.ContainsFunc(turn.outputs, func(output string) bool { return strings.Contains(output, content) })
+}
+
+// readLoadTurn returns the tool calls and outputs after the latest load message in the rollout data.
 // The second result reports whether such a message was found.
 // A user message is a response item of role user, its text blocks joined, or a user_message event.
-func loadTurnCalls(data []byte) ([]string, bool) {
-	var calls []string
+func readLoadTurn(data []byte) (loadTurn, bool) {
+	var turn loadTurn
 	found := false
 	for _, line := range strings.Split(string(data), "\n") {
 		var item struct {
@@ -260,32 +290,63 @@ func loadTurnCalls(data []byte) ([]string, bool) {
 		switch {
 		case item.Type == rolloutEventMessage && payload.Type == payloadUserMessage:
 			if isSkillLoadMessage(strings.TrimSpace(payload.Message)) {
-				calls, found = nil, true
+				turn, found = loadTurn{}, true
 			}
 		case item.Type == rolloutResponseItem && payload.Type == payloadMessage && payload.Role == roleUser:
 			if isSkillLoadMessage(strings.TrimSpace(messageText(item.Payload))) {
-				calls, found = nil, true
+				turn, found = loadTurn{}, true
 			}
 		case item.Type == rolloutResponseItem && found && slices.Contains(toolCallPayloads, payload.Type):
-			calls = append(calls, string(item.Payload))
+			turn.calls = append(turn.calls, string(item.Payload))
+		case item.Type == rolloutResponseItem && found && slices.Contains(toolOutputPayloads, payload.Type):
+			turn.outputs = append(turn.outputs, toolOutputText(item.Payload))
 		}
 	}
-	return calls, found
+	return turn, found
+}
+
+// textBlock is one block of a rollout message's content or of a tool call's output.
+type textBlock struct {
+	Text string `json:"text"`
+}
+
+// joinedText returns the text of blocks joined with nothing between them.
+func joinedText(blocks []textBlock) string {
+	var text strings.Builder
+	for _, block := range blocks {
+		text.WriteString(block.Text)
+	}
+	return text.String()
 }
 
 // messageText returns the joined text blocks of a message payload, or "" when its content is no list of blocks.
 func messageText(payload json.RawMessage) string {
 	var message struct {
-		Content []struct {
-			Text string `json:"text"`
-		} `json:"content"`
+		Content []textBlock `json:"content"`
 	}
 	if json.Unmarshal(payload, &message) != nil {
 		return ""
 	}
-	var text strings.Builder
-	for _, block := range message.Content {
-		text.WriteString(block.Text)
+	return joinedText(message.Content)
+}
+
+// toolOutputText returns what a tool call output payload printed:
+// its output string, or its output's text blocks joined.
+// It returns "" when the output is neither.
+func toolOutputText(payload json.RawMessage) string {
+	var item struct {
+		Output json.RawMessage `json:"output"`
 	}
-	return text.String()
+	if json.Unmarshal(payload, &item) != nil {
+		return ""
+	}
+	var text string
+	if json.Unmarshal(item.Output, &text) == nil {
+		return text
+	}
+	var blocks []textBlock
+	if json.Unmarshal(item.Output, &blocks) != nil {
+		return ""
+	}
+	return joinedText(blocks)
 }

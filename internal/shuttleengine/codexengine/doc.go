@@ -72,9 +72,11 @@
 // a hook that fails to run fails open in Codex, so a guard is a guardrail and not a barrier.
 //
 // A skill `<plugin>:<name>` is a file the model reads:
-// the load line names the newest version's skills/<name>/SKILL.md under codex.yaml's skill_roots by absolute path,
-// and a tool call of the load turn naming that tail in the rollout reads the skill loaded;
-// a skill under no root is reported unknown.
+// the load line names the newest version's skills/<name>/SKILL.md under codex.yaml's skill_roots by absolute path.
+// A tool call of the load turn that names that tail in the rollout reads the skill loaded.
+// So does a tool call output that holds the whole file.
+// A read through a path the model built in a loop leaves such an output.
+// A skill under no root is reported unknown.
 //
 // A run whose engine is told a hub board directory carries creel's hook delivery and is marked CreelHooks;
 // so creel hands its mail over at the session's boundaries and wakes it when idle.

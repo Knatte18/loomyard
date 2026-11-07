@@ -15,12 +15,18 @@ import (
 )
 
 // writeSkill writes the SKILL.md of a plugin's skill at version under root's marketplace folder and returns its path.
+// The file holds skillBody(name).
 func writeSkill(t *testing.T, root, marketplace, plugin, version, name string) string {
 	t.Helper()
 	file := filepath.Join(root, marketplace, plugin, version, skillsDirName, name, skillFileName)
 	mkdirAll(t, filepath.Dir(file))
-	writeFile(t, file, "# "+name)
+	writeFile(t, file, skillBody(name))
 	return file
+}
+
+// skillBody returns the content of the SKILL.md writeSkill writes for the skill name.
+func skillBody(name string) string {
+	return "# " + name + "\n\nThe rules of " + name + ".\n"
 }
 
 // skillEngine returns an engine whose codex.yaml names root as its one skill root.
@@ -55,6 +61,28 @@ func rolloutToolCall(kind, command string) string {
 // rolloutExecCall returns the rollout line of a function_call running command.
 func rolloutExecCall(command string) string {
 	return rolloutToolCall("function_call", command)
+}
+
+// rolloutScriptCall returns the rollout line of a custom_tool_call exec whose input is script.
+func rolloutScriptCall(script string) string {
+	data, _ := json.Marshal(map[string]any{"type": "response_item", "payload": map[string]any{"type": "custom_tool_call", "name": "exec", "input": script}})
+	return string(data)
+}
+
+// rolloutStringOutput returns the rollout line of a function_call_output whose output is the string text.
+func rolloutStringOutput(text string) string {
+	data, _ := json.Marshal(map[string]any{"type": "response_item", "payload": map[string]any{"type": "function_call_output", "output": text}})
+	return string(data)
+}
+
+// rolloutBlocksOutput returns the rollout line of a custom_tool_call_output whose output is one text block per text.
+func rolloutBlocksOutput(texts ...string) string {
+	var blocks []map[string]string
+	for _, text := range texts {
+		blocks = append(blocks, map[string]string{"type": "input_text", "text": text})
+	}
+	data, _ := json.Marshal(map[string]any{"type": "response_item", "payload": map[string]any{"type": "custom_tool_call_output", "output": blocks}})
+	return string(data)
 }
 
 // TestSkillPath pins that the lookup returns the newest version under the first root holding the skill.
@@ -156,6 +184,8 @@ func TestSkillLoadMessage_WarnsOnceWhenCodexYamlDoesNotLoad(t *testing.T) {
 // TestClassifySkillLoad pins the classification from a rollout.
 // A tool call of any call payload type after the load message naming a skill's tail loads it,
 // and a call before the message does not.
+// A tool call output after the message holding the whole SKILL.md loads it too, as a read through a built path leaves;
+// one holding part of the file, or one before the message, does not.
 // A repeated load message restarts the count, and a truncated line is skipped.
 // A skill no root holds is unknown, and an unreadable rollout or one without the load message is unverified.
 func TestClassifySkillLoad(t *testing.T) {
@@ -181,8 +211,23 @@ func TestClassifySkillLoad(t *testing.T) {
 		},
 		{
 			name:  "ReadBeforeTheMessage",
-			lines: []string{rolloutExecCall("cat " + testingSkill), rolloutUserEvent(message), rolloutExecCall("cat " + prose)},
+			lines: []string{rolloutExecCall("cat " + testingSkill), rolloutStringOutput(skillBody("testing")), rolloutUserEvent(message), rolloutExecCall("cat " + prose)},
 			want:  shuttleengine.SkillLoadReport{Verified: true, Loaded: []string{"scribe:prose"}, Unknown: []string{"scribe:absent"}, Missing: []string{"scribe:testing"}},
+		},
+		{
+			name: "ReadThroughABuiltPath",
+			lines: []string{
+				rolloutUserItem(message),
+				rolloutScriptCall("for (const name of [\"prose\",\"testing\"]) { await tools.exec_command({cmd: `cat " + root + "/market/scribe/1.0.0/skills/${name}/SKILL.md`}); }"),
+				rolloutBlocksOutput("Script completed\nOutput:\n# pro", "se\n\nThe rules of prose.\n"),
+				rolloutStringOutput(skillBody("testing")),
+			},
+			want: shuttleengine.SkillLoadReport{Verified: true, Loaded: []string{"scribe:prose", "scribe:testing"}, Unknown: []string{"scribe:absent"}},
+		},
+		{
+			name:  "PartialOutputDoesNotLoad",
+			lines: []string{rolloutUserItem(message), rolloutStringOutput("# testing\n")},
+			want:  shuttleengine.SkillLoadReport{Verified: true, Unknown: []string{"scribe:absent"}, Missing: []string{"scribe:prose", "scribe:testing"}},
 		},
 		{
 			name:  "CustomToolAndLocalShellCalls",
@@ -191,7 +236,7 @@ func TestClassifySkillLoad(t *testing.T) {
 		},
 		{
 			name:  "RepeatedLoadMessageRestartsTheCount",
-			lines: []string{rolloutUserItem(message), rolloutExecCall("cat " + prose), rolloutUserEvent(message), rolloutExecCall("cat " + testingSkill)},
+			lines: []string{rolloutUserItem(message), rolloutExecCall("cat " + prose), rolloutStringOutput(skillBody("prose")), rolloutUserEvent(message), rolloutExecCall("cat " + testingSkill)},
 			want:  shuttleengine.SkillLoadReport{Verified: true, Loaded: []string{"scribe:testing"}, Unknown: []string{"scribe:absent"}, Missing: []string{"scribe:prose"}},
 		},
 		{
