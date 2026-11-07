@@ -62,7 +62,7 @@ var (
 		Build: nonFastForwardFeature("warp-branch.txt", "warp-current.txt"),
 	}
 	// warpProgressLayer is nonFastForwardLayer's scenario with the branch adding feature.txt
-// and the current branch adding warp-progress.txt.
+	// and the current branch adding warp-progress.txt.
 	warpProgressLayer = hubforge.Registration{
 		Key:   "fabricengine-merge-warp-progress",
 		Base:  hubforge.Shape{Anchor: "."},
@@ -79,7 +79,7 @@ var (
 		},
 	}
 	// cleanMergeableLayer has "feature" and "feature-weft" each one commit past the current branches.
-// Both merge without conflict.
+	// Both merge without conflict.
 	cleanMergeableLayer = hubforge.Registration{
 		Key:  "fabricengine-merge-clean",
 		Base: hubforge.Shape{Anchor: "."},
