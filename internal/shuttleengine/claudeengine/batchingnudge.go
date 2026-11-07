@@ -99,6 +99,30 @@ func batchingNudgeHookCommand(quotedStatePath string) string {
 // batchingTailBytes bounds the transcript tail the judgment reads, so a call at a large context costs one bounded read.
 const batchingTailBytes = 4 << 20
 
+// batchingTranscriptWait bounds the judgment's wait for the call it judges to reach the calling chain's transcript.
+// Claude Code writes a message's lines to the transcript only after its calls start,
+// so a fast call such as a Read or an Edit runs its after-tool-call hook before its own message is there to judge.
+// The judgment rereads the transcript every tick, at most attempts times, while the file grows.
+type batchingTranscriptWait struct {
+	tick     time.Duration
+	attempts int
+	// sleep pauses between attempts; a test passes one that changes the transcript instead of waiting.
+	sleep func(time.Duration)
+}
+
+// The production tick and attempts bound the wait for a call to reach the transcript.
+// The wait covers the write delay after a message ends.
+// It leaves out only the early calls of a message still being written.
+const (
+	batchingTranscriptTick     = 25 * time.Millisecond
+	batchingTranscriptAttempts = 80
+)
+
+// defaultBatchingTranscriptWait returns the production wait for a call to reach the transcript.
+func defaultBatchingTranscriptWait() batchingTranscriptWait {
+	return batchingTranscriptWait{tick: batchingTranscriptTick, attempts: batchingTranscriptAttempts, sleep: time.Sleep}
+}
+
 // The nudge lines, one per breach; each names the breach and quotes the rule it breaks.
 const (
 	lookupChainNudge = "[lym batching] Your last %d messages each made one lookup and nothing else. The rule: list every question, then send every grep and read for all of them in one message; wait for a result only to choose the next call, then send every call it unlocks and every call you know in one message."
@@ -206,6 +230,11 @@ func (in batchingHookInput) sliced() bool {
 // BatchingNudge judges the tool call a PostToolUse input describes and returns the hook output that adds one nudge line to the calling chain's context, or nil when no nudge is due.
 // A call from a subagent or fork is judged against that agent's own transcript, context reading and nudge count, under the same settings as the main session.
 // A Bash call whose command is no read-only lookup, a run with no state file, a chain below the context threshold, a chain past its nudge cap and a message already nudged get none.
+// Claude Code writes a call's message to the transcript after the call starts,
+// so a call whose message the transcript does not hold yet is waited for a bounded time;
+// a call still missing at the bound gets none.
+// The context threshold is read from the first tail, which lacks the call's own message while the call is waited for,
+// so the one call whose message first reaches the threshold gets none.
 // The judgment and the count update hold the state file's lock, so the parallel calls of one message nudge at most once.
 // A transcript that cannot be read gets no nudge and no error, since its format is a Claude Code internal; a malformed input or state file is an error.
 func (c *Claude) BatchingNudge(statePath string, payload []byte) ([]byte, error) {
@@ -225,21 +254,23 @@ func (c *Claude) BatchingNudge(statePath string, payload []byte) ([]byte, error)
 		return nil, nil
 	}
 	sidechain := input.AgentID != ""
-	if _, err := os.Stat(statePath); err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("claudeengine: stat the batching nudge state %s: %w", statePath, err)
+	// The state is read before the wait, so a run with no state file and a chain past its cap never wait for the transcript.
+	seeded, found, err := state.ReadJSON[batchingNudgeState](statePath, batchingNudgeLockPath(statePath))
+	if err != nil {
+		return nil, fmt.Errorf("claudeengine: read the batching nudge state %s: %w", statePath, err)
+	}
+	if !found || seeded.count(input.AgentID).Nudges >= seeded.Settings.MaxNudges {
+		return nil, nil
+	}
+	tail, ok := c.awaitCallInTranscript(transcript, input.ToolUseID, sidechain, seeded.Settings.ContextTokens)
+	if !ok {
+		return nil, nil
 	}
 
 	var line string
-	err := state.UpdateJSON(statePath, batchingNudgeLockPath(statePath), func(cur batchingNudgeState, found bool) (batchingNudgeState, error) {
+	err = state.UpdateJSON(statePath, batchingNudgeLockPath(statePath), func(cur batchingNudgeState, found bool) (batchingNudgeState, error) {
 		count := cur.count(input.AgentID)
 		if !found || count.Nudges >= cur.Settings.MaxNudges {
-			return cur, errNoNudge
-		}
-		tail, err := readTranscriptTail(transcript, batchingTailBytes)
-		if err != nil {
 			return cur, errNoNudge
 		}
 		reading, _ := latestReading(tail, sidechain)
@@ -248,7 +279,7 @@ func (c *Claude) BatchingNudge(statePath string, payload []byte) ([]byte, error)
 		}
 		messages := tailMessages(tail, sidechain)
 		current := messageHolding(messages, input.ToolUseID)
-		if current < 0 || messages[current].id == count.NudgedMessage {
+		if messages[current].id == count.NudgedMessage {
 			return cur, errNoNudge
 		}
 		line = judgeBatching(cur.Settings, messages, current, input)
@@ -264,6 +295,45 @@ func (c *Claude) BatchingNudge(statePath string, payload []byte) ([]byte, error)
 		return nil, fmt.Errorf("claudeengine: update the batching nudge state %s: %w", statePath, err)
 	}
 	return hookContext(hookEventPostToolUse, line)
+}
+
+// awaitCallInTranscript waits for a message of the chain to hold the call toolUseID.
+// It returns the tail of the transcript at transcriptPath once one does.
+// It reports false when none does within the wait's bound.
+// It reports false at once for a transcript that cannot be read.
+// It also reports false at once for a chain whose context is below contextTokens by the first tail's latest reading.
+// While the call's message is not in the transcript yet, that reading is the previous message's,
+// so the one call whose message first reaches contextTokens is left silent.
+// A chain the judgment would leave silent therefore never waits.
+// It rereads the tail only when the file's size changed since the last read.
+func (c *Claude) awaitCallInTranscript(transcriptPath, toolUseID string, sidechain bool, contextTokens int) ([]byte, bool) {
+	wait := c.transcriptWait
+	readSize := int64(-1)
+	for attempt := 0; ; attempt++ {
+		info, err := os.Stat(transcriptPath)
+		if err != nil {
+			return nil, false
+		}
+		if info.Size() != readSize {
+			readSize = info.Size()
+			tail, err := readTranscriptTail(transcriptPath, batchingTailBytes)
+			if err != nil {
+				return nil, false
+			}
+			if attempt == 0 {
+				if reading, _ := latestReading(tail, sidechain); !reading.Known || reading.Tokens < contextTokens {
+					return nil, false
+				}
+			}
+			if messageHolding(tailMessages(tail, sidechain), toolUseID) >= 0 {
+				return tail, true
+			}
+		}
+		if attempt >= wait.attempts {
+			return nil, false
+		}
+		wait.sleep(wait.tick)
+	}
 }
 
 // readTranscriptTail returns the complete lines of the last budget bytes of the transcript at transcriptPath, the whole file when it is smaller.

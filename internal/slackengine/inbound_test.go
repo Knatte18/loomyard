@@ -110,6 +110,8 @@ type fakeMailbox struct {
 	readWaitSteps []readStep
 	// blockReadWait, when set, makes ReadWait block until it is closed, as a long poll with no mail does.
 	blockReadWait chan struct{}
+	// readWaitEntered, when set, is closed by the first ReadWait call before it blocks.
+	readWaitEntered chan struct{}
 	// acks holds the ids each acknowledged ReadWait covered, and readAllAcks the ids each acknowledged ReadAll covered.
 	acks        [][]int64
 	readAllAcks [][]int64
@@ -160,6 +162,9 @@ func (m *fakeMailbox) ReadAll(handle func([]creelengine.Message) error) error {
 func (m *fakeMailbox) ReadWait(_ time.Duration, handle func([]creelengine.Message) error) error {
 	m.mu.Lock()
 	m.readWaitCalls++
+	if m.readWaitCalls == 1 && m.readWaitEntered != nil {
+		close(m.readWaitEntered)
+	}
 	block := m.blockReadWait
 	var step readStep
 	if len(m.readWaitSteps) > 0 {

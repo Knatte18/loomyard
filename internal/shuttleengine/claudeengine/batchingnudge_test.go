@@ -1,5 +1,6 @@
 // batchingnudge_test.go pins the batching nudge: which breach a transcript tail fires, and what holds it back.
 // It covers the main session and subagents' transcripts, the state file's counts, and the transcript tail read.
+// It also covers the wait for a call to reach the transcript.
 // It also covers the bounds of claude.yaml's batching_nudge block and the hook and state file Prepare installs from it.
 
 package claudeengine
@@ -57,6 +58,9 @@ func firstNudgeCall(message []string) string {
 
 // nudgeAgentID is the agent id of the fixture subagent.
 const nudgeAgentID = "fork-1"
+
+// nudgeWaitAttempts is the fixture engine's bound on its waits for a call to reach the transcript.
+const nudgeWaitAttempts = 3
 
 // nudgeAgentTranscript returns the path of agent agentID's transcript beside the fixture session transcript in dir.
 func nudgeAgentTranscript(dir, agentID string) string {
@@ -163,6 +167,7 @@ func writeNudgeFile(t *testing.T, dir, name string, lines int, modified time.Tim
 // It also pins what holds a nudge back.
 // A fired nudge counts in the state file under its chain, the main session's or the subagent's.
 // It records its message there; a silent call leaves the state file as it was.
+// A call its transcript does not hold yet is waited for, up to the bound, unless the chain would be silent anyway.
 func TestBatchingNudge(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -194,6 +199,15 @@ func TestBatchingNudge(t *testing.T) {
 		input func(dir string, hookInput map[string]any)
 		// payload replaces the hook input outright.
 		payload []byte
+		// late leaves the last message out of the chain's transcript until the engine's lateAfter-th wait.
+		// That is how Claude Code writes a message: after its calls start.
+		late bool
+		// lateAfter is the number of the wait at which a late message reaches the transcript; zero means the first.
+		// Each earlier wait grows the transcript by one more sidechain message, which holds no call.
+		// A main-chain transcript skips those lines, so a row with a lateAfter is a main-session row.
+		lateAfter int
+		// wantSleeps is how many times the engine waits for the call to reach the transcript.
+		wantSleeps int
 		// nudgedMessage is the message id a fired nudge records; empty means the last message's.
 		nudgedMessage string
 		wantErr       bool
@@ -281,7 +295,30 @@ func TestBatchingNudge(t *testing.T) {
 			name: "UnreadableTranscriptIsSilent", tokens: 200000, messages: lookupChain,
 			input: func(dir string, in map[string]any) { in["transcript_path"] = filepath.Join(dir, "missing.jsonl") },
 		},
-		{name: "ToolUseIDAbsentFromTheTailIsSilent", tokens: 200000, messages: lookupChain, input: func(_ string, in map[string]any) { in["tool_use_id"] = "call-absent" }},
+		{
+			name: "ToolUseIDAbsentFromTheTailIsSilentAfterTheBoundedWait", tokens: 200000, messages: lookupChain,
+			input: func(_ string, in map[string]any) { in["tool_use_id"] = "call-absent" }, wantSleeps: nudgeWaitAttempts,
+		},
+		{
+			name: "EditReachingTheTranscriptDuringTheWaitFires", tokens: 200000, messages: [][]string{{"Edit:short.go"}, {"Write:long.go"}}, late: true, wantSleeps: 1,
+			want: func(string) string { return fmt.Sprintf(editChainNudge, 2) },
+		},
+		{name: "LateCallBelowTheContextThresholdIsSilentWithoutWaiting", tokens: 100000, messages: lookupChain, late: true},
+		{name: "LateCallPastTheNudgeCapIsSilentWithoutWaiting", tokens: 200000, messages: lookupChain, late: true, before: func(s *batchingNudgeState) { s.Nudges = 2 }},
+		{name: "NoStateFileIsSilentWithoutWaitingForALateCall", tokens: 200000, messages: lookupChain, late: true, noState: true},
+		{
+			name: "SubagentPastItsOwnCapIsSilentWithoutWaitingForALateCall", tokens: 200000, messages: lookupChain, late: true, agentID: nudgeAgentID,
+			before: func(s *batchingNudgeState) { *s = s.withCount(nudgeAgentID, batchingNudgeCount{Nudges: 2}) },
+		},
+		{
+			name: "SubagentEditReachingTheTranscriptDuringTheWaitFires", tokens: 200000, messages: [][]string{{"Edit:short.go"}, {"Write:long.go"}},
+			late: true, agentID: nudgeAgentID, wantSleeps: 1, want: func(string) string { return fmt.Sprintf(editChainNudge, 2) },
+		},
+		{name: "SubagentWithNoReadingYetIsSilentWithoutWaiting", tokens: 200000, messages: [][]string{{"Grep"}}, late: true, agentID: nudgeAgentID},
+		{
+			name: "EditReachingTheTranscriptAfterSeveralRereadsFires", tokens: 200000, messages: [][]string{{"Edit:short.go"}, {"Write:long.go"}},
+			late: true, lateAfter: 2, wantSleeps: 2, want: func(string) string { return fmt.Sprintf(editChainNudge, 2) },
+		},
 		{name: "CorruptStateFileIsAnError", tokens: 200000, messages: lookupChain, corruptState: true, wantErr: true},
 	}
 	for _, tt := range tests {
@@ -295,12 +332,16 @@ func TestBatchingNudge(t *testing.T) {
 				t.Fatalf("write unterminated.go: %v", err)
 			}
 			transcript := filepath.Join(dir, "transcript.jsonl")
-			if tt.agentID == "" {
-				writeNudgeTranscript(t, dir, transcript, tt.tokens, false, tt.messages)
-			} else {
+			chainTranscript, chainSidechain := transcript, false
+			if tt.agentID != "" {
 				writeNudgeTranscript(t, dir, transcript, 200000, false, [][]string{{"Bash"}})
-				writeNudgeTranscript(t, dir, nudgeAgentTranscript(dir, tt.agentID), tt.tokens, true, tt.messages)
+				chainTranscript, chainSidechain = nudgeAgentTranscript(dir, tt.agentID), true
 			}
+			written := tt.messages
+			if tt.late {
+				written = tt.messages[:len(tt.messages)-1]
+			}
+			writeNudgeTranscript(t, dir, chainTranscript, tt.tokens, chainSidechain, written)
 			statePath := filepath.Join(dir, batchingNudgeStateFileName)
 			before := batchingNudgeState{Settings: settings}
 			if tt.before != nil {
@@ -340,7 +381,27 @@ func TestBatchingNudge(t *testing.T) {
 				}
 			}
 
-			got, err := New().BatchingNudge(statePath, payload)
+			lateAfter := max(tt.lateAfter, 1)
+			sleeps := 0
+			engine := New()
+			engine.transcriptWait = batchingTranscriptWait{tick: time.Millisecond, attempts: nudgeWaitAttempts, sleep: func(time.Duration) {
+				sleeps++
+				switch {
+				case !tt.late:
+				case sleeps < lateAfter:
+					grown := slices.Clone(written)
+					for range sleeps {
+						grown = append(grown, []string{nudgeSidechain})
+					}
+					writeNudgeTranscript(t, dir, chainTranscript, tt.tokens, chainSidechain, grown)
+				case sleeps == lateAfter:
+					writeNudgeTranscript(t, dir, chainTranscript, tt.tokens, chainSidechain, tt.messages)
+				}
+			}}
+			got, err := engine.BatchingNudge(statePath, payload)
+			if sleeps != tt.wantSleeps {
+				t.Errorf("BatchingNudge() waited %d times; want %d", sleeps, tt.wantSleeps)
+			}
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("BatchingNudge() error = nil; want an error")
@@ -389,6 +450,35 @@ func TestBatchingNudge(t *testing.T) {
 			}
 			if !reflect.DeepEqual(after, wantAfter) {
 				t.Errorf("state after = %+v; want %+v", after, wantAfter)
+			}
+		})
+	}
+}
+
+// TestEngineConstructorsSetTheTranscriptWait pins that both constructors give the engine the production wait.
+// A zero wait never waits, which would return the hook to judging a call before its message reaches the transcript.
+func TestEngineConstructorsSetTheTranscriptWait(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name   string
+		engine *Claude
+	}{
+		{name: "New", engine: New()},
+		{name: "NewFromConfig", engine: NewFromConfig(shuttleengine.Config{}, configengine.Dirs{})},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			wait := tt.engine.transcriptWait
+			if wait.tick != batchingTranscriptTick {
+				t.Errorf("transcriptWait.tick = %v; want %v", wait.tick, batchingTranscriptTick)
+			}
+			if wait.attempts != batchingTranscriptAttempts {
+				t.Errorf("transcriptWait.attempts = %d; want %d", wait.attempts, batchingTranscriptAttempts)
+			}
+			if wait.sleep == nil {
+				t.Errorf("transcriptWait.sleep = nil; want a sleep function")
 			}
 		})
 	}

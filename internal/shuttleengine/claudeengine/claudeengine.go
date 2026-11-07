@@ -49,17 +49,23 @@ type Claude struct {
 	nameReads *nameReadWarnings
 	// claudeDir is Claude Code's config directory the installed plugins are read from; empty resolves it from the environment when a session starts.
 	claudeDir string
+	// transcriptWait bounds the batching nudge's wait for the call it judges to reach the transcript.
+	// The zero value never waits.
+	transcriptWait batchingTranscriptWait
 }
 
 // New returns a Claude engine with the default submit settle.
 func New() *Claude {
-	return &Claude{now: time.Now, submitSettleMS: defaultSubmitSettleMS, submitRedrawSettleMS: defaultSubmitRedrawSettleMS, nameReads: &nameReadWarnings{}}
+	return &Claude{now: time.Now, submitSettleMS: defaultSubmitSettleMS, submitRedrawSettleMS: defaultSubmitRedrawSettleMS, nameReads: &nameReadWarnings{}, transcriptWait: defaultBatchingTranscriptWait()}
 }
 
 // NewFromConfig returns a Claude engine whose submit settle is cfg.SubmitSettleMS and whose redraw settle is cfg.SubmitRedrawSettleMS.
 // The engine reads claude.yaml from the layers dirs locate.
 func NewFromConfig(cfg shuttleengine.Config, dirs configengine.Dirs) *Claude {
-	return &Claude{dirs: dirs, now: time.Now, submitSettleMS: cfg.SubmitSettleMS, submitRedrawSettleMS: cfg.SubmitRedrawSettleMS, nameReads: &nameReadWarnings{}}
+	return &Claude{
+		dirs: dirs, now: time.Now, submitSettleMS: cfg.SubmitSettleMS, submitRedrawSettleMS: cfg.SubmitRedrawSettleMS, nameReads: &nameReadWarnings{},
+		transcriptWait: defaultBatchingTranscriptWait(),
+	}
 }
 
 // loadConfigOrRefuse loads claude.yaml from dirs.

@@ -80,7 +80,7 @@ func TestHookBatchingVerb(t *testing.T) {
 		{name: "NoBreachPrintsNothing", engine: "claude", calls: []string{"Bash", "Grep"}},
 		{name: "UnknownEngineIsReportedAndExitsZero", engine: "no-such-engine", calls: []string{"Grep"}, input: "{}", wantStderr: `the engine "no-such-engine" has no batching nudge`},
 		{name: "MalformedInputIsReportedAndExitsZero", engine: "claude", calls: []string{"Grep"}, input: "{not json", wantStderr: "parse the batching hook input"},
-		{name: "CorruptStateIsReportedAndExitsZero", engine: "claude", calls: []string{"Grep"}, state: "{not json", wantStderr: "update the batching nudge state"},
+		{name: "CorruptStateIsReportedAndExitsZero", engine: "claude", calls: []string{"Grep"}, state: "{not json", wantStderr: "the batching nudge state"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

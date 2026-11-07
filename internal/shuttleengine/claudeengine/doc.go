@@ -299,6 +299,15 @@
 // On Windows the state file takes the git-bash POSIX path of the events file's directory;
 // git-bash converts it back for the native lym.
 // The judgment reads the call's own input and the tail of the calling chain's transcript, `batchingTailBytes` long.
+// Claude Code writes a message's lines to the transcript only after its calls start,
+// so a fast call such as a Read or an Edit runs the hook before its own message is in the transcript.
+// The judgment therefore rereads the tail until a message holds the call.
+// It rereads every `batchingTranscriptTick` for at most `batchingTranscriptAttempts` ticks.
+// A call still missing then is left silent, as is the early call of a parallel message still being written.
+// It waits only for a chain with a state file and under its nudge cap.
+// It also waits only while the tail's first reading is at or above `context_tokens`.
+// While the call's message is not in the transcript yet, that reading is the previous message's,
+// so the one call whose message first reaches `context_tokens` is left silent.
 // It groups the tail's assistant lines by message id, so the parallel calls of one message count as one message.
 // A main-session call reads the session's transcript and its main-chain lines.
 // A call carrying an agent id, from a subagent or fork, reads the sidechain lines of that agent's own transcript:

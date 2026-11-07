@@ -71,6 +71,8 @@ type relayRun struct {
 	waits      atomic.Int32
 	mu         sync.Mutex
 	cancel     context.CancelFunc
+	// outboundParked is closed once the relay's outbound read blocks in the mailbox.
+	outboundParked chan struct{}
 }
 
 // newRelayRun returns a relay whose outbound read blocks as a long poll with no mail does.
@@ -79,6 +81,8 @@ func newRelayRun(t *testing.T) *relayRun {
 	h := newHarness(t)
 	block := make(chan struct{})
 	h.mailbox.blockReadWait = block
+	parked := make(chan struct{})
+	h.mailbox.readWaitEntered = parked
 	t.Cleanup(func() {
 		// The blocked outbound read wakes once the block closes and takes one more wait;
 		// no hook of a finished test may run then.
@@ -87,7 +91,7 @@ func newRelayRun(t *testing.T) *relayRun {
 		h.clock.mu.Unlock()
 		close(block)
 	})
-	r := &relayRun{harness: h}
+	r := &relayRun{harness: h, outboundParked: parked}
 	r.deps = slackengine.RelayDeps{
 		Mailbox:       h.mailbox,
 		Slack:         h.slack,
@@ -109,8 +113,21 @@ func (r *relayRun) onWait(hook func(n int, d time.Duration)) {
 	r.clock.onWait = func(d time.Duration) { hook(int(r.waits.Add(1)), d) }
 }
 
-// stop ends the run in progress.
+// awaitOutboundParked waits until the relay's outbound read blocks in the mailbox.
+// A relay ended before then leaves its outbound loop reading the hub's files while the test's cleanup removes them;
+// once parked, the loop touches no file again.
+func (r *relayRun) awaitOutboundParked() {
+	r.t.Helper()
+	select {
+	case <-r.outboundParked:
+	case <-time.After(10 * time.Second):
+		r.t.Fatalf("the relay's outbound read never reached the mailbox")
+	}
+}
+
+// stop ends the run in progress once its outbound read is parked.
 func (r *relayRun) stop() {
+	r.awaitOutboundParked()
 	r.mu.Lock()
 	cancel := r.cancel
 	r.mu.Unlock()
@@ -413,6 +430,8 @@ func TestRunRelay(t *testing.T) {
 			r := newRelayRun(t)
 			r.startAt("100.000000")
 			r.deps.CheckBinary = replaced(func() {
+				// The relay ends itself here instead of through stop.
+				r.awaitOutboundParked()
 				other, acquired, err := lock.TryAcquireWriteLock(r.geom.LockPath)
 				if err != nil || !acquired {
 					t.Errorf("TryAcquireWriteLock = %v, %v; want the lock the relay released", acquired, err)
