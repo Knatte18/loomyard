@@ -3,7 +3,9 @@
 // a shape of the closed Shapes set, or a Registration a test package declares.
 // CopyHub and CopyRegistered relocate a template into a test's own temp directory.
 // SharedHub returns a shape's template itself for a test that only reads it.
-// The fingerprint taken at build time catches a write to a shared template.
+// The build packs every repository of the template, so a copy copies a few pack files.
+// SharedHub compares the fingerprint taken at build time to catch a write to a shared template;
+// a copy checks only whether such a write was already seen.
 
 package hubforge
 
@@ -189,7 +191,7 @@ func buildTemplate(tb testing.TB, registration *Registration) (*hubTemplate, []s
 
 // buildTemplateIn builds registration's template in its own lymtemp root, never from a copy of another template.
 // It copies the bares, clones the hub, adds the base shape's pairs and runs Build.
-// It then checks the board against its upstream tip and takes the fingerprint.
+// It then checks the board against its upstream tip, packs every repository and takes the fingerprint.
 func buildTemplateIn(tb testing.TB, registration *Registration) *hubTemplate {
 	tb.Helper()
 
@@ -226,6 +228,7 @@ func buildTemplateIn(tb testing.TB, registration *Registration) *hubTemplate {
 		registration.Build(tb, hub)
 	}
 	requireBoardAtUpstreamTip(tb, hub)
+	packRepositories(tb, root)
 
 	built, err := fingerprint(root)
 	if err != nil {
@@ -249,6 +252,46 @@ func requireBoardAtUpstreamTip(tb testing.TB, h *Hub) {
 	if head != tip {
 		tb.Fatalf("the board's HEAD %s is not the tip %s of %s in the records bare; push every board commit, and push nothing else into the bare", head, tip, branch)
 	}
+}
+
+// packRepositories packs every repository under root, so it holds no loose object and no loose branch ref.
+// A copy then copies a few pack files in place of the loose objects.
+// No pack and no packed-refs file names a template path, so relocation rewrites neither.
+// Unreachable objects go into a cruft pack: a repack of the reachable ones alone would leave them loose.
+func packRepositories(tb testing.TB, root string) {
+	tb.Helper()
+
+	gitDirs, err := gitDirsUnder(root)
+	if err != nil {
+		tb.Fatalf("find the template's repositories: %v", err)
+	}
+	for _, gitDir := range gitDirs {
+		gitkit.Git(tb, gitDir, "repack", "-d", "--cruft", "--quiet")
+		gitkit.Git(tb, gitDir, "pack-refs", "--all")
+	}
+}
+
+// gitDirsUnder returns every git directory under root, bare or not:
+// a directory holding a HEAD file and an objects directory.
+// It follows no link and does not descend into a git directory it found.
+func gitDirsUnder(root string) ([]string, error) {
+	var gitDirs []string
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			return nil
+		}
+		head, headErr := os.Stat(filepath.Join(path, "HEAD"))
+		objects, objectsErr := os.Stat(filepath.Join(path, "objects"))
+		if headErr != nil || objectsErr != nil || !head.Mode().IsRegular() || !objects.IsDir() {
+			return nil
+		}
+		gitDirs = append(gitDirs, path)
+		return filepath.SkipDir
+	})
+	return gitDirs, err
 }
 
 // templateBuildTB is the testing.TB a template build runs under, on a goroutine of its own.
@@ -348,14 +391,21 @@ func (b *templateBuildTB) recordedFailures() []string {
 	return append([]string(nil), b.failures...)
 }
 
-// requireIntact fails tb, naming the fixture, when an earlier write poisoned the template.
-// It also fails when the tree no longer matches the build-time fingerprint.
-func (template *hubTemplate) requireIntact(tb testing.TB) {
+// requireUnpoisoned fails tb, naming the fixture, when an earlier write poisoned the template.
+func (template *hubTemplate) requireUnpoisoned(tb testing.TB) {
 	tb.Helper()
 
 	if template.poisoned.Load() {
 		tb.Fatalf("hubforge: fixture %q was written to by an earlier test and is poisoned; take CopyHub or CopyRegistered in the test that writes", template.name)
 	}
+}
+
+// requireIntact fails tb, naming the fixture, when an earlier write poisoned the template.
+// It also fails, and poisons the template, when the tree no longer matches the build-time fingerprint.
+func (template *hubTemplate) requireIntact(tb testing.TB) {
+	tb.Helper()
+
+	template.requireUnpoisoned(tb)
 	current, err := fingerprint(template.root)
 	if err != nil {
 		tb.Fatalf("hubforge: fixture %q: fingerprint: %v", template.name, err)
@@ -370,7 +420,8 @@ func (template *hubTemplate) requireIntact(tb testing.TB) {
 // It is the shape's template relocated into tb's temp directory, with every path inside it rewritten to the copy's.
 // Every checkout of the copy is clean against its HEAD and upstream, as a fresh hub's is.
 // A write to the copy touches nothing shared.
-// It fails tb, naming the fixture, when the template failed to build, is poisoned or changed since it was built.
+// It fails tb, naming the fixture, when the template failed to build or is poisoned.
+// It takes no fingerprint, so a write to the shared template is caught only once its SharedHub test ends.
 func CopyHub(tb testing.TB, shape Shape) *Hub {
 	tb.Helper()
 
@@ -385,7 +436,7 @@ func CopyHub(tb testing.TB, shape Shape) *Hub {
 // A write to the copy touches nothing shared.
 // It fails tb, naming the key, when the template failed to build, for this caller or an earlier one.
 // It also fails when another registration holds the key.
-// It also fails when the template is poisoned or changed since it was built.
+// It also fails when the template is poisoned.
 func CopyRegistered(tb testing.TB, registration *Registration) *Hub {
 	tb.Helper()
 
@@ -393,11 +444,11 @@ func CopyRegistered(tb testing.TB, registration *Registration) *Hub {
 }
 
 // copyTemplate relocates template into tb's temp directory and returns the copy's Hub.
-// It fails tb, naming the fixture, when the template is poisoned or its tree changed since it was built.
+// It fails tb, naming the fixture, when the template is poisoned.
 func copyTemplate(tb testing.TB, template *hubTemplate) *Hub {
 	tb.Helper()
 
-	template.requireIntact(tb)
+	template.requireUnpoisoned(tb)
 
 	root, err := filepath.EvalSymlinks(tb.TempDir())
 	if err != nil {
@@ -417,11 +468,12 @@ func copyTemplate(tb testing.TB, template *hubTemplate) *Hub {
 // The committed blob, compressed in the object store, still names the template's warp bare.
 // Amending the commit leaves the board clean against its HEAD and upstream.
 // It keeps the board's history as long as the template's.
+// The amend names the binding file, so it stages the file itself.
+// Git writes the reflog entries of HEAD, the branch and the tracking ref as for any commit and push.
 func commitRelocatedBinding(tb testing.TB, boardDir string) {
 	tb.Helper()
 
-	gitkit.Git(tb, boardDir, "add", fabricengine.WarpBindingFileName)
-	gitkit.Git(tb, boardDir, "commit", "--amend", "--no-edit", "--quiet")
+	gitkit.Git(tb, boardDir, "commit", "--amend", "--no-edit", "--quiet", "--", fabricengine.WarpBindingFileName)
 	gitkit.Git(tb, boardDir, "push", "--force", "--quiet", "origin", "HEAD")
 }
 

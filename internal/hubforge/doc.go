@@ -30,6 +30,10 @@
 // It runs on a goroutine of its own, under a testing.TB that records failures,
 // and that fails the build on Cleanup, Setenv, TempDir, Chdir, ArtifactDir or a skip.
 // After the build the board's HEAD must be its branch's tip in the records bare, read from the bare.
+// Every repository of the template is then packed with `git repack -d --cruft` and `git pack-refs --all`.
+// That happens before the fingerprint is taken.
+// A copy therefore copies a few pack files in place of loose objects;
+// no pack and no packed-refs file names a template path.
 // Each key builds under its own lock, so templates of different keys build at once.
 // A build that fails fails its caller with the build's error, and every later caller naming the key, without a rebuild.
 // Two different registrations with one key fail the second caller naming the key.
@@ -43,7 +47,8 @@
 // Each link is recreated with its rewritten target.
 // The copy is verified to name the template root nowhere.
 // The board's tracked `.lym-warp` binding is among the rewritten files.
-// A copy therefore amends it into the board's HEAD commit and force-pushes that to the copy's own records bare.
+// A copy therefore amends the board's HEAD commit with that one file and force-pushes it to the copy's own records bare:
+// two git processes, which write the reflog entries of HEAD, the branch and the tracking ref.
 // That leaves every checkout of the copy clean, as a fresh hub's is.
 // A link keeps its one-hop target, so a chain of links stays a chain.
 // A copy's Mutations are the template's, unrewritten.
@@ -63,11 +68,14 @@
 // A write is anything that may change a file under the hub.
 // Writes include a fabric mutating verb, SeedConfig and AddPair.
 // They also include any run of the lym binary, any in-process CLI verb and any spawned git subcommand.
-// Both entry points compare the template's fingerprint with the one taken at build time.
+// SharedHub compares the template's fingerprint with the one taken at build time.
 // The fingerprint is the digest of every regular file's relative path, size and modification time.
 // A mismatch, or a template already marked poisoned, fails the test naming the fixture.
 // A SharedHub test's cleanup takes the fingerprint again.
 // On a change it marks the template poisoned and fails naming the fixture; the blame may land on a parallel sharer.
+// CopyHub and CopyRegistered take no fingerprint and fail only on a template already marked poisoned.
+// A stray write by a SharedHub test therefore reaches the copies taken before its cleanup poisons the template;
+// copies taken after fail.
 //
 // Seeding contract: SeedConfig overrides one or more modules' config.
 // It writes into the anchor-joined h.WeftBase and commits at the weft worktree root h.PrimeRecords().

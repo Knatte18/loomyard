@@ -520,6 +520,7 @@ func TestNewHub_TeardownSurvivesCorruptHub(t *testing.T) {
 
 // TestCopyHub copies the "." shape with its one pair and asserts the copy is a working hub of its own:
 // fabric status is clean on its prime, every worktree git lists resolves, and the pair's launcher directory resolves.
+// The board has the relocated binding folded into its HEAD and pushed.
 // No `_portals` directory exists, and no file or link names the template root.
 func TestCopyHub(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -538,14 +539,10 @@ func TestCopyHub(t *testing.T) {
 	if changes, _ := status.Raw["changes"].([]any); len(changes) != 0 {
 		t.Errorf("fabric status changes on the copy = %v; want none", changes)
 	}
-	for _, dir := range []string{h.BoardDir(), h.PrimeRecords()} {
-		if porcelain := gitkit.Git(t, dir, "status", "--porcelain"); porcelain != "" {
-			t.Errorf("git status in the copy's %s = %q; want a clean checkout, as a fresh hub's is", dir, porcelain)
-		}
+	if porcelain := gitkit.GitStatusPorcelain(t, h.PrimeRecords()); porcelain != "" {
+		t.Errorf("git status in the copy's %s = %q; want a clean checkout, as a fresh hub's is", h.PrimeRecords(), porcelain)
 	}
-	if ahead := gitkit.Git(t, h.BoardDir(), "rev-list", "--count", "@{upstream}..HEAD"); ahead != "0" {
-		t.Errorf("the copy's board is %s commits ahead of its upstream; want the relocated binding pushed", ahead)
-	}
+	assertBindingFoldedAndPushed(t, h)
 
 	listing := gitkit.Git(t, h.PrimeWorktree(), "worktree", "list", "--porcelain")
 	worktrees := 0
